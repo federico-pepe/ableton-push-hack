@@ -1,0 +1,17 @@
+[Unit]
+Description=push-hack: Push Manager (file browser)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={{HACK_DIR}}/push-manager -config {{HACK_DIR}}/hack.json
+Restart=on-failure
+RestartSec=10
+Nice=19
+MemoryMax=64M
+StandardOutput=append:{{LOG_DIR}}/push-manager.log
+StandardError=append:{{LOG_DIR}}/push-manager.log
+WorkingDirectory={{HACK_DIR}}
+
+[Install]
+WantedBy=multi-user.target

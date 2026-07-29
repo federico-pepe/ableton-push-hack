@@ -1,0 +1,18 @@
+# Claude Code local settings
+.claude/
+
+# macOS
+.DS_Store
+
+# Go
+*.test
+vendor/
+
+# Logs
+*.log
+
+# Resources
+/resources/push-assets/*
+
+# Local-only discovery / research notes (not shipped)
+/discovery/

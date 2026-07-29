@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#161618">
+<title>Push Manager</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div id="header">
+  <div class="header-inner">
+    <span class="wordmark" onclick="loadRoots(true)">
+      <img src="/api/assets/logo_high_resolution.png" class="header-logo" alt="Push Manager"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='inline'">
+      <span style="display:none">Push Manager</span>
+    </span>
+    <span class="header-sep" id="header-sep" style="display:none">›</span>
+    <nav class="header-nav" id="header-nav" style="display:none"></nav>
+    <button id="btn-back" onclick="goBack()">‹ Back</button>
+    <button id="btn-browser" onclick="showBrowser()">Browser</button>
+    <button id="btn-stats" onclick="showStats()">System</button>
+    <button id="btn-display" onclick="showDisplay()">Display</button>
+    <button id="btn-midi" onclick="showMidi()">MIDI</button>
+  </div>
+</div>
+
+<div id="main">
+
+  <!-- Home -->
+  <div id="view-home" style="display:none">
+    <div class="home-hero">
+      <div class="home-hero-content">
+        <p class="page-title">Push Manager</p>
+        <p class="page-desc">Browse and transfer files between Push and your device.</p>
+      </div>
+    </div>
+    <div class="card-grid" id="roots-grid" style="margin-top:12px"></div>
+  </div>
+
+  <!-- Directory -->
+  <div id="view-dir" style="display:none">
+    <div id="upload-bar">
+      <button class="upload-btn" id="btn-upload-files">
+        <span class="ub-icon">↑</span><span>Upload Files</span>
+      </button>
+      <button class="upload-btn" id="btn-upload-folder">
+        <span class="ub-icon">↑</span><span>Upload Folder</span>
+      </button>
+    </div>
+    <input type="file" id="file-input" multiple>
+    <input type="file" id="folder-input" webkitdirectory multiple>
+    <div id="upload-progress"><div id="upload-progress-bar"></div></div>
+    <div id="sort-bar">
+      <span class="sort-lbl">Sort</span>
+      <button class="sort-btn active" data-sort="name">Name <span class="sort-dir">↑</span></button>
+      <button class="sort-btn" data-sort="date">Date</button>
+      <button class="sort-btn" data-sort="size">Size</button>
+      <button class="sort-btn" data-sort="type">Type</button>
+    </div>
+    <div id="file-list"></div>
+    <div id="paste-bar">
+      <div class="pb-name"><span>📋</span><span id="pb-label"></span></div>
+      <button class="pb-paste" onclick="doPaste()">Paste here</button>
+      <button class="pb-cancel" onclick="clearClip()">✕</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div id="view-stats" style="display:none">
+    <p class="page-title" style="margin-top:24px">System</p>
+    <div id="stats-grid">
+      <div class="stat-row"><div class="stat-label">—</div><div class="stat-body"><div class="stat-val" style="color:var(--grey-mid)">Loading…</div></div></div>
+    </div>
+    <div id="stats-refresh"></div>
+  </div>
+
+  <!-- Display -->
+  <div id="view-display" style="display:none">
+    <p class="page-title" style="margin-top:24px">Display</p>
+
+    <div class="disp-status">
+      <div class="disp-dot" id="disp-dot"></div>
+      <span id="disp-status-txt">Checking…</span>
+    </div>
+
+    <!-- Tab strip -->
+    <div class="disp-tabs">
+      <button class="disp-tab active" data-tab="control" onclick="showDispTab('control')">Control</button>
+      <button class="disp-tab"        data-tab="draw"    onclick="showDispTab('draw')">Draw</button>
+    </div>
+
+    <!-- Tab: Control -->
+    <div id="dtab-control">
+      <div class="disp-section">
+        <div class="disp-label">Mode</div>
+        <div class="mode-pills">
+          <button class="mode-pill" data-mode="0" onclick="setDisplayMode(0)">Off</button>
+          <button class="mode-pill" data-mode="1" onclick="setDisplayMode(1)">Debug</button>
+          <button class="mode-pill" data-mode="2" onclick="setDisplayMode(2)">Image</button>
+          <button class="mode-pill" data-mode="video" onclick="setVideoMode()">Video</button>
+        </div>
+      </div>
+
+      <div class="disp-section">
+        <div class="disp-label" style="display:flex;align-items:center;gap:10px">
+          <span>Preview</span>
+          <button class="draw-tool-btn" onclick="captureScreenshot()" style="margin-left:auto">📷 Screenshot</button>
+          <a id="screenshot-dl" class="draw-tool-btn" download="push-screenshot.png" style="display:none;text-decoration:none">↓ Download PNG</a>
+        </div>
+        <div class="push-screen" id="push-screen">
+          <canvas id="push-canvas" width="960" height="160"></canvas>
+          <div class="push-screen-label" id="push-screen-label">Push 3 · 960×160</div>
+        </div>
+        <img id="screenshot-preview" style="display:none;width:100%;aspect-ratio:6/1;object-fit:contain;background:#000;border:1px solid var(--grey);margin-top:8px" alt="Screenshot">
+      </div>
+
+      <div class="disp-section" id="disp-upload-section" style="display:none">
+        <div class="disp-label">Image</div>
+        <div class="drop-zone" id="drop-zone" onclick="$('disp-img-input').click()">
+          <div class="drop-zone-title">Tap to pick or drag image here</div>
+          <div class="drop-zone-hint">PNG or JPEG · scaled to 960×160</div>
+        </div>
+        <input type="file" id="disp-img-input" accept="image/png,image/jpeg,image/jpg,image/gif,image/webp">
+        <div id="disp-upload-info"></div>
+      </div>
+
+      <div class="disp-section" id="disp-video-section" style="display:none">
+        <div class="disp-label">Video source</div>
+        <div class="drop-zone" id="vid-drop-zone" onclick="$('vid-file-input').click()">
+          <div class="drop-zone-title">Tap to pick or drag video here</div>
+          <div class="drop-zone-hint">MP4, WebM, MOV · frames streamed from your browser</div>
+        </div>
+        <input type="file" id="vid-file-input" accept="video/*">
+        <video id="vid-el" autoplay loop muted playsinline
+               style="display:none;width:100%;aspect-ratio:6/1;object-fit:cover;background:#000;border:1px solid var(--grey);margin-top:8px"></video>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <button id="vid-start-btn" class="draw-tool-btn" onclick="toggleVideoStream()">▶ Start</button>
+          <div style="display:flex;gap:4px">
+            <button class="draw-tool-btn vid-q-btn" data-q="0.4" onclick="setVidQuality(this)">Low</button>
+            <button class="draw-tool-btn vid-q-btn active" data-q="0.7" onclick="setVidQuality(this)">Med</button>
+            <button class="draw-tool-btn vid-q-btn" data-q="0.9" onclick="setVidQuality(this)">High</button>
+          </div>
+          <span id="vid-status" style="font-size:12px;color:var(--grey-mid);margin-left:auto">No file selected</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Draw -->
+    <div id="dtab-draw" style="display:none">
+      <div class="draw-toolbar">
+        <!-- Colors -->
+        <div class="draw-swatch active" style="background:#FF5500" data-color="#FF5500" onclick="setDrawColor(this)" title="Orange"></div>
+        <div class="draw-swatch" style="background:#ffffff" data-color="#ffffff" onclick="setDrawColor(this)" title="White"></div>
+        <div class="draw-swatch" style="background:#00ff99" data-color="#00ff99" onclick="setDrawColor(this)" title="Green"></div>
+        <div class="draw-swatch" style="background:#00aaff" data-color="#00aaff" onclick="setDrawColor(this)" title="Blue"></div>
+        <div class="draw-swatch" style="background:#ffee00" data-color="#ffee00" onclick="setDrawColor(this)" title="Yellow"></div>
+        <div class="draw-swatch" style="background:#ff0066" data-color="#ff0066" onclick="setDrawColor(this)" title="Pink"></div>
+        <!-- Brush sizes -->
+        <button class="draw-size-btn active" data-size="1" onclick="setDrawSize(this)" title="Small">
+          <svg width="10" height="10"><circle cx="5" cy="5" r="2" fill="currentColor"/></svg>
+        </button>
+        <button class="draw-size-btn" data-size="3" onclick="setDrawSize(this)" title="Medium">
+          <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="currentColor"/></svg>
+        </button>
+        <button class="draw-size-btn" data-size="7" onclick="setDrawSize(this)" title="Large">
+          <svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="currentColor"/></svg>
+        </button>
+        <!-- Tools -->
+        <button class="draw-tool-btn" id="draw-eraser-btn" onclick="toggleDrawEraser()">Eraser</button>
+        <button class="draw-tool-btn" onclick="clearDrawCanvas()">Clear</button>
+        <span id="draw-live-status">—</span>
+      </div>
+      <canvas id="draw-canvas" width="960" height="160"></canvas>
+    </div>
+  </div>
+
+  <!-- MIDI Monitor -->
+  <div id="view-midi" style="display:none">
+    <p class="page-title" style="margin-top:24px">MIDI Monitor</p>
+    <div id="midi-status-bar">
+      <div class="midi-dot" id="midi-dot"></div>
+      <span id="midi-status-txt">Connecting…</span>
+      <div id="midi-counters">IN <span id="midi-cnt-in">0</span> &nbsp; OUT <span id="midi-cnt-out">0</span></div>
+      <select id="midi-port-sel" onchange="midiPortChanged()" title="MIDI source port" style="margin-left:auto;background:var(--surface);color:var(--black);border:1px solid var(--grey-dark);border-radius:4px;padding:2px 6px;font-size:12px;cursor:pointer;max-width:260px;"></select>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+      <button id="midi-clear-btn" onclick="clearMidiLog()">Clear</button>
+      <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="midi-hide-sensing" onchange="midiFilterChanged()" checked>
+        Active Sensing
+      </label>
+      <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="midi-hide-sysex" onchange="midiFilterChanged()" checked>
+        SysEx
+      </label>
+      <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="midi-hide-cc" onchange="midiFilterChanged()">
+        CC
+      </label>
+      <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="midi-hide-note" onchange="midiFilterChanged()">
+        Note
+      </label>
+      <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="midi-hide-chanpres" onchange="midiFilterChanged()" checked>
+        Chan Pressure
+      </label>
+      <label style="font-size:12px;color:rgb(255,100,60);display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto" title="Neutralize MIDI events before they reach Ableton Live">
+        <input type="checkbox" id="midi-intercept" onchange="midiInterceptChanged()">
+        Intercept
+      </label>
+      <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px;cursor:pointer" title="Forward incoming MIDI events to external port (16:2)">
+        <input type="checkbox" id="midi-forward" onchange="midiForwardChanged()">
+        Forward
+      </label>
+    </div>
+    <div id="midi-chords" style="margin-bottom:8px;font-size:11px;color:var(--grey-mid);display:none">
+      <span style="opacity:0.6;margin-right:8px">⌨ Chord bindings:</span>
+      <span id="midi-chords-list"></span>
+    </div>
+    <div id="midi-log"></div>
+
+    <!-- LED control -->
+    <div style="margin-top:12px;padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">LED CONTROL</div>
+      <!-- Manual send row -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="led-type" style="background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px" onchange="ledTypeChanged()">
+          <option value="cc">CC</option>
+          <option value="note">Note</option>
+        </select>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          Ch <input id="led-channel" type="number" min="0" max="15" value="0" style="width:40px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label id="led-cc-label" style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          CC <input id="led-cc" type="number" min="0" max="127" value="102" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label id="led-note-label" style="font-size:12px;color:var(--grey-mid);display:none;align-items:center;gap:4px">
+          Note <input id="led-note" type="number" min="0" max="127" value="36" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          Val <input id="led-value" type="number" min="0" max="127" value="127" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <button onclick="sendLed()" style="background:var(--blue);color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer">Send</button>
+        <button onclick="sendLedOff()" style="background:var(--bg3);color:var(--grey-mid);border:1px solid var(--border);border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer">Off</button>
+      </div>
+
+      <!-- LED mode config -->
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">LED MODE CONFIG</div>
+        <!-- Row 1: CC / mode / color / group -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+          <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+            CC <input id="lcfg-cc" type="number" min="0" max="127" value="102" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+          </label>
+          <select id="lcfg-mode" style="background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px" onchange="lcfgModeChanged()">
+            <option value="trigger">Trigger (toggle)</option>
+            <option value="momentary">Momentary (hold)</option>
+            <option value="exclusive">Exclusive (radio)</option>
+          </select>
+          <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+            Color <input id="lcfg-color" type="text" value="full" placeholder="0–127 or name"
+              style="width:76px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+          </label>
+          <label id="lcfg-group-label" style="font-size:12px;color:var(--grey-mid);display:none;align-items:center;gap:4px">
+            Group <input id="lcfg-group" type="text" value="" placeholder="group name"
+              style="width:76px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+          </label>
+        </div>
+        <!-- Row 2: animation -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+          <select id="lcfg-anim-type" style="background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px" onchange="lcfgAnimChanged()">
+            <option value="">No animation</option>
+            <option value="oneshot">One-shot</option>
+            <option value="pulse">Pulse</option>
+            <option value="blink">Blink</option>
+          </select>
+          <select id="lcfg-anim-speed" style="background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px;display:none">
+            <option value="24th">24th note</option>
+            <option value="16th">16th note</option>
+            <option value="8th" selected>8th note</option>
+            <option value="quarter">Quarter note</option>
+            <option value="half">Half note</option>
+          </select>
+          <label id="lcfg-anim-color-label" style="font-size:12px;color:var(--grey-mid);display:none;align-items:center;gap:4px">
+            → Color <input id="lcfg-anim-color" type="text" value="off" placeholder="target color"
+              style="width:76px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+          </label>
+          <button onclick="lcfgSet()" style="background:var(--blue);color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer">Set</button>
+          <button onclick="lcfgClearOne()" style="background:var(--bg3);color:var(--grey-mid);border:1px solid var(--border);border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer">Clear CC</button>
+        </div>
+        <div style="font-size:11px;color:var(--grey-mid);margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          <span>Colors: off·dim·half·full·red·green·blue·white·lgray·dgray, or 0–127</span>
+          <button onclick="paletteToggle()" id="palette-toggle-btn"
+            style="background:var(--bg3);color:var(--grey-mid);border:1px solid var(--border);border-radius:3px;padding:1px 7px;font-size:11px;cursor:pointer">
+            palette ▾
+          </button>
+        </div>
+        <!-- Inline palette picker -->
+        <div id="palette-picker" style="display:none;margin-bottom:8px">
+          <div style="font-size:10px;color:var(--grey-mid);margin-bottom:4px;display:flex;justify-content:space-between">
+            <span id="palette-status">Loading…</span>
+            <span>click swatch → set color</span>
+          </div>
+          <!-- 14-column grid — matches Live's color picker column count -->
+          <div id="palette-swatches"
+            style="display:grid;grid-template-columns:repeat(14,18px);gap:2px;cursor:pointer">
+          </div>
+          <div id="palette-hover-label"
+            style="font-size:10px;color:var(--grey-mid);margin-top:3px;min-height:14px;font-family:monospace">
+          </div>
+        </div>
+        <!-- Config list -->
+        <div id="lcfg-list" style="margin-top:6px;display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:11px;color:var(--grey-mid);font-weight:600">ACTIVE CONFIGS</span>
+            <button onclick="lcfgClearAll()" style="background:none;color:var(--grey-mid);border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer">Clear all</button>
+          </div>
+          <div id="lcfg-rows" style="font-size:12px;font-family:monospace;line-height:1.8"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDI mapping -->
+    <div style="margin-top:12px;padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">MIDI MAPPING</div>
+
+      <!-- Config row: enable / intercept gate / output port -->
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <label style="font-size:12px;color:var(--fg);display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input id="remap-enabled" type="checkbox" onchange="saveRemapConfig()"> Enable remap
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px;cursor:pointer">
+          <input id="remap-require-intercept" type="checkbox" onchange="saveRemapConfig()"> Only when intercept ON
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:5px">
+          Output port
+          <select id="remap-out-port" onchange="saveRemapConfig()" style="background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px;max-width:220px"></select>
+        </label>
+      </div>
+
+      <!-- Source row: learn or manual entry -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;padding-top:8px;border-top:1px solid var(--border)">
+        <span style="font-size:11px;color:var(--grey-mid);font-weight:600;min-width:48px">SOURCE</span>
+        <button id="remap-learn-btn" onclick="remapLearnToggle()" style="background:var(--blue);color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer">◉ Learn</button>
+        <span id="remap-learn-status" style="font-size:12px;color:var(--grey-mid)">or enter manually →</span>
+        <select id="remap-src-type" onchange="remapSrcTypeChanged()" style="background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px">
+          <option value="cc">CC</option>
+          <option value="note">Note</option>
+        </select>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          Ch <input id="remap-src-ch" type="number" min="0" max="15" value="0" style="width:40px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          <span id="remap-src-num-label">CC#</span> <input id="remap-src-num" type="number" min="0" max="127" value="0" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input id="remap-relative" type="checkbox"> Relative (knob)
+        </label>
+      </div>
+
+      <!-- Output row -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--grey-mid);font-weight:600;min-width:48px">OUTPUT</span>
+        <select id="remap-out-type" onchange="remapOutTypeChanged()" style="background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-size:12px">
+          <option value="cc">CC</option>
+          <option value="note">Note</option>
+        </select>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          Ch <input id="remap-out-ch" type="number" min="0" max="15" value="0" style="width:40px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          <span id="remap-out-num-label">CC#</span> <input id="remap-out-num" type="number" min="0" max="127" value="20" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          Min <input id="remap-out-min" type="number" min="0" max="127" value="0" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <label style="font-size:12px;color:var(--grey-mid);display:flex;align-items:center;gap:4px">
+          Max <input id="remap-out-max" type="number" min="0" max="127" value="127" style="width:48px;background:var(--bg3);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;font-size:12px">
+        </label>
+        <button onclick="saveRemapMapping()" style="background:var(--blue);color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:12px;cursor:pointer">Save Mapping</button>
+      </div>
+
+      <!-- Mapping list -->
+      <div id="remap-list" style="margin-top:6px;display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:11px;color:var(--grey-mid);font-weight:600">ACTIVE MAPPINGS</span>
+          <button onclick="remapClearAll()" style="background:none;color:var(--grey-mid);border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer">Clear all</button>
+        </div>
+        <div id="remap-rows" style="font-size:12px;font-family:monospace;line-height:1.8"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Browser -->
+  <div id="view-browser" style="display:none">
+    <p class="page-title" style="margin-top:24px">Browser</p>
+    <p class="page-desc">Search, filter, tag and load Live presets onto the selected track.</p>
+
+    <div style="background:var(--grey);border-left:3px solid #d97706;border-radius:6px;padding:10px 14px;margin:12px 0;font-size:13px;color:var(--grey-mid);line-height:1.5">
+      <strong style="color:var(--black)">Setup required</strong> — To use this feature, you must have Live 12.4 or later installed on Push. In Push's MIDI Preferences, select <strong style="color:var(--black)">PushHackBrowser</strong> in an empty slot under the Control Scripts tab, and leave both the input and output set to None. Restart Push for the change to take effect.
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0">
+      <input id="br-search" type="search" placeholder="Search…" oninput="brSearchInput()"
+             style="flex:1;min-width:180px;background:var(--grey);color:var(--black);border:1px solid var(--grey);border-radius:6px;padding:8px 12px;font-size:14px">
+      <button onclick="brRefresh()" class="br-sel" title="Rescan (after installing Packs)">↻ Refresh</button>
+      <span id="br-count" style="font-size:12px;color:var(--grey-mid);white-space:nowrap"></span>
+    </div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <button id="br-type-all"     class="br-toggle active" onclick="brSetType('')">All</button>
+      <button id="br-type-preset"  class="br-toggle"        onclick="brSetType('preset')">Presets</button>
+      <button id="br-type-sample"  class="br-toggle"        onclick="brSetType('sample')">Samples</button>
+    </div>
+
+    <div id="br-preset-filters" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <select id="br-category" onchange="brCategoryChange()" class="br-sel"></select>
+      <select id="br-device"   onchange="brReload()" class="br-sel"></select>
+      <select id="br-source"   onchange="brReload()" class="br-sel"></select>
+      <button id="br-fav" onclick="brToggleFav()" class="br-toggle">★ Favourites</button>
+    </div>
+
+    <div id="br-sample-filters" style="display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <select id="br-source-sample" onchange="brReload()" class="br-sel"></select>
+      <button id="br-fav-sample" onclick="brToggleFav()" class="br-toggle">★ Favourites</button>
+    </div>
+
+    <div id="br-subtypes" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
+    <div id="br-tags" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+
+    <div id="browser-list"></div>
+  </div>
+
+</div>
+
+<div id="toast-wrap"></div>
+
+<div id="overlay" onclick="closeSheet(event)">
+  <div id="sheet">
+    <div class="sh-title">Delete?</div>
+    <div class="sh-body" id="sh-body">Permanently delete <span class="sh-name" id="sh-name"></span></div>
+    <div class="sh-btns">
+      <button class="sh-btn cancel"  onclick="closeSheet()">Cancel</button>
+      <button class="sh-btn confirm" onclick="doDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="rename-overlay" onclick="closeRenameSheet(event)">
+  <div id="rename-sheet">
+    <div class="sh-title" id="rename-title">Rename</div>
+    <input id="rename-input" class="rename-input" type="text"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <div class="sh-btns">
+      <button class="sh-btn cancel" onclick="closeRenameSheet()">Cancel</button>
+      <button class="sh-btn confirm" style="background:var(--blue)" onclick="doRename()">Rename</button>
+    </div>
+  </div>
+</div>
+
+<footer id="footer">
+  <p>This project is not approved, endorsed or supported by Ableton. Use at your own risk.</p>
+  <p><a href="https://github.com/federico-pepe/ableton-push-hack">GitHub</a> &bull; <a href="https://discord.gg/8y6aYxy9nU" target="_blank">Join the Discord server</a></p>
+</footer>
+
+<script src="app.js" defer></script>
+</body>
+</html>

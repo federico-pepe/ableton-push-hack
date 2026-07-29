@@ -1,0 +1,19 @@
+{
+  "id": "push-manager",
+  "name": "Push Manager",
+  "description": "Web-based file browser for Ableton Push. Browse, upload, download, and delete user files from any device on the same network.",
+  "version": "0.1.0",
+  "author": "push-hack",
+  "port": 7701,
+  "binary": "push-manager",
+  "enabled": true,
+  "allowed_roots": [
+    "${USER_DATA}/Music",
+    "/run/media"
+  ],
+  "settings": {
+    "max_upload_size_mb": 512,
+    "show_hidden_files": false,
+    "read_only": false
+  }
+}

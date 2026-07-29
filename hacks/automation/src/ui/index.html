@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Automation — push-hack</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #111;
+  --bg2: #1a1a1a;
+  --bg3: #222;
+  --border: #333;
+  --text: #e0e0e0;
+  --text2: #888;
+  --accent: #0064ff;
+  --accent2: #0040cc;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --canvas-bg: #141414;
+  --canvas-grid: #232323;
+  --curve-fill: rgba(0, 100, 255, 0.15);
+  --curve-stroke: #0064ff;
+  --point-fill: #fff;
+  --point-stroke: #0064ff;
+  --playhead: #ef4444;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
+
+/* ── Layout ── */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+header h1 { font-size: 16px; font-weight: 600; }
+.header-sep { flex: 1; }
+
+.transport {
+  display: flex; align-items: center; gap: 10px;
+}
+.play-btn {
+  padding: 6px 18px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;
+  background: var(--accent); color: #fff; transition: background 0.15s;
+}
+.play-btn:hover { background: var(--accent2); }
+.play-btn.stop { background: var(--red); }
+.play-btn.stop:hover { background: #b91c1c; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.status-dot.playing { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.bpm-display { color: var(--text2); font-size: 12px; white-space: nowrap; }
+
+main { flex: 1; padding: 16px; max-width: 960px; margin: 0 auto; width: 100%; }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 80px 20px; color: var(--text2); text-align: center;
+}
+.empty-state .hint { font-size: 13px; max-width: 300px; line-height: 1.6; }
+
+/* ── Lane card ── */
+.lane-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  margin-bottom: 16px; overflow: hidden;
+}
+.lane-card.disabled { opacity: 0.55; }
+
+.lane-header {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.lane-header label { color: var(--text2); font-size: 12px; white-space: nowrap; }
+
+input[type=text], input[type=number], select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 4px; padding: 4px 6px; font-size: 13px; outline: none;
+}
+input[type=text]:focus, input[type=number]:focus, select:focus {
+  border-color: var(--accent);
+}
+input[type=text].lane-label { width: 120px; font-weight: 500; }
+input[type=number].lane-cc { width: 52px; }
+input[type=number].lane-ch { width: 44px; }
+input[type=number].lane-beats { width: 52px; }
+input[type=number].lane-bpm { width: 60px; }
+input[type=number].lane-secs { width: 60px; }
+
+.mode-group { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.mode-btn {
+  padding: 4px 10px; background: transparent; color: var(--text2); border: none; cursor: pointer; font-size: 12px;
+  transition: background 0.1s, color 0.1s;
+}
+.mode-btn.active { background: var(--accent); color: #fff; }
+
+.smooth-toggle {
+  display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;
+  font-size: 12px; color: var(--text2);
+}
+.smooth-toggle input { accent-color: var(--accent); cursor: pointer; }
+
+.enable-toggle { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.enable-toggle input { accent-color: var(--green); cursor: pointer; width: 16px; height: 16px; }
+
+.lane-del-btn {
+  margin-left: auto; background: transparent; border: 1px solid var(--border);
+  color: var(--text2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px;
+}
+.lane-del-btn:hover { background: var(--red); color: #fff; border-color: var(--red); }
+
+.timing-group { display: flex; align-items: center; gap: 6px; }
+.timing-group.hidden { display: none; }
+
+/* ── Canvas area ── */
+.lane-canvas-wrap {
+  position: relative; width: 100%; height: 120px; background: var(--canvas-bg);
+  cursor: crosshair; user-select: none; touch-action: none;
+}
+.lane-canvas-wrap canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.canvas-curve { z-index: 1; }
+.canvas-playhead { z-index: 2; pointer-events: none; }
+
+/* ── Info bar (below canvas) ── */
+.lane-info {
+  display: flex; gap: 12px; padding: 5px 12px; background: var(--bg3);
+  border-top: 1px solid var(--border); font-size: 11px; color: var(--text2);
+}
+.lane-info .hint { font-style: italic; }
+.lane-cc-val { font-weight: 600; color: var(--text); min-width: 60px; }
+
+/* ── Add lane button ── */
+.add-lane-btn {
+  width: 100%; padding: 12px; background: transparent; border: 1px dashed var(--border);
+  color: var(--text2); border-radius: 8px; cursor: pointer; font-size: 14px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.add-lane-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Misc ── */
+.sep { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.push-mgr-link { font-size: 12px; color: var(--text2); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── Header / transport ── -->
+<header>
+  <h1>Automation</h1>
+  <span class="push-mgr-link"><a href="http://push.local:7701" target="_blank">← Push Manager</a></span>
+  <div class="header-sep"></div>
+  <div class="transport">
+    <div class="status-dot" id="status-dot"></div>
+    <button class="play-btn" id="play-btn" onclick="togglePlay()">▶ Play</button>
+    <span class="bpm-display" id="bpm-display">BPM: —</span>
+    <div class="sep"></div>
+    <label class="smooth-toggle" title="Start/stop automation when Live transport plays/stops">
+      <input type="checkbox" id="tsync-chk" onchange="onTransportSyncChange(this.checked)">
+      Sync to Live
+    </label>
+  </div>
+</header>
+
+<!-- ── Lane list ── -->
+<main>
+  <div id="lane-list"></div>
+  <button class="add-lane-btn" onclick="addLane()">+ Add Lane</button>
+</main>
+
+</div>
+
+<script>
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────
+
+let state = { running: false, transport_sync: true, lanes: [], live_bpm: 120 };
+let phases = [];
+let sseSource = null;
+
+// Per-lane drag state
+// dragging[laneId] = { pointIdx, canvas }
+const dragging = {};
+
+// Per-lane last CC value (for info bar display)
+const lastCC = {};
+
+// ── API helper ────────────────────────────────────────────────────────────
+
+async function api(method, url, body) {
+  const opts = { method };
+  if (body !== undefined) {
+    opts.body = JSON.stringify(body);
+    opts.headers = { 'Content-Type': 'application/json' };
+  }
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  const data = ct.includes('json') ? await res.json() : null;
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data;
+}
+
+// ── Transport ─────────────────────────────────────────────────────────────
+
+async function togglePlay() {
+  try {
+    const action = state.running ? 'stop' : 'play';
+    const result = await api('POST', `/api/auto/${action}`);
+    state.running = result.running;
+    updateTransportUI();
+  } catch (e) { console.error(e); }
+}
+
+async function onTransportSyncChange(enabled) {
+  try {
+    await api('POST', '/api/auto/transport_sync', { enabled });
+    state.transport_sync = enabled;
+  } catch (e) { console.error('onTransportSyncChange:', e); }
+}
+
+function updateTransportUI() {
+  const btn = document.getElementById('play-btn');
+  const dot = document.getElementById('status-dot');
+  const tsync = document.getElementById('tsync-chk');
+  if (tsync) tsync.checked = !!state.transport_sync;
+
+  if (state.transport_sync) {
+    // Sync mode: button is a read-only status indicator, not interactive
+    btn.disabled = true;
+    btn.onclick = null;
+    if (state.running) {
+      btn.textContent = '● Playing';
+      btn.style.background = 'var(--green)';
+      btn.style.opacity = '0.85';
+      btn.style.cursor = 'default';
+      dot.classList.add('playing');
+    } else {
+      btn.textContent = '○ Stopped';
+      btn.style.background = 'var(--bg3)';
+      btn.style.opacity = '0.7';
+      btn.style.cursor = 'default';
+      dot.classList.remove('playing');
+    }
+    btn.classList.remove('stop');
+    btn.title = 'Transport controlled by Live';
+  } else {
+    btn.disabled = false;
+    btn.onclick = togglePlay;
+    btn.style.background = '';
+    btn.style.opacity = '';
+    btn.style.cursor = '';
+    btn.title = '';
+    if (state.running) {
+      btn.textContent = '■ Stop';
+      btn.classList.add('stop');
+      dot.classList.add('playing');
+    } else {
+      btn.textContent = '▶ Play';
+      btn.classList.remove('stop');
+      dot.classList.remove('playing');
+    }
+  }
+}
+
+// ── SSE stream ────────────────────────────────────────────────────────────
+
+function startSSE() {
+  if (sseSource) return;
+  sseSource = new EventSource('/api/auto/stream');
+  sseSource.onmessage = e => {
+    const d = JSON.parse(e.data);
+    state.running = d.running;
+    if (d.transport_sync !== undefined) state.transport_sync = d.transport_sync;
+    phases = d.phases || [];
+    if (d.live_bpm > 0) state.live_bpm = d.live_bpm;
+    updateTransportUI();
+    updateBPMDisplay();
+    drawAllPlayheads();
+    updateCCValues();
+  };
+  sseSource.onerror = () => {
+    sseSource.close();
+    sseSource = null;
+    setTimeout(startSSE, 2000);
+  };
+}
+
+function updateBPMDisplay() {
+  const el = document.getElementById('bpm-display');
+  el.textContent = `BPM: ${state.live_bpm.toFixed(1)}`;
+}
+
+// ── Lane CRUD ─────────────────────────────────────────────────────────────
+
+async function loadState() {
+  try {
+    const s = await api('GET', '/api/auto/state');
+    state = s;
+    state.lanes = Array.isArray(s.lanes) ? s.lanes : [];
+    if (s.transport_sync === undefined) state.transport_sync = true;
+    renderAll();
+    updateTransportUI();
+    updateBPMDisplay();
+  } catch (e) { console.error('loadState:', e); }
+}
+
+function renderAll() {
+  const list = document.getElementById('lane-list');
+  if (state.lanes.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <div>No automation lanes yet.</div>
+      <div class="hint">Add a lane, draw a curve, then hit Play. Push 3 will receive CC values in real time — arm a track in Live and start recording.</div>
+    </div>`;
+    return;
+  }
+  // Rebuild only changed lanes to avoid losing canvas state
+  const existingCards = {};
+  list.querySelectorAll('.lane-card[data-id]').forEach(el => {
+    existingCards[el.dataset.id] = el;
+  });
+  const ids = state.lanes.map(l => String(l.id));
+
+  // Remove cards for deleted lanes
+  Object.keys(existingCards).forEach(id => {
+    if (!ids.includes(id)) existingCards[id].remove();
+  });
+
+  // Add or update cards
+  state.lanes.forEach((lane, idx) => {
+    const id = String(lane.id);
+    let card = existingCards[id];
+    if (!card) {
+      card = buildLaneCard(lane);
+      list.appendChild(card);
+    } else {
+      updateLaneCard(card, lane);
+    }
+    // Ensure canvas is drawn
+    drawCurve(lane);
+  });
+}
+
+async function addLane() {
+  try {
+    const result = await api('POST', '/api/auto/lane', {
+      label: `Lane ${state.lanes.length + 1}`,
+      cc: 74,
+      channel: 0,
+      enabled: true,
+      smooth: false,
+      sync_mode: true,
+      beats: 4,
+      free_bpm: 120,
+      free_secs: 4,
+      points: [
+        { phase: 0.0, value: 0.0 },
+        { phase: 0.25, value: 1.0 },
+        { phase: 0.5, value: 0.0 },
+        { phase: 0.75, value: 0.5 },
+      ]
+    });
+    state.lanes.push(result.lane);
+    renderAll();
+  } catch (e) { console.error('addLane:', e); }
+}
+
+async function deleteLane(id) {
+  try {
+    await api('DELETE', `/api/auto/lane/${id}`);
+    state.lanes = state.lanes.filter(l => l.id !== id);
+    renderAll();
+  } catch (e) { console.error('deleteLane:', e); }
+}
+
+async function patchLane(lane) {
+  try {
+    const result = await api('PUT', `/api/auto/lane/${lane.id}`, lane);
+    const idx = state.lanes.findIndex(l => l.id === lane.id);
+    if (idx >= 0) state.lanes[idx] = result.lane;
+    drawCurve(result.lane);
+  } catch (e) { console.error('patchLane:', e); }
+}
+
+// ── Lane card DOM ─────────────────────────────────────────────────────────
+
+function buildLaneCard(lane) {
+  const card = document.createElement('div');
+  card.className = 'lane-card' + (lane.enabled ? '' : ' disabled');
+  card.dataset.id = lane.id;
+  card.innerHTML = laneHeaderHTML(lane) + laneCanvasHTML(lane) + laneInfoHTML(lane);
+
+  // Wire up canvas interactions
+  requestAnimationFrame(() => {
+    const wrap = card.querySelector('.lane-canvas-wrap');
+    const curveCvs = card.querySelector('.canvas-curve');
+    const phCvs = card.querySelector('.canvas-playhead');
+    if (!wrap || !curveCvs || !phCvs) return;
+    drawCurve(lane);
+    wireCanvasEvents(wrap, curveCvs, lane);
+  });
+
+  return card;
+}
+
+function laneHeaderHTML(lane) {
+  const freeHidden = lane.sync_mode ? 'hidden' : '';
+  const syncHidden = lane.sync_mode ? '' : 'hidden';
+  return `<div class="lane-header">
+    <input type="text" class="lane-label" value="${esc(lane.label)}" placeholder="Label"
+      onchange="onLabelChange(${lane.id}, this.value)">
+    <div class="sep"></div>
+    <label>CC</label>
+    <input type="number" class="lane-cc" min="0" max="127" value="${lane.cc}"
+      onchange="onCCChange(${lane.id}, +this.value)">
+    <label>Ch</label>
+    <input type="number" class="lane-ch" min="0" max="15" value="${lane.channel}"
+      onchange="onChannelChange(${lane.id}, +this.value)">
+    <div class="sep"></div>
+    <div class="mode-group">
+      <button class="mode-btn${lane.sync_mode ? ' active' : ''}" onclick="onModeChange(${lane.id}, true, this)">Sync</button>
+      <button class="mode-btn${lane.sync_mode ? '' : ' active'}" onclick="onModeChange(${lane.id}, false, this)">Free</button>
+    </div>
+    <div class="timing-group ${syncHidden}" id="sync-group-${lane.id}">
+      <label>Beats</label>
+      <input type="number" class="lane-beats" min="0.25" step="0.25" value="${lane.beats}"
+        onchange="onBeatsChange(${lane.id}, +this.value)">
+    </div>
+    <div class="timing-group ${freeHidden}" id="free-group-${lane.id}">
+      <label>BPM</label>
+      <input type="number" class="lane-bpm" min="1" max="400" step="1" value="${lane.free_bpm}"
+        onchange="onFreeBPMChange(${lane.id}, +this.value)">
+      <label>Secs</label>
+      <input type="number" class="lane-secs" min="0.1" step="0.1" value="${lane.free_secs}"
+        onchange="onFreeSecsChange(${lane.id}, +this.value)">
+    </div>
+    <div class="sep"></div>
+    <label class="smooth-toggle">
+      <input type="checkbox" ${lane.smooth ? 'checked' : ''} onchange="onSmoothChange(${lane.id}, this.checked)">
+      Smooth
+    </label>
+    <label class="enable-toggle">
+      <input type="checkbox" ${lane.enabled ? 'checked' : ''} onchange="onEnableChange(${lane.id}, this.checked)">
+      On
+    </label>
+    <button class="lane-del-btn" onclick="deleteLane(${lane.id})">✕</button>
+  </div>`;
+}
+
+function laneCanvasHTML(lane) {
+  return `<div class="lane-canvas-wrap" id="wrap-${lane.id}">
+    <canvas class="canvas-curve" id="curve-${lane.id}"></canvas>
+    <canvas class="canvas-playhead" id="ph-${lane.id}"></canvas>
+  </div>`;
+}
+
+function laneInfoHTML(lane) {
+  return `<div class="lane-info">
+    <span class="lane-cc-val" id="ccval-${lane.id}">CC: —</span>
+    <span class="hint">Click to add point · Drag to move · Right-click to remove</span>
+  </div>`;
+}
+
+function updateLaneCard(card, lane) {
+  card.className = 'lane-card' + (lane.enabled ? '' : ' disabled');
+  // Update header inputs without rebuilding DOM (preserves focus)
+  const q = sel => card.querySelector(sel);
+  const labelEl = q('.lane-label'); if (labelEl && document.activeElement !== labelEl) labelEl.value = lane.label;
+  const ccEl = q('.lane-cc'); if (ccEl) ccEl.value = lane.cc;
+  const chEl = q('.lane-ch'); if (chEl) chEl.value = lane.channel;
+  const beatsEl = q('.lane-beats'); if (beatsEl) beatsEl.value = lane.beats;
+  const bpmEl = q('.lane-bpm'); if (bpmEl) bpmEl.value = lane.free_bpm;
+  const secsEl = q('.lane-secs'); if (secsEl) secsEl.value = lane.free_secs;
+  const smEl = q('.smooth-toggle input'); if (smEl) smEl.checked = lane.smooth;
+  const enEl = q('.enable-toggle input'); if (enEl) enEl.checked = lane.enabled;
+  // Mode buttons
+  card.querySelectorAll('.mode-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === 0 ? lane.sync_mode : !lane.sync_mode);
+  });
+  const sg = document.getElementById(`sync-group-${lane.id}`);
+  const fg = document.getElementById(`free-group-${lane.id}`);
+  if (sg) sg.classList.toggle('hidden', !lane.sync_mode);
+  if (fg) fg.classList.toggle('hidden', lane.sync_mode);
+}
+
+// ── Header change handlers ────────────────────────────────────────────────
+
+function getLane(id) { return state.lanes.find(l => l.id === id); }
+
+function onLabelChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.label = v; patchLane(lane);
+}
+function onCCChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.cc = Math.max(0, Math.min(127, v|0)); patchLane(lane);
+}
+function onChannelChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.channel = Math.max(0, Math.min(15, v|0)); patchLane(lane);
+}
+function onModeChange(id, syncMode, btn) {
+  const lane = getLane(id); if (!lane) return;
+  lane.sync_mode = syncMode;
+  const card = btn.closest('.lane-card');
+  card.querySelectorAll('.mode-btn').forEach((b, i) => b.classList.toggle('active', i === 0 ? syncMode : !syncMode));
+  const sg = document.getElementById(`sync-group-${id}`);
+  const fg = document.getElementById(`free-group-${id}`);
+  if (sg) sg.classList.toggle('hidden', !syncMode);
+  if (fg) fg.classList.toggle('hidden', syncMode);
+  patchLane(lane);
+}
+function onBeatsChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.beats = Math.max(0.25, v); patchLane(lane);
+}
+function onFreeBPMChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.free_bpm = Math.max(1, v); patchLane(lane);
+}
+function onFreeSecsChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.free_secs = Math.max(0.1, v); patchLane(lane);
+}
+function onSmoothChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.smooth = v; patchLane(lane);
+}
+function onEnableChange(id, v) {
+  const lane = getLane(id); if (!lane) return;
+  lane.enabled = v;
+  const card = document.querySelector(`.lane-card[data-id="${id}"]`);
+  if (card) card.classList.toggle('disabled', !v);
+  patchLane(lane);
+}
+
+// ── Canvas drawing ────────────────────────────────────────────────────────
+
+function getCanvasSize(canvas) {
+  const wrap = canvas.parentElement;
+  const w = wrap.clientWidth || 800;
+  const h = wrap.clientHeight || 120;
+  return { w, h };
+}
+
+function ensureCanvasSize(canvas) {
+  const { w, h } = getCanvasSize(canvas);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  return { w, h };
+}
+
+function phaseToX(phase, w) { return phase * w; }
+function valueToY(value, h) { return (1 - value) * h; }
+function xToPhase(x, w) { return Math.max(0, Math.min(1, x / w)); }
+function yToValue(y, h) { return Math.max(0, Math.min(1, 1 - y / h)); }
+
+function drawCurve(lane) {
+  const canvas = document.getElementById(`curve-${lane.id}`);
+  if (!canvas) return;
+  const { w, h } = ensureCanvasSize(canvas);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || '#141414';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid lines
+  ctx.strokeStyle = '#232323';
+  ctx.lineWidth = 1;
+  [0.25, 0.5, 0.75].forEach(v => {
+    const y = valueToY(v, h);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    const x = phaseToX(v, w);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  });
+
+  const pts = lane.points;
+  if (!pts || pts.length === 0) return;
+
+  // Build path samples (N steps for smooth rendering)
+  const N = Math.max(w, 200);
+  const samples = [];
+  for (let i = 0; i <= N; i++) {
+    const phase = i / N;
+    const val = interpolate(lane, phase);
+    samples.push({ x: phaseToX(phase, w), y: valueToY(val, h) });
+  }
+
+  // Filled area under curve
+  ctx.beginPath();
+  ctx.moveTo(samples[0].x, h);
+  samples.forEach(s => ctx.lineTo(s.x, s.y));
+  ctx.lineTo(samples[samples.length - 1].x, h);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0, 100, 255, 0.12)';
+  ctx.fill();
+
+  // Curve line
+  ctx.beginPath();
+  ctx.moveTo(samples[0].x, samples[0].y);
+  for (let i = 1; i < samples.length; i++) ctx.lineTo(samples[i].x, samples[i].y);
+  ctx.strokeStyle = '#0064ff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Breakpoints
+  pts.forEach(pt => {
+    const x = phaseToX(pt.phase, w);
+    const y = valueToY(pt.value, h);
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = '#0064ff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+}
+
+function drawPlayhead(laneId, phase) {
+  const canvas = document.getElementById(`ph-${laneId}`);
+  if (!canvas) return;
+  const { w, h } = ensureCanvasSize(canvas);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  if (phase === undefined || phase === null) return;
+  const x = Math.round(phaseToX(phase, w));
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, h);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawAllPlayheads() {
+  (state.lanes || []).forEach((lane, idx) => {
+    const phase = phases[idx] !== undefined ? phases[idx] : null;
+    drawPlayhead(lane.id, phase);
+  });
+}
+
+function updateCCValues() {
+  state.lanes.forEach((lane, idx) => {
+    const phase = phases[idx];
+    if (phase === undefined) return;
+    const val = interpolate(lane, phase);
+    const cc = Math.round(val * 127);
+    const el = document.getElementById(`ccval-${lane.id}`);
+    if (el) el.textContent = `CC ${lane.cc}: ${cc}`;
+  });
+}
+
+// ── JavaScript interpolation (mirrors Go logic for canvas preview) ─────────
+
+function interpolate(lane, phase) {
+  const pts = lane.points;
+  const n = pts.length;
+  if (n === 0) return 0;
+  if (n === 1) return pts[0].value;
+
+  let segIdx = n - 1;
+  for (let i = 0; i < n - 1; i++) {
+    if (phase >= pts[i].phase && phase < pts[i + 1].phase) { segIdx = i; break; }
+  }
+  const nextIdx = (segIdx + 1) % n;
+  const phaseStart = pts[segIdx].phase;
+  const phaseEnd = segIdx === n - 1 ? 1.0 : pts[nextIdx].phase;
+  const segLen = phaseEnd - phaseStart;
+  const t = segLen > 0 ? (phase - phaseStart) / segLen : 0;
+  const v1 = pts[segIdx].value;
+  const v2 = pts[nextIdx].value;
+
+  if (!lane.smooth) return v1 + t * (v2 - v1);
+
+  // Catmull-Rom
+  const p0Idx = (segIdx - 1 + n) % n;
+  const p3Idx = (segIdx + 2) % n;
+  const v0 = pts[p0Idx].value;
+  const v3 = pts[p3Idx].value;
+  const t2 = t * t, t3 = t2 * t;
+  const val = 0.5 * ((2 * v1) + (-v0 + v2) * t + (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 + (-v0 + 3 * v1 - 3 * v2 + v3) * t3);
+  return Math.max(0, Math.min(1, val));
+}
+
+// ── Canvas interaction ────────────────────────────────────────────────────
+
+const POINT_RADIUS = 8; // px hit radius
+
+function canvasPos(e, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const src = e.touches ? e.touches[0] : e;
+  return {
+    x: (src.clientX - rect.left) * scaleX,
+    y: (src.clientY - rect.top) * scaleY,
+  };
+}
+
+function nearestPoint(pts, x, y, w, h) {
+  let best = -1, bestDist = Infinity;
+  pts.forEach((pt, i) => {
+    const px = phaseToX(pt.phase, w);
+    const py = valueToY(pt.value, h);
+    const d = Math.hypot(x - px, y - py);
+    if (d < bestDist) { bestDist = d; best = i; }
+  });
+  return bestDist <= POINT_RADIUS ? best : -1;
+}
+
+function wireCanvasEvents(wrap, canvas, lane) {
+  const id = lane.id;
+
+  function onDown(e) {
+    e.preventDefault();
+    const { x, y } = canvasPos(e, canvas);
+    const { w, h } = getCanvasSize(canvas);
+    const pts = getLane(id)?.points || [];
+    const pidx = nearestPoint(pts, x, y, w, h);
+    if (pidx >= 0) {
+      dragging[id] = { pointIdx: pidx };
+    } else {
+      // Add new point
+      const phase = clampPhase(xToPhase(x, w), pts);
+      const value = yToValue(y, h);
+      const l = getLane(id); if (!l) return;
+      l.points = [...l.points, { phase, value }];
+      l.points.sort((a, b) => a.phase - b.phase);
+      drawCurve(l);
+      patchLane(l);
+    }
+  }
+
+  function onMove(e) {
+    e.preventDefault();
+    const drag = dragging[id];
+    if (!drag) return;
+    const { x, y } = canvasPos(e, canvas);
+    const { w, h } = getCanvasSize(canvas);
+    const l = getLane(id); if (!l) return;
+    const pts = [...l.points];
+    const phase = Math.max(0.001, Math.min(0.999, xToPhase(x, w)));
+    const value = yToValue(y, h);
+    pts[drag.pointIdx] = { phase, value };
+    pts.sort((a, b) => a.phase - b.phase);
+    // Drag point may have moved index after sort — find it
+    drag.pointIdx = pts.findIndex(p => p.phase === phase && p.value === value);
+    l.points = pts;
+    drawCurve(l);
+  }
+
+  function onUp(e) {
+    if (!dragging[id]) return;
+    delete dragging[id];
+    const l = getLane(id); if (!l) return;
+    patchLane(l);
+  }
+
+  function onContextMenu(e) {
+    e.preventDefault();
+    const { x, y } = canvasPos(e, canvas);
+    const { w, h } = getCanvasSize(canvas);
+    const l = getLane(id); if (!l) return;
+    if (l.points.length <= 1) return;
+    const pidx = nearestPoint(l.points, x, y, w, h);
+    if (pidx < 0) return;
+    l.points = l.points.filter((_, i) => i !== pidx);
+    drawCurve(l);
+    patchLane(l);
+  }
+
+  wrap.addEventListener('mousedown', onDown);
+  wrap.addEventListener('mousemove', onMove);
+  wrap.addEventListener('mouseup', onUp);
+  wrap.addEventListener('mouseleave', onUp);
+  wrap.addEventListener('contextmenu', onContextMenu);
+  wrap.addEventListener('touchstart', onDown, { passive: false });
+  wrap.addEventListener('touchmove', onMove, { passive: false });
+  wrap.addEventListener('touchend', onUp);
+}
+
+// clampPhase keeps new points away from 0 and 1 to avoid collision with
+// the wrap-around segment boundary
+function clampPhase(phase, pts) {
+  let p = Math.max(0.001, Math.min(0.999, phase));
+  // Nudge slightly if another point is at the same phase
+  while (pts.some(pt => Math.abs(pt.phase - p) < 0.002)) p += 0.002;
+  return Math.min(0.999, p);
+}
+
+// ── Resize handling ───────────────────────────────────────────────────────
+
+function redrawAllCurves() {
+  state.lanes.forEach(lane => drawCurve(lane));
+}
+
+const resizeObserver = new ResizeObserver(() => redrawAllCurves());
+resizeObserver.observe(document.getElementById('lane-list'));
+window.addEventListener('resize', redrawAllCurves);
+
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+loadState().then(() => startSSE());
+</script>
+</body>
+</html>

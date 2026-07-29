@@ -1,0 +1,10 @@
+{
+  "id": "push-display",
+  "name": "Push Display Hook",
+  "description": "LD_PRELOAD hook that intercepts Push3's libusb calls to observe and eventually render custom content on the Push display. Phase 1: logging only. Phase 2: pixel overlay.",
+  "version": "0.1.0",
+  "author": "push-hack",
+  "binary": "push_hook.so",
+  "enabled": true,
+  "notes": "Not a standalone service. Deployed as shared library and injected into Push3 process via LD_PRELOAD in /etc/init.d/push3."
+}

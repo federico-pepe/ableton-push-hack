@@ -1,0 +1,10 @@
+{
+  "id": "browser-bridge",
+  "name": "Browser Bridge",
+  "description": "Ableton Live MIDI Remote Script (PushHackBrowser) that loads .adv/.adg presets onto the selected track via the Live browser API. push-manager / Shadow UI sends a preset id over a localhost socket (port 7704); the script calls browser.load_item() on Live's scheduler thread. Install copies the script into the User Library; enabling it in a free control-surface slot and restarting Live is a one-time manual step.",
+  "version": "0.1.0",
+  "author": "push-hack",
+  "port": 7704,
+  "binary": "",
+  "enabled": true
+}
