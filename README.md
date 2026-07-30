@@ -8,6 +8,7 @@ This project was inspired by the work done in the [Move Anything](https://github
 
 * 📕 [Read the Manual](MANUAL.md)
 * 💬 [Join the Discord Community](https://discord.gg/8y6aYxy9nU) to discuss this project.
+* 🎥 [Watch the demo video on YouTube](https://www.youtube.com/watch?v=fsYWSZ-MSDk)
 
 ---
 
@@ -24,6 +25,10 @@ This **Push Hack** is a more of a prototype than a finished product. It's been b
 > Push Hack must be uninstalled an reinstalled after any Push's software update. Because of that, make sure that your Push is on the latest version available before installing the hack. **When a Push Software update is available**: uninstall Push Hack with `./scripts/uninstall.sh`, install the Push update, then reinstall the hack with `./scripts/install.sh`. You can read more about this in the [manual](MANUAL.md).
 >
 > With the hack installed, a Push update **freezes the device mid-update** (blank screen, unresponsive buttons/pads). This is usually recoverable only by holding the power button to force the shut down.
+
+--- 
+## Demo Video
+[![Thumbnail of the YouTube demo video](resources/youtube-video-thumbnail.png)](https://www.youtube.com/watch?v=fsYWSZ-MSDk&feature=youtu.be)
 
 ---
 ## AI Disclosure
