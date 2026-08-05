@@ -124,6 +124,11 @@ func main() {
 		runRenderLoop(*pushManager)
 	}()
 
+	// Push-manager/push-display are separate, optional hacks this one depends
+	// on for anything to actually show on screen — no ALSA/USB involved, so
+	// this check doesn't need to wait for boot-settle.
+	go runDependencyWatcher(*pushManager)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleUI)
 	mux.HandleFunc("/vendor/tonal.min.js", handleVendorTonal)

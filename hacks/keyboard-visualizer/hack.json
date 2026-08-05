@@ -1,7 +1,7 @@
 {
   "id": "keyboard-visualizer",
   "name": "Keyboard Visualizer",
-  "description": "Renders a live piano-keyboard visualization on Push 3's screen, sourced from Live's actual sounding notes (after octave/scale transforms) rather than raw pad MIDI. Creates its own writable ALSA port (\"Keyboard Viz In\") that a Live track's MIDI Out can be routed to from Push's own screen. Display takeover is toggled by holding Shift + Note on the hardware. Also serves a mobile-friendly web view (with Tonal.js chord detection) at its own port, independent of takeover state. Runs independent of MIDI intercept — never reads pad Note On/Off from the pad grid. Renders via push-manager's display API (takeover mode).",
+  "description": "Renders a live piano-keyboard visualization on Push 3's screen, sourced from Live's actual sounding notes (after octave/scale transforms) rather than raw pad MIDI. Creates its own writable ALSA port (\"Keyboard Viz In\") that a Live track's MIDI Out can be routed to from Push's own screen. Display takeover is toggled by holding Shift + Note on the hardware. Also serves a mobile-friendly web view (with Tonal.js chord detection) at its own port, independent of takeover state. Runs independent of MIDI intercept — never reads pad Note On/Off from the pad grid. REQUIRES push-manager + push-display also installed and running: renders via push-manager's display API (takeover mode) rather than writing shared memory itself, so nothing appears on screen without both installed.",
   "version": "0.1.0",
   "author": "push-hack",
   "port": 7702,

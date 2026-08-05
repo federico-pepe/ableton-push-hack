@@ -7,6 +7,28 @@ In-Key transform — rather than the pad grid's raw pre-transform MIDI.
 See `discovery/live-note-keyboard-viz.md` for the full feasibility writeup and
 design rationale.
 
+## Requirements
+
+**On-device screen takeover and the mobile web view's note feed both require
+`push-manager` and `push-display` to also be installed and running.** This
+hack never touches Push's shared-memory framebuffer itself — it's an HTTP
+client of push-manager's `/api/display/*` API, which in turn needs
+push-display's LD_PRELOAD hook attached to actually show anything on Push's
+screen. Installing keyboard-visualizer alone (without push-manager +
+push-display) means the Shift+Note chord toggles state internally but
+nothing appears on screen.
+
+At startup and every 30s, this hack checks `push-manager`'s
+`/api/display/status` and logs one of:
+- `WARNING: push-manager not reachable...` — push-manager isn't installed/running.
+- `WARNING: ... push-display's shared-memory framebuffer is not connected...` —
+  push-manager is up but push-display's hook hasn't attached (not installed,
+  or Push3 hasn't been restarted since installing it).
+- `push-manager + push-display OK — display takeover available.`
+
+Check `/data/push-hack/logs/keyboard-visualizer.log` if takeover doesn't do
+anything visible.
+
 ## Why not the raw pad stream
 
 Push's pad grid always sends the same fixed chromatic notes (36-99). Push's
