@@ -52,17 +52,34 @@ untouched.
 Runs fully independent of MIDI intercept: the pad grid keeps playing into
 Live normally throughout, whether or not the keyboard is currently shown.
 
+## Web view (phone/tablet)
+
+Open `http://push.local:7702` on any device on the same network for a
+mobile-friendly, phone-in-portrait keyboard view — independent of on-device
+display takeover, so it works whether or not the Shift+Note chord is active
+on Push's own screen. It shows:
+
+- The same live keyboard, driven by an SSE feed (`GET /api/notes/stream`) of
+  currently-held notes.
+- **Chord detection** — once 3+ notes are held, the detected chord name is
+  shown large at the top (e.g. "Cmaj7"), via [Tonal.js](https://github.com/tonaljs/tonal)'s
+  `Chord.detect()`. Vendored as a static prebuilt browser bundle
+  (`src/ui/vendor/tonal.min.js`, MIT license, `src/ui/vendor/tonal.LICENSE`)
+  so the page works fully offline — no CDN dependency, matching this
+  project's "no runtime deps" ethos for use at gigs without internet.
+
 ## v1 scope / open questions
 
 - Fixed 49-key window (4 octaves, notes 36-84, centered on middle C)
-  rendered across the screen width. A scrolling/auto-ranging window sized to
-  recent activity would adapt better but adds complexity — revisit if 49
-  keys proves too narrow in practice.
+  rendered across the screen width (both on-device and in the web view). A
+  scrolling/auto-ranging window sized to recent activity would adapt better
+  but adds complexity — revisit if 49 keys proves too narrow in practice.
 - All senders routed to "Keyboard Viz In" are merged into one visualization
   (no per-channel/per-track distinction). Fine for the common case of routing
   one track at a time.
-- No push-manager web UI integration — on-device rendering is the only
-  interface in this version.
+- Chord detection shows only the first name Tonal.js returns when multiple
+  interpretations are possible (e.g. a chord that's ambiguous between two
+  names) — good enough for a quick glance, not exhaustive.
 
 ## Build & deploy
 
@@ -73,5 +90,8 @@ cd hacks/keyboard-visualizer && PATH=$PATH:/usr/local/go/bin make
 
 ## API
 
-`GET /api/status` (port 7702) — `{"status":"ok","name":...,"version":...,"port":7702,"notes_held":<n>}`.
-No other HTTP surface in v1; all real work is ALSA-in → display-API-out.
+- `GET /api/status` (port 7702) — `{"status":"ok","name":...,"version":...,"port":7702,"notes_held":<n>}`.
+- `GET /api/notes/stream` — SSE feed of currently held MIDI notes, e.g.
+  `data: {"notes":[60,64,67]}\n\n` on every change (sent once immediately on
+  connect, then on every change).
+- `GET /` — the mobile web view (embedded, single file).

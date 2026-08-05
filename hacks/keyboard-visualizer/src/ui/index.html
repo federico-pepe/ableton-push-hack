@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Keyboard Visualizer</title>
+<script src="/vendor/tonal.min.js"></script>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0b0d;
+    --white-key: #e8e8ee;
+    --black-key: #17171a;
+    --pressed: #00c882;
+    --text: #e8e8ee;
+    --dim: #6a6a72;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem 0.2rem;
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0;
+  }
+  #dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--dim);
+    transition: background 200ms ease;
+  }
+  #dot.connected { background: var(--pressed); }
+
+  #chord {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: 0 1rem;
+  }
+  #chord-name {
+    font-size: min(14vw, 4.5rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-align: center;
+    color: var(--text);
+    transition: opacity 120ms ease;
+  }
+  #chord-name.empty { color: var(--dim); }
+
+  #keyboard {
+    position: relative;
+    height: 32vh;
+    min-height: 140px;
+    flex-shrink: 0;
+    margin: 0 0.5rem 0.5rem;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--black-key);
+  }
+  .key {
+    position: absolute;
+    top: 0;
+    box-sizing: border-box;
+    transition: background 60ms ease;
+  }
+  .key.white {
+    height: 100%;
+    background: var(--white-key);
+    border: 1px solid #00000022;
+    z-index: 1;
+  }
+  .key.black {
+    height: 62%;
+    background: var(--black-key);
+    border: 1px solid #ffffff11;
+    border-radius: 0 0 3px 3px;
+    z-index: 2;
+  }
+  .key.pressed { background: var(--pressed) !important; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Keyboard Visualizer</h1>
+    <div id="dot"></div>
+  </header>
+
+  <div id="chord">
+    <div id="chord-name" class="empty">—</div>
+  </div>
+
+  <div id="keyboard"></div>
+
+<script>
+  const NOTE_LO = 36, NOTE_HI = 84; // matches src/render.go's on-device window
+
+  function isBlackKey(n) {
+    return [1, 3, 6, 8, 10].includes(n % 12);
+  }
+
+  const keyEls = {};
+
+  function buildKeyboard() {
+    const el = document.getElementById('keyboard');
+    el.innerHTML = '';
+
+    let whiteCount = 0;
+    const whiteIndex = {};
+    for (let n = NOTE_LO; n <= NOTE_HI; n++) {
+      if (!isBlackKey(n)) { whiteIndex[n] = whiteCount; whiteCount++; }
+    }
+
+    for (let n = NOTE_LO; n <= NOTE_HI; n++) {
+      const key = document.createElement('div');
+      if (isBlackKey(n)) {
+        key.className = 'key black';
+        const prevWhite = whiteIndex[n - 1] !== undefined ? n - 1 : n + 1;
+        const w = 100 / whiteCount;
+        key.style.left = `calc(${(whiteIndex[prevWhite] + 1) * w}% - ${w * 0.3}%)`;
+        key.style.width = `${w * 0.6}%`;
+      } else {
+        const w = 100 / whiteCount;
+        key.className = 'key white';
+        key.style.left = `${whiteIndex[n] * w}%`;
+        key.style.width = `${w}%`;
+      }
+      el.appendChild(key);
+      keyEls[n] = key;
+    }
+  }
+
+  function updateKeyboard(notes) {
+    const held = new Set(notes);
+    for (const [n, el] of Object.entries(keyEls)) {
+      el.classList.toggle('pressed', held.has(Number(n)));
+    }
+  }
+
+  function updateChord(notes) {
+    const nameEl = document.getElementById('chord-name');
+    if (notes.length <= 2) {
+      nameEl.textContent = notes.length === 0 ? '—' : notes.length + ' note' + (notes.length > 1 ? 's' : '');
+      nameEl.classList.add('empty');
+      return;
+    }
+    const names = notes.map(n => Tonal.Midi.midiToNoteName(n));
+    const detected = Tonal.Chord.detect(names);
+    if (detected.length > 0) {
+      nameEl.textContent = detected[0];
+      nameEl.classList.remove('empty');
+    } else {
+      nameEl.textContent = names.length + ' notes';
+      nameEl.classList.add('empty');
+    }
+  }
+
+  function connectStream() {
+    const dot = document.getElementById('dot');
+    const es = new EventSource('/api/notes/stream');
+    es.onopen = () => dot.classList.add('connected');
+    es.onerror = () => dot.classList.remove('connected');
+    es.onmessage = (ev) => {
+      dot.classList.add('connected');
+      const payload = JSON.parse(ev.data);
+      const notes = payload.notes || [];
+      updateKeyboard(notes);
+      updateChord(notes);
+    };
+  }
+
+  buildKeyboard();
+  connectStream();
+</script>
+</body>
+</html>

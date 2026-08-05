@@ -4,9 +4,10 @@
 # macOS
 .DS_Store
 
-# Go
+# Go (module vendor dirs only — not static web-asset vendor/ dirs like
+# hacks/*/src/ui/vendor/)
 *.test
-vendor/
+hacks/*/src/vendor/
 
 # Logs
 *.log

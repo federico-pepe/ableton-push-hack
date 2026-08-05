@@ -108,6 +108,7 @@ Renders a piano-keyboard visualization on Push 3's own screen, driven by the not
 - Display takeover is toggled live by holding **Shift + Note** on the hardware — off by default so the native Push UI isn't disturbed until asked for.
 - Runs independent of MIDI intercept — never reads pad Note On/Off from Push's raw hardware MIDI, so the pad grid keeps playing into Live normally throughout.
 - Renders via push-manager's own display API (screen takeover), so it must be installed alongside Push Manager.
+- **Mobile web view** — open the URL below on your phone/tablet for the same live keyboard plus **chord detection** (via [Tonal.js](https://github.com/tonaljs/tonal), vendored offline), independent of on-device takeover state.
 
 **Port:** 7702 → `http://push.local:7702`
 

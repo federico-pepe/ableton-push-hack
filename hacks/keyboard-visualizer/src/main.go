@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,9 @@ import (
 	"os"
 	"time"
 )
+
+//go:embed ui/index.html ui/vendor/tonal.min.js
+var embeddedUI embed.FS
 
 type HackConfig struct {
 	ID      string `json:"id"`
@@ -55,6 +59,32 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
+func handleUI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := embeddedUI.ReadFile("ui/index.html")
+	if err != nil {
+		http.Error(w, "UI not found", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(data)
+}
+
+func handleVendorTonal(w http.ResponseWriter, r *http.Request) {
+	data, err := embeddedUI.ReadFile("ui/vendor/tonal.min.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Write(data)
+}
+
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	held := snapshotHeldNotes()
@@ -95,7 +125,10 @@ func main() {
 	}()
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", handleUI)
+	mux.HandleFunc("/vendor/tonal.min.js", handleVendorTonal)
 	mux.HandleFunc("/api/status", handleStatus)
+	mux.HandleFunc("/api/notes/stream", handleNotesStream)
 
 	handler := withCORS(withLogging(mux))
 

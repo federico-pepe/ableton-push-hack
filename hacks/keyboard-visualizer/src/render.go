@@ -189,11 +189,20 @@ func toggleTakeover(pushManagerURL string) {
 	on := takeoverOn
 	takeoverMu.Unlock()
 
+	held := snapshotHeldNotes()
+	takeoverMu.Lock()
+	lastHeld = held
+	lastHeldValid = true
+	takeoverMu.Unlock()
+
 	if on {
 		if err := setDisplayMode(pushManagerURL, 2); err != nil {
 			log.Printf("render: enable takeover: %v", err)
 		}
-		pushCurrentFrame(pushManagerURL, true)
+		img := renderKeyboard(held)
+		if err := pushFrame(pushManagerURL, img); err != nil {
+			log.Printf("render: push frame: %v", err)
+		}
 		log.Printf("keyboard-visualizer: takeover ON (Shift+Note)")
 	} else {
 		if err := setDisplayMode(pushManagerURL, 0); err != nil {
@@ -203,39 +212,41 @@ func toggleTakeover(pushManagerURL string) {
 	}
 }
 
-// pushCurrentFrame renders and pushes the current held-note state, skipping
-// the push if nothing changed since last time (unless force is set).
-func pushCurrentFrame(pushManagerURL string, force bool) {
-	held := snapshotHeldNotes()
-
+// checkHeldChanged snapshots held-note state and reports whether it changed
+// since the last check, updating the stored snapshot either way.
+func checkHeldChanged() (held [128]bool, changed bool) {
+	held = snapshotHeldNotes()
 	takeoverMu.Lock()
-	changed := force || !lastHeldValid || held != lastHeld
+	changed = !lastHeldValid || held != lastHeld
 	lastHeld = held
 	lastHeldValid = true
 	takeoverMu.Unlock()
-
-	if !changed {
-		return
-	}
-	img := renderKeyboard(held)
-	if err := pushFrame(pushManagerURL, img); err != nil {
-		log.Printf("render: push frame: %v", err)
-	}
+	return held, changed
 }
 
-// runRenderLoop polls held-note state at the same 10fps cadence the rest of
-// the Shadow UI renders at, but only pushes frames while takeover is on
-// (toggled via the Shift+Note chord) and only when state actually changed.
+// runRenderLoop polls held-note state at 10fps. On every change it
+// broadcasts to the web view's SSE clients (always, regardless of on-device
+// takeover state) and, only while takeover is on (toggled via the Shift+Note
+// chord), also pushes an updated frame to Push's own screen.
 func runRenderLoop(pushManagerURL string) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for range ticker.C {
+		held, changed := checkHeldChanged()
+		if !changed {
+			continue
+		}
+		broadcastNotes(held)
+
 		takeoverMu.Lock()
 		on := takeoverOn
 		takeoverMu.Unlock()
 		if !on {
 			continue
 		}
-		pushCurrentFrame(pushManagerURL, false)
+		img := renderKeyboard(held)
+		if err := pushFrame(pushManagerURL, img); err != nil {
+			log.Printf("render: push frame: %v", err)
+		}
 	}
 }
