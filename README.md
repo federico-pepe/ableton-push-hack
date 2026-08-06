@@ -100,6 +100,20 @@ An Ableton Live **MIDI Remote Script** (`PushHackBrowser`) that loads `.adv`/`.a
 
 ---
 
+### Keyboard Visualizer — piano keyboard on Push's screen
+
+Renders a piano-keyboard visualization on Push 3's own screen, driven by the notes **actually sounding in Live** (after octave-shift / Scale mode transforms) rather than the pad grid's raw pre-transform MIDI.
+
+- Creates its own writable ALSA MIDI port, **Keyboard Viz In** — route any Live track's MIDI Out to it from Push's own screen (stock Live routing, no script/M4L install required).
+- Display takeover is toggled live by holding **Shift + Note** on the hardware — off by default so the native Push UI isn't disturbed until asked for.
+- Runs independent of MIDI intercept — never reads pad Note On/Off from Push's raw hardware MIDI, so the pad grid keeps playing into Live normally throughout.
+- Renders via push-manager's own display API (screen takeover), so it must be installed alongside Push Manager.
+- **Mobile web view** — open the URL below on your phone/tablet for the same live keyboard plus **chord detection** (via [Tonal.js](https://github.com/tonaljs/tonal), vendored offline), independent of on-device takeover state.
+
+**Port:** 7702 → `http://push.local:7702`
+
+---
+
 ## Requirements
 
 - Ableton Push 3 Standalone with SSH access enabled (`http://push.local/ssh`)
@@ -178,7 +192,7 @@ Write your service in `hacks/my-hack/src/`, then:
 ./scripts/install.sh --hack my-hack
 ```
 
-The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7705 (7701 = push-manager, 7703 = automation, 7704 = browser-bridge).
+The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7705 (7701 = push-manager, 7702 = keyboard-visualizer, 7703 = automation, 7704 = browser-bridge).
 
 ---
 
@@ -209,6 +223,7 @@ The framework auto-generates a sysvinit init.d script and registers it with `upd
 - `hacks/automation/README.md` — API, lane types, BPM sync, transport sync
 - `hacks/browser-bridge/README.md` — how preset loading works (PushHackBrowser remote script)
 - `hacks/push-display/README.md` — LD_PRELOAD display/MIDI hook, shared-memory layout, build/deploy
+- `hacks/keyboard-visualizer/README.md` — Live-sourced keyboard visualizer, ALSA port routing setup
 
 ---
 ## License
