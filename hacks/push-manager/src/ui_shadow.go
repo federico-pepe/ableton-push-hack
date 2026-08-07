@@ -158,9 +158,11 @@ type Panel interface {
 	Render(img *image.NRGBA)
 	HandleCC(cc, val uint8)
 	Label() string
-	// BotStrip returns up to 4 action labels for bottom buttons (CC20-23)
+	// SoftBotStrip returns up to 4 soft-buttons for bottom buttons (CC20-23)
 	// and a navigation hint shown on the right side of the bottom strip.
-	BotStrip() ([4]string, string)
+	// State drives styling (see widgets.SoftButtonState) instead of the
+	// label text itself — see discovery/shadow-ui-component-framework.md.
+	SoftBotStrip() ([4]widgets.SoftButton, string)
 	// BotLEDColors returns the LED color (0–127) for each of the 4 bottom buttons.
 	// 0 = off; non-zero = lit at that palette index. Called on panel activation
 	// and whenever state changes (e.g. clipboard filled, USB cursor moved).
@@ -439,8 +441,8 @@ func (s *ShadowUI) renderFrame() {
 
 	// Strips
 	drawPanelTabs(img, shadowUI.panels, panelIdx)
-	labels, hint := panel.BotStrip()
-	drawBotStrip(img, labels, hint)
+	buttons, hint := panel.SoftBotStrip()
+	widgets.DrawBotStrip(img, widgets.Default, suiContentBot, suiW, suiColW, suiBotH, buttons, hint)
 	if eb, ok := panel.(extraBots); ok {
 		drawExtraBots(img, eb.extraBotStrip())
 	}
@@ -484,40 +486,6 @@ func drawPanelTabs(img *image.NRGBA, panels []Panel, activeIdx int) {
 			lx := x + (suiColW-textWidth(label))/2
 			drawText(img, lx, suiTopH-4, label, suiGray)
 		}
-	}
-}
-
-// drawBotStrip renders the bottom 18px strip.
-// labels: up to 4 action labels for bottom buttons 1-4 (120px columns each).
-// hint: navigation text shown to the right of the labels.
-func drawBotStrip(img *image.NRGBA, labels [4]string, hint string) {
-	y := suiContentBot
-	fillRect(img, 0, y, suiW, suiBotH, suiDarkGray)
-
-	for i, label := range labels {
-		if label == "" {
-			continue
-		}
-		x := i * suiColW
-		col := suiWhite // default: white for any non-empty label
-		bg := suiDarkGray
-		if label == "CONFIRM?" {
-			bg = suiAccent
-		} else if label == "DELETE" || label == "INTRCPT OFF" || label == "FWRD OFF" {
-			col = color.NRGBA{255, 100, 100, 255} // red for destructive/off states
-		} else if label == "INTRCPT ON" || label == "FWRD ON" {
-			col = color.NRGBA{80, 220, 80, 255} // green for active states
-		}
-		if bg != suiDarkGray {
-			fillRect(img, x, y, suiColW, suiBotH, bg)
-		}
-		lx := x + (suiColW-textWidth(label))/2
-		drawText(img, lx, y+suiBotH-4, label, col)
-	}
-
-	// Navigation hint right of the 4 action columns
-	if hint != "" {
-		drawText(img, 4*suiColW+8, y+suiBotH-4, hint, suiGray)
 	}
 }
 
@@ -756,8 +724,8 @@ func (fp *FilePanel) setStatus(msg string) {
 	fp.statusTime = time.Now()
 }
 
-// BotStrip returns context-sensitive bottom button labels and nav hint.
-func (fp *FilePanel) BotStrip() ([4]string, string) {
+// SoftBotStrip returns context-sensitive bottom buttons and nav hint.
+func (fp *FilePanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	fp.mu.Lock()
 	clipboard := fp.clipboard
 	deleteConfirm := fp.deleteConfirm
@@ -768,20 +736,20 @@ func (fp *FilePanel) BotStrip() ([4]string, string) {
 	}
 	fp.mu.Unlock()
 
-	var labels [4]string
-	labels[0] = "COPY"
+	var buttons [4]widgets.SoftButton
+	buttons[0] = widgets.SoftButton{Label: "COPY"}
 	if clipboard != "" {
-		labels[1] = "PASTE"
+		buttons[1] = widgets.SoftButton{Label: "PASTE"}
 	}
 	if deleteConfirm {
-		labels[2] = "CONFIRM?"
+		buttons[2] = widgets.SoftButton{Label: "CONFIRM?", State: widgets.SoftConfirm}
 	} else {
-		labels[2] = "DELETE"
+		buttons[2] = widgets.SoftButton{Label: "DELETE", State: widgets.SoftOff}
 	}
 	if isUSBCursor {
-		labels[3] = "EJECT"
+		buttons[3] = widgets.SoftButton{Label: "EJECT"}
 	}
-	return labels, ""
+	return buttons, ""
 }
 
 // BotLEDColors returns LED colors for the 4 bottom buttons reflecting current state.
@@ -987,8 +955,8 @@ type StatsPanel struct {
 func newStatsPanel() *StatsPanel { return &StatsPanel{} }
 func (sp *StatsPanel) Label() string { return "STATS" }
 func (sp *StatsPanel) HandleCC(cc, val uint8) {} // no navigation
-func (sp *StatsPanel) BotStrip() ([4]string, string) {
-	return [4]string{}, ""
+func (sp *StatsPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
+	return [4]widgets.SoftButton{}, ""
 }
 func (sp *StatsPanel) BotLEDColors() [4]uint8 { return [4]uint8{} } // no actions on Stats
 
@@ -1140,29 +1108,28 @@ func (mp *MidiPanel) toggleForward() {
 	go updateBotLEDs(mp)
 }
 
-func (mp *MidiPanel) BotStrip() ([4]string, string) {
+func (mp *MidiPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	if mp.monitor {
 		// CHPRES (button 5) is drawn via extraBots; MIDI tab re-press exits.
-		return [4]string{"SENS", "SYSEX", "CC", "NOTE"}, ""
+		return [4]widgets.SoftButton{{Label: "SENS"}, {Label: "SYSEX"}, {Label: "CC"}, {Label: "NOTE"}}, ""
 	}
 	interceptOn := midiInterceptEnabled()
 	midiForwardMu.RLock()
 	forwardOn := midiForwardEnabled
 	midiForwardMu.RUnlock()
 
-	interceptLabel := "INTERCEPT"
-	if interceptOn {
-		interceptLabel = "INTRCPT ON"
-	} else {
-		interceptLabel = "INTRCPT OFF"
+	stateButton := func(onLabel, offLabel string, on bool) widgets.SoftButton {
+		if on {
+			return widgets.SoftButton{Label: onLabel, State: widgets.SoftOn}
+		}
+		return widgets.SoftButton{Label: offLabel, State: widgets.SoftOff}
 	}
-	forwardLabel := "FORWARD"
-	if forwardOn {
-		forwardLabel = "FWRD ON"
-	} else {
-		forwardLabel = "FWRD OFF"
-	}
-	return [4]string{interceptLabel, forwardLabel, "MONITOR", ""}, ""
+	return [4]widgets.SoftButton{
+		stateButton("INTRCPT ON", "INTRCPT OFF", interceptOn),
+		stateButton("FWRD ON", "FWRD OFF", forwardOn),
+		{Label: "MONITOR"},
+		{},
+	}, ""
 }
 
 // BotLEDColors:
@@ -1571,14 +1538,14 @@ func (bp *BrowserPanel) filterLabel() string {
 	return filterCycle[bp.filterIdx].Label
 }
 
-func (bp *BrowserPanel) BotStrip() ([4]string, string) {
+func (bp *BrowserPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 	if bp.search {
-		return [4]string{"", "DONE", "", ""}, "L/R move - CTR pick"
+		return [4]widgets.SoftButton{{}, {Label: "DONE"}, {}, {}}, "L/R move - CTR pick"
 	}
 	hint := fmt.Sprintf("%s - %d", bp.filterLabel(), len(bp.entries))
-	return [4]string{"LOAD", "SEARCH", "FILTER", "REFRESH"}, hint
+	return [4]widgets.SoftButton{{Label: "LOAD"}, {Label: "SEARCH"}, {Label: "FILTER"}, {Label: "REFRESH"}}, hint
 }
 
 func (bp *BrowserPanel) BotLEDColors() [4]uint8 {
