@@ -240,8 +240,9 @@ deploy_hack() {
     local tmp_json
     tmp_json=$(mktemp)
     # Inject resolved remote paths into hack.json
-    if command -v python3 &>/dev/null; then
-        python3 - "${hack_json}" "${PUSH_HACK_REMOTE_DIR}" "${remote_hack_dir}" > "${tmp_json}" <<'PYEOF'
+    local py
+    if py=$(find_python); then
+        "${py}" - "${hack_json}" "${PUSH_HACK_REMOTE_DIR}" "${remote_hack_dir}" > "${tmp_json}" <<'PYEOF'
 import json, sys
 with open(sys.argv[1]) as f:
     d = json.load(f)
