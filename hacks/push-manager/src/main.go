@@ -13,7 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/httpx"
 )
 
 //go:embed ui/index.html ui/app.css ui/app.js
@@ -70,25 +71,10 @@ func loadConfig(path string) error {
 
 // ── Middleware ─────────────────────────────────────────────────────────────
 
-func withLogging(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
-	})
-}
+func withLogging(next http.Handler) http.Handler { return httpx.WithLogging(next) }
 
 func withCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	return httpx.WithCORS("GET, POST, DELETE, OPTIONS", next)
 }
 
 // ── Handlers ───────────────────────────────────────────────────────────────
@@ -447,25 +433,9 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-func jsonResponse(w http.ResponseWriter, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
-		log.Printf("json encode error: %v", err)
-	}
-}
+func jsonResponse(w http.ResponseWriter, v interface{}) { httpx.JSON(w, v) }
 
-func httpError(w http.ResponseWriter, err error) {
-	switch {
-	case os.IsNotExist(err):
-		http.Error(w, "not found", http.StatusNotFound)
-	case os.IsPermission(err):
-		http.Error(w, "forbidden", http.StatusForbidden)
-	default:
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
+func httpError(w http.ResponseWriter, err error) { httpx.Error(w, err) }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
@@ -571,13 +541,7 @@ func main() {
 	log.Printf("Push Manager %s starting on %s", config.Version, addr)
 	log.Printf("Allowed roots: %s", strings.Join(config.AllowedRoots, ", "))
 
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute, // long for large downloads
-		IdleTimeout:  120 * time.Second,
-	}
+	srv := httpx.NewServer(addr, handler) // WriteTimeout is long (5min) for large downloads
 
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("server error: %v", err)
