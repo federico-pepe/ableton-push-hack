@@ -194,6 +194,16 @@ Write your service in `hacks/my-hack/src/`, then:
 
 The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7705 (7701 = push-manager, 7702 = keyboard-visualizer, 7703 = automation, 7704 = browser-bridge).
 
+### Core shared library
+
+Before hand-rolling ALSA MIDI, HTTP boilerplate, or SSE for a new hack, check `core/` — a shared Go module with the pieces push-manager/automation/keyboard-visualizer all reuse: Push 3 constants (`core/push3`), image drawing (`core/gfx`), the display shm codec (`core/display`), HTTP middleware (`core/httpx`), config loading (`core/hackcfg`), SSE broadcasting (`core/sse`), an HTTP client for push-manager's display/tempo API (`core/pmclient`), and the ALSA sequencer layer (`core/alsaseq`) — open a port, send/receive MIDI, enumerate devices, all without touching an ioctl directly. See `core/README.md`.
+
+Pull it in from `hacks/my-hack/src/go.mod`:
+```
+require github.com/federico-pepe/ableton-push-hack/core v0.0.0
+replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
+```
+
 ---
 
 ## Uninstall
@@ -217,6 +227,9 @@ The framework auto-generates a sysvinit init.d script and registers it with `upd
 - `docs/push3-button-map.md` — Push 3 button/encoder MIDI map
 - `docs/push3-led-colors.md` — full 128-entry LED color palette
 - `docs/push3-assets.md` — Push UI image assets (`/api/assets/<path>`)
+
+**Shared library:**
+- `core/README.md` — package-by-package guide to the shared Go module (push3, gfx, display, httpx, hackcfg, sse, pmclient, alsaseq)
 
 **Per-hack** (folder README):
 - `hacks/push-manager/README.md` — full API reference, features, display control, MIDI monitor

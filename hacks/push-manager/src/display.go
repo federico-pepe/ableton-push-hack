@@ -94,61 +94,6 @@ func bgr565ToImage(px []byte) *image.NRGBA {
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────
 
-// testPattern returns a BGR565 frame with vertical colour bars at known pixel
-// positions within the 960-pixel visible width. Both frame halves populated.
-func testPattern() []byte {
-	pixels := make([]byte, dispBytes)
-	cols := []struct {
-		x    int
-		r, g, b uint8
-	}{
-		{0,   255, 255, 255}, // white  — left edge
-		{120, 255, 0,   0},   // red
-		{240, 0,   255, 0},   // green
-		{360, 0,   255, 255}, // cyan
-		{480, 0,   0,   255}, // blue
-		{600, 255, 0,   255}, // magenta
-		{720, 255, 255, 0},   // yellow
-		{840, 255, 128, 0},   // orange
-		{959, 255, 255, 255}, // white  — right edge
-	}
-	for _, c := range cols {
-		if c.x >= dispVisW {
-			continue
-		}
-		b5 := uint16(c.b >> 3)
-		g6 := uint16(c.g >> 2)
-		r5 := uint16(c.r >> 3)
-		v := (b5 << 11) | (g6 << 5) | r5
-		lo, hi := byte(v), byte(v>>8)
-		for y := 0; y < dispH; y++ {
-			off := (y*dispStride + c.x) * 2
-			pixels[off] = lo
-			pixels[off+1] = hi
-			pixels[dispFrameB+off] = lo
-			pixels[dispFrameB+off+1] = hi
-		}
-	}
-	return pixels
-}
-
-// POST /api/display/testpattern — paint calibration bars, auto-enable takeover
-func handleDisplayTestPattern(w http.ResponseWriter, r *http.Request) {
-	pixels := testPattern()
-	if err := shmWritePixels(pixels); err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	if err := shmSetMode(ModeTakeover); err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	jsonResponse(w, map[string]interface{}{
-		"ok":   true,
-		"desc": "white@0 red@240 green@480 cyan@640 blue@800 magenta@960 yellow@1120 white@1279",
-	})
-}
-
 // GET /api/display/status
 func handleDisplayStatus(w http.ResponseWriter, r *http.Request) {
 	ensureShm()
