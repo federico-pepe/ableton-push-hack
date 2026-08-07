@@ -7,18 +7,14 @@ package main
 // of shm/BGR565 concerns.
 
 import (
-	"bytes"
-	"fmt"
 	"image"
 	"image/color"
-	"image/png"
 	"log"
-	"mime/multipart"
-	"net/http"
 	"sync"
 	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/gfx"
+	"github.com/federico-pepe/ableton-push-hack/core/pmclient"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
@@ -112,62 +108,13 @@ func renderKeyboard(held [128]bool) *image.NRGBA {
 
 // pushFrame POSTs a rendered frame to push-manager's display image endpoint.
 func pushFrame(pushManagerURL string, img *image.NRGBA) error {
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return fmt.Errorf("encode png: %w", err)
-	}
-
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	part, err := mw.CreateFormFile("image", "frame.png")
-	if err != nil {
-		return fmt.Errorf("create form file: %w", err)
-	}
-	if _, err := part.Write(buf.Bytes()); err != nil {
-		return fmt.Errorf("write image: %w", err)
-	}
-	if err := mw.Close(); err != nil {
-		return fmt.Errorf("close multipart: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, pushManagerURL+"/api/display/image", &body)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("display/image: unexpected status %s", resp.Status)
-	}
-	return nil
+	return pmclient.New(pushManagerURL).PushImage(img)
 }
 
 // setDisplayMode sets push-manager's display mode (0=passthrough, 2=takeover).
 func setDisplayMode(pushManagerURL string, mode int) error {
-	req, err := http.NewRequest(http.MethodPost, pushManagerURL+"/api/display/mode",
-		bytes.NewBufferString(fmt.Sprintf(`{"mode":%d}`, mode)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("display/mode: unexpected status %s", resp.Status)
-	}
-	return nil
+	return pmclient.New(pushManagerURL).SetMode(mode)
 }
-
-var httpClient = &http.Client{Timeout: 3 * time.Second}
 
 // takeoverState tracks whether this hack currently owns the display, toggled
 // by the Shift+Note hardware chord (see chord.go) — not on by default, so

@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/federico-pepe/ableton-push-hack/core/pmclient"
 	"github.com/federico-pepe/ableton-push-hack/core/sse"
 )
 
@@ -225,7 +226,7 @@ func interpolateLane(lane *AutoLane, phase float64) float64 {
 func startBPMPoller(base string) {
 	pushManagerBase = base
 	go func() {
-		client := &http.Client{Timeout: 3 * time.Second}
+		client := pmclient.New(base)
 		ticker := time.NewTicker(5 * time.Second) // slower fallback poll
 		defer ticker.Stop()
 		for range ticker.C {
@@ -240,27 +241,19 @@ func startBPMPoller(base string) {
 			if total > 0 && time.Now().UnixNano()-lastNs < 5e9 {
 				continue // MIDI clock active, skip HTTP poll
 			}
-			pollTempo(client, base)
+			pollTempo(client)
 		}
 	}()
 }
 
-func pollTempo(client *http.Client, base string) {
-	resp, err := client.Get(base + "/api/live/tempo")
+func pollTempo(client *pmclient.Client) {
+	bpm, err := client.Tempo()
 	if err != nil {
 		return
 	}
-	var body struct {
-		OK  bool    `json:"ok"`
-		BPM float64 `json:"bpm"`
-	}
-	json.NewDecoder(resp.Body).Decode(&body)
-	resp.Body.Close()
-	if body.OK && body.BPM > 0 {
-		liveBPMMu.Lock()
-		liveBPM = body.BPM
-		liveBPMMu.Unlock()
-	}
+	liveBPMMu.Lock()
+	liveBPM = bpm
+	liveBPMMu.Unlock()
 }
 
 // ── Playback engine ───────────────────────────────────────────────────────
