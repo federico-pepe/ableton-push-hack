@@ -943,72 +943,35 @@ func (fp *FilePanel) Render(img *image.NRGBA) {
 	}
 	fp.mu.Unlock()
 
-	// Breadcrumb / status bar just below top strip
-	const crumbH = 13
-	crumbY := suiContentY
-	crumbBg := color.NRGBA{20, 20, 20, 255}
-	crumbCol := color.NRGBA{200, 200, 200, 255}
-	crumbText := truncate(breadcrumb, 100)
-	if statusText != "" {
-		crumbBg = color.NRGBA{0, 60, 30, 255} // dark green tint for status
-		crumbCol = color.NRGBA{100, 255, 150, 255}
-		crumbText = statusText
-	}
-	fillRect(img, 0, crumbY, suiW, crumbH, crumbBg)
-	drawText(img, 4, crumbY+crumbH-2, truncate(crumbText, 120), crumbCol)
-
-	// File list rows below breadcrumb
-	listY := crumbY + crumbH
-	const rowH = fileRowH
-	visRows := (suiContentBot - listY) / rowH
-
-	if len(entries) == 0 {
-		drawText(img, 8, listY+20, "(empty)", suiGray)
-		return
-	}
-
-	for i := 0; i < visRows; i++ {
-		idx := scroll + i
-		if idx >= len(entries) {
-			break
+	rows := make([]widgets.ListRow, len(entries))
+	for i, e := range entries {
+		bg, textCol := widgets.Default.Black, widgets.Default.White
+		if e.isDir {
+			textCol = widgets.Default.DirColor
 		}
-		e := entries[idx]
-		y := listY + i*rowH
-
-		var bg, textCol color.NRGBA
-		if idx == cursor {
-			bg = suiSelect
-			textCol = suiWhite
-		} else if e.isDir {
-			bg = suiBlack
-			textCol = suiDirColor
-		} else {
-			bg = suiBlack
-			textCol = suiWhite
-		}
-		fillRect(img, 0, y, suiW-6, rowH, bg)
-		textX := 8
+		var icon *image.NRGBA
 		if iconName := iconNameForEntry(e); iconName != "" {
-			if icon := loadSuiIcon(iconName); icon != nil {
-				iconY := y + (rowH-suiIconH)/2
-				drawIcon(img, icon, 2, iconY)
-				textX = 2 + icon.Bounds().Dx() + 3
-			}
+			icon = loadSuiIcon(iconName)
 		}
-		drawText(img, textX, y+rowH-3, truncate(e.name, 110), textCol)
-	}
-
-	// Scrollbar
-	total := len(entries)
-	if total > visRows {
-		barH := suiContentH * visRows / total
-		if barH < 4 {
-			barH = 4
+		rows[i] = widgets.ListRow{
+			Icon:    icon,
+			Text:    gtext.Truncate(e.name, 110),
+			Bg:      bg,
+			TextCol: textCol,
 		}
-		barY := listY + (suiContentBot-listY)*scroll/total
-		fillRect(img, suiW-4, listY, 4, suiContentBot-listY, suiDarkGray)
-		fillRect(img, suiW-4, barY, 4, barH, suiGray)
 	}
+	emptyText := ""
+	if len(entries) == 0 {
+		emptyText = "(empty)"
+	}
+	widgets.RenderList(img, widgets.Default, widgets.ListView{
+		Rows:       rows,
+		Cursor:     cursor,
+		Scroll:     scroll,
+		Breadcrumb: gtext.Truncate(breadcrumb, 100),
+		Status:     statusText,
+		EmptyText:  emptyText,
+	}, suiContentY, suiW, fileRowH, suiContentBot)
 }
 
 // ── StatsPanel ────────────────────────────────────────────────────────────────
