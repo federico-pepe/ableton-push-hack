@@ -9,6 +9,17 @@
 *.test
 hacks/*/src/vendor/
 
+# Build output binaries (deploy via install.sh, never git-tracked — a
+# tracked binary here can shadow the depth-1 one that install.sh's
+# `find -maxdepth 2` picks up first alphabetically)
+hacks/*/build/
+hacks/*/push-manager
+hacks/*/automation
+hacks/*/keyboard-visualizer
+hacks/*/src/push-manager
+hacks/*/src/automation
+hacks/*/src/keyboard-visualizer
+
 # Logs
 *.log
 
