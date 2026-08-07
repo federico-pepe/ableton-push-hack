@@ -14,7 +14,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -24,9 +23,7 @@ import (
 	"image/png"
 	"log"
 	"net/http"
-	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	coredisplay "github.com/federico-pepe/ableton-push-hack/core/display"
@@ -46,141 +43,38 @@ const (
 	dispFrameB = push3.FrameBytes // 327680 bytes per single frame
 	dispBytes  = push3.TotalBytes // 655360 bytes total (sent twice)
 
-	shmFile    = "/data/push-hack/hacks/push-display/framebuf"
-	shmMagic   = uint32(0x50555348)
-	shmTotalSz = 16 + dispBytes
-
 	// mode values — mirror push_hook.c
-	ModePassthrough = uint32(0)
-	ModeBar         = uint32(1)
-	ModeTakeover    = uint32(2)
-
-	// shm byte offsets
-	offMagic    = 0
-	offVersion  = 4
-	offMode     = 8
-	offFrameSeq = 12
-	offPixels   = 16
+	ModePassthrough = coredisplay.ModePassthrough
+	ModeBar         = coredisplay.ModeBar
+	ModeTakeover    = coredisplay.ModeTakeover
 )
 
 var (
-	shmBuf         []byte    // mmap'd bytes; nil if unavailable
-	shmMu          sync.Mutex
-	shmLastAttempt time.Time
+	shm = &coredisplay.Shm{}
 
 	startupSplashOnce sync.Once
 )
 
-// tryOpenShm attempts to mmap the framebuf file.
-// Called from initDisplayShm (startup) and lazily on status requests.
-// Caller must hold shmMu.
-func tryOpenShm() {
-	f, err := os.OpenFile(shmFile, os.O_RDWR, 0664)
-	if err != nil {
-		return // hook not running yet — silent
-	}
-	defer f.Close()
-
-	data, err := syscall.Mmap(int(f.Fd()), 0, shmTotalSz,
-		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
-	if err != nil {
-		log.Printf("display shm: mmap: %v", err)
-		return
-	}
-
-	magic := binary.LittleEndian.Uint32(data[offMagic:])
-	if magic != shmMagic {
-		log.Printf("display shm: bad magic 0x%08X (hook may not be loaded yet)", magic)
-		syscall.Munmap(data) //nolint
-		return
-	}
-
-	shmBuf = data
-	seq := binary.LittleEndian.Uint32(data[offFrameSeq:])
-	if seq > 0 {
-		// Push-manager was running before this connect; reset any stale takeover.
-		if binary.LittleEndian.Uint32(data[offMode:]) == ModeTakeover {
-			binary.LittleEndian.PutUint32(data[offMode:], ModePassthrough)
-			log.Printf("display shm reconnected: cleared stale mode=2 (seq=%d)", seq)
-		} else {
-			log.Printf("display shm reconnected: seq=%d", seq)
-		}
-	} else {
-		// frame_seq==0: fresh hook load — hook wrote startup splash, mode=2.
-		log.Printf("display shm connected: fresh hook (seq=0), startup splash pending")
-	}
-	// Startup splash fires once per push-manager process (sync.Once).
-	go scheduleStartupSplash()
-}
-
 func initDisplayShm() {
-	shmMu.Lock()
-	defer shmMu.Unlock()
-	shmLastAttempt = time.Now()
-	tryOpenShm()
+	shm.OnConnect = func(seq uint32) {
+		// Startup splash fires once per push-manager process (sync.Once).
+		go scheduleStartupSplash()
+	}
+	shm.Ensure()
 }
 
 // ensureShm reconnects if disconnected, rate-limited to once per 5 s.
-func ensureShm() {
-	shmMu.Lock()
-	defer shmMu.Unlock()
-	if shmBuf != nil {
-		return
-	}
-	if time.Since(shmLastAttempt) < 5*time.Second {
-		return
-	}
-	shmLastAttempt = time.Now()
-	tryOpenShm()
-}
+func ensureShm() { shm.Ensure() }
 
-func shmGetMode() uint32 {
-	shmMu.Lock()
-	defer shmMu.Unlock()
-	if shmBuf == nil {
-		return ModePassthrough
-	}
-	return binary.LittleEndian.Uint32(shmBuf[offMode:])
-}
+func shmGetMode() uint32 { return shm.Mode() }
 
 // shmReadFrame copies the current framebuf (first of the two duplicated halves)
 // and the current mode out of shm. Returns ok=false if the hook isn't connected.
-func shmReadFrame() (px []byte, mode uint32, ok bool) {
-	shmMu.Lock()
-	defer shmMu.Unlock()
-	if shmBuf == nil {
-		return nil, ModePassthrough, false
-	}
-	px = make([]byte, dispFrameB)
-	copy(px, shmBuf[offPixels:offPixels+dispFrameB])
-	mode = binary.LittleEndian.Uint32(shmBuf[offMode:])
-	return px, mode, true
-}
+func shmReadFrame() (px []byte, mode uint32, ok bool) { return shm.ReadFrame() }
 
-func shmSetMode(mode uint32) error {
-	shmMu.Lock()
-	defer shmMu.Unlock()
-	if shmBuf == nil {
-		return fmt.Errorf("display hook not connected (is push-display deployed and Push3 running?)")
-	}
-	binary.LittleEndian.PutUint32(shmBuf[offMode:], mode)
-	return nil
-}
+func shmSetMode(mode uint32) error { return shm.SetMode(mode) }
 
-func shmWritePixels(pixels []byte) error {
-	if len(pixels) != dispBytes {
-		return fmt.Errorf("expected %d bytes, got %d", dispBytes, len(pixels))
-	}
-	shmMu.Lock()
-	defer shmMu.Unlock()
-	if shmBuf == nil {
-		return fmt.Errorf("display hook not connected")
-	}
-	copy(shmBuf[offPixels:], pixels)
-	seq := binary.LittleEndian.Uint32(shmBuf[offFrameSeq:]) + 1
-	binary.LittleEndian.PutUint32(shmBuf[offFrameSeq:], seq)
-	return nil
-}
+func shmWritePixels(pixels []byte) error { return shm.WritePixels(pixels) }
 
 // imageToBGR565 scales img to 960×160 (Push 2/3 visible area), writes into
 // a 1024-pixel-stride framebuffer (64 padding pixels per row), and duplicates
@@ -258,15 +152,9 @@ func handleDisplayTestPattern(w http.ResponseWriter, r *http.Request) {
 // GET /api/display/status
 func handleDisplayStatus(w http.ResponseWriter, r *http.Request) {
 	ensureShm()
-	shmMu.Lock()
-	connected := shmBuf != nil
-	mode := uint32(ModePassthrough)
-	frameSeq := uint32(0)
-	if connected {
-		mode = binary.LittleEndian.Uint32(shmBuf[offMode:])
-		frameSeq = binary.LittleEndian.Uint32(shmBuf[offFrameSeq:])
-	}
-	shmMu.Unlock()
+	connected := shm.Connected()
+	mode := shm.Mode()
+	frameSeq := shm.FrameSeq()
 
 	jsonResponse(w, map[string]interface{}{
 		"connected": connected,
@@ -394,12 +282,9 @@ func scheduleStartupSplash() {
 		}
 		log.Printf("startup splash: showing for %v", splashDuration)
 		time.Sleep(splashDuration)
-		shmMu.Lock()
-		if shmBuf != nil && binary.LittleEndian.Uint32(shmBuf[offMode:]) == ModeTakeover {
-			binary.LittleEndian.PutUint32(shmBuf[offMode:], ModePassthrough)
+		if shm.CompareAndSetMode(ModeTakeover, ModePassthrough) {
 			log.Printf("startup splash: restored mode=passthrough")
 		}
-		shmMu.Unlock()
 	})
 }
 
