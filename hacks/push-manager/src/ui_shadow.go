@@ -38,6 +38,7 @@ import (
 
 	"github.com/federico-pepe/ableton-push-hack/core/gfx"
 	gtext "github.com/federico-pepe/ableton-push-hack/core/gfx/text"
+	"github.com/federico-pepe/ableton-push-hack/core/gfx/widgets"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
@@ -1076,19 +1077,11 @@ func (sp *StatsPanel) Render(img *image.NRGBA) {
 		lines = append(lines, line{"Hotspot", stats.HotspotPassword})
 	}
 
-	const rowH = 20
-	const labelW = 80
-	y := suiContentY + 6
-	for _, l := range lines {
-		if y+rowH > suiContentBot {
-			break
-		}
-		drawText(img, 8, y+rowH-4, l.label, suiGray)
-		drawText(img, 8+labelW, y+rowH-4, l.value, suiWhite)
-		// Thin separator line
-		fillRect(img, 0, y+rowH-1, suiW, 1, suiDarkGray)
-		y += rowH
+	rows := make([]widgets.KVRow, len(lines))
+	for i, l := range lines {
+		rows[i] = widgets.KVRow{Label: l.label, Value: l.value, ValueCol: widgets.Default.White}
 	}
+	widgets.DrawKVRows(img, widgets.Default, suiContentY+6, suiW, 20, 80, suiContentBot, rows)
 }
 
 // ── MidiPanel ─────────────────────────────────────────────────────────────────
