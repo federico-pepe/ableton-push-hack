@@ -15,7 +15,7 @@ I don't provide support for this but if you need help, join the [Discord Server]
     * Stable release: **2.4.3** (aka Live 12.4.3)
 3. When a new version of the Push software is available, **you need to uninstall the hack and reinstall it before upgrading**.
 
-These instructions are written for users of the macOS operating system. If anyone would like to update this document for Windows, your help is welcome.
+These instructions are written for users of the macOS operating system. Windows users, see the [Windows section](#windows-users) below before starting.
 
 ## Installing
 Your computer and Push 3 Standalone must be connected to the same Wi‑Fi network. Make sure the connection is **stable** and that it doesn't drop during installation. If you're concerned about network reliability, you can enable the hotspot directly on Push from the settings and connect to it instead.
@@ -31,6 +31,38 @@ At the end of the installation, Push will automatically reboot. Make sure to sav
 * Now type: `./scripts/install.sh` and press `ENTER` and then follow the on-screen instructions.
 
 If you never connected to your Push via SSH the installation script will automatically create an SSH key for you. Follow the instruction provided by the script. Make sure that you add your SSH key to http://push.local/ssh and then press `Shift`+`Select`+`Preferences` (gear icon) on your Push.
+
+## Windows users
+
+The install/uninstall scripts are bash scripts — they don't run in PowerShell or `cmd.exe`. Use **[Git for Windows](https://git-scm.com/download/win)**, which includes **Git Bash**.
+
+1. Install Git for Windows (default options are fine).
+2. Download the Push Hack and unzip it.
+3. Open **Git Bash** (not PowerShell, not Command Prompt).
+4. Go to the downloaded folder, e.g.: `cd "/c/Users/<you>/Downloads/push-hack"`
+5. Run `./scripts/install.sh` and follow the on-screen instructions.
+
+**`jq` requirement:** the scripts need `jq` (or a working `python3`/`python`) on PATH to read `hack.json` files. Most Windows machines have neither by default. If you see an error like:
+
+```
+no jq or working python found to read .../hack.json
+```
+
+install `jq` with one of:
+
+```
+winget install jqlang.jq
+```
+```
+choco install jq
+```
+```
+scoop install jq
+```
+
+Close and reopen Git Bash afterwards so it picks up the updated PATH, then verify with `jq --version` before re-running the install script.
+
+**Note on `python`/`python3` on Windows:** Windows ships fake `python`/`python3` stubs that just open the Microsoft Store instead of running Python, even if you don't have Python installed. If `command -v python3` seems to "find" something but it fails when run, that's why — installing `jq` sidesteps the issue entirely.
 
 ## Uninstalling
 

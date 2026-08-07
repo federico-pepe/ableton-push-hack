@@ -383,13 +383,32 @@ EOF
 
 # ── Hack metadata ─────────────────────────────────────────────────────────────
 
+# Find a real Python interpreter, skipping Windows' fake python/python3
+# stubs (App Execution Aliases) that just print a Microsoft Store nag
+# instead of running. `command -v` alone can't tell them apart from the
+# real thing since the stub file does exist on PATH.
+find_python() {
+    local candidate
+    for candidate in python3 python; do
+        if command -v "${candidate}" &>/dev/null && "${candidate}" -c "" &>/dev/null; then
+            echo "${candidate}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Read field from hack.json (requires jq or python)
 hack_json_field() {
     local json_file="$1"
     local field="$2"
+    local py
     if command -v jq &>/dev/null; then
         jq -r ".${field}" "${json_file}"
+    elif py=$(find_python); then
+        "${py}" -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get(sys.argv[2],''))" "${json_file}" "${field}"
     else
-        python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get(sys.argv[2],''))" "${json_file}" "${field}"
+        echo "ERROR: no jq or working python found to read ${json_file}" >&2
+        return 1
     fi
 }
