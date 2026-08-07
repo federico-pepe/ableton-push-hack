@@ -1646,37 +1646,52 @@ const (
 )
 
 var (
-	midiFiltData []byte // mmap'd slice, len=16
-	midiFiltOnce sync.Once
+	midiFiltMu          sync.Mutex
+	midiFiltData        []byte // mmap'd slice, len=16; nil if unavailable
+	midiFiltLastAttempt time.Time
 )
 
+// ensureMidiFilt returns the mapped midiflt shm, (re)connecting if needed.
+// Rate-limited to once per 5s on failure — NOT a sync.Once, deliberately:
+// push-manager can start before push-display's directory exists (install.sh
+// has no dependency ordering between hacks, see CLAUDE.md's Risks), and a
+// one-shot cache would make that failure permanent for the process's
+// lifetime. Same retry pattern as core/display.Shm.Ensure.
 func ensureMidiFilt() []byte {
-	midiFiltOnce.Do(func() {
-		f, err := os.OpenFile(midiFiltFile, os.O_RDWR|os.O_CREATE, 0666)
-		if err != nil {
-			log.Printf("midi_filt: open %s: %v", midiFiltFile, err)
-			return
-		}
-		defer f.Close()
-		if err := f.Truncate(midiFiltSize); err != nil {
-			log.Printf("midi_filt: truncate: %v", err)
-			return
-		}
-		data, err := syscall.Mmap(int(f.Fd()), 0, midiFiltSize,
-			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
-		if err != nil {
-			log.Printf("midi_filt: mmap: %v", err)
-			return
-		}
-		// Write magic if not set
-		existing := binary.LittleEndian.Uint32(data[0:4])
-		if existing != midiFiltMagic {
-			binary.LittleEndian.PutUint32(data[0:4], midiFiltMagic)
-			data[4] = 0 // enabled=0
-		}
-		midiFiltData = data
-		log.Printf("midi_filt: mapped %s (enabled=%d)", midiFiltFile, data[4])
-	})
+	midiFiltMu.Lock()
+	defer midiFiltMu.Unlock()
+	if midiFiltData != nil {
+		return midiFiltData
+	}
+	if time.Since(midiFiltLastAttempt) < 5*time.Second {
+		return nil
+	}
+	midiFiltLastAttempt = time.Now()
+
+	f, err := os.OpenFile(midiFiltFile, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Printf("midi_filt: open %s: %v", midiFiltFile, err)
+		return nil
+	}
+	defer f.Close()
+	if err := f.Truncate(midiFiltSize); err != nil {
+		log.Printf("midi_filt: truncate: %v", err)
+		return nil
+	}
+	data, err := syscall.Mmap(int(f.Fd()), 0, midiFiltSize,
+		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	if err != nil {
+		log.Printf("midi_filt: mmap: %v", err)
+		return nil
+	}
+	// Write magic if not set
+	existing := binary.LittleEndian.Uint32(data[0:4])
+	if existing != midiFiltMagic {
+		binary.LittleEndian.PutUint32(data[0:4], midiFiltMagic)
+		data[4] = 0 // enabled=0
+	}
+	midiFiltData = data
+	log.Printf("midi_filt: mapped %s (enabled=%d)", midiFiltFile, data[4])
 	return midiFiltData
 }
 
