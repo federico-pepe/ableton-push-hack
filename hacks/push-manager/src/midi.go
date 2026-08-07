@@ -36,6 +36,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
@@ -147,10 +148,8 @@ var (
 // direct-addressed events.
 
 var (
-	midiOutMu     sync.Mutex
-	midiOutFd     = -1
-	midiOutClient = byte(0)
-	midiOutPort   = byte(0)
+	midiOutMu sync.Mutex
+	midiOut   *alsaseq.Client // nil if not initialized
 )
 
 // ── MIDI forwarding ──────────────────────────────────────────────────────────
@@ -190,41 +189,22 @@ func waitForBootSettle() {
 }
 
 func initMidiOut() {
-	fd, err := syscall.Open(seqDev, syscall.O_RDWR|syscall.O_CLOEXEC, 0)
+	c, err := alsaseq.Open()
 	if err != nil {
-		log.Printf("midi_out: open %s: %v (LED control disabled)", seqDev, err)
+		log.Printf("midi_out: %v (LED control disabled)", err)
 		return
 	}
-
-	var clientID int32
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlClientID, uintptr(unsafe.Pointer(&clientID))); errno != 0 {
-		syscall.Close(fd)
-		log.Printf("midi_out: CLIENT_ID ioctl: %v (LED control disabled)", errno)
+	if _, err := c.CreatePort("Push Manager", alsaseq.CapRead|alsaseq.CapSubsRead, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
+		c.Close()
+		log.Printf("midi_out: %v (LED control disabled)", err)
 		return
 	}
-
-	portInfo := make([]byte, portInfoSize)
-	portInfo[portOffAddrClient] = byte(clientID)
-	copy(portInfo[portOffName:], "Push Manager\x00")
-	binary.LittleEndian.PutUint32(portInfo[portOffCapability:], capRead|capSubsRead)
-	binary.LittleEndian.PutUint32(portInfo[portOffType:], portTypeMidi|portTypeApp)
-
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlCreatePort, uintptr(unsafe.Pointer(&portInfo[0]))); errno != 0 {
-		syscall.Close(fd)
-		log.Printf("midi_out: CREATE_PORT ioctl: %v (LED control disabled)", errno)
-		return
-	}
-	ourPort := portInfo[portOffAddrPort]
 
 	midiOutMu.Lock()
-	midiOutFd = fd
-	midiOutClient = byte(clientID)
-	midiOutPort = ourPort
+	midiOut = c
 	midiOutMu.Unlock()
 
-	log.Printf("midi_out: ready (client %d port %d)", clientID, ourPort)
+	log.Printf("midi_out: ready (client %d port %d)", c.Addr().Client, c.Addr().Port)
 }
 
 // sendSeqCC sends a MIDI CC event directly to the Push 3 ALSA seq port.
@@ -241,84 +221,39 @@ func push3Dest() (client, port byte) {
 // channel is 0-indexed (0 = MIDI ch 1). cc and value are 0–127.
 func sendSeqCC(channel, cc byte, value int32) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-
 	dstClient, dstPort := push3Dest()
-
-	// snd_seq_ev_ctrl: channel(1B) + unused(3B) + param(uint32 LE) + value(int32 LE)
-	data := make([]byte, 12)
-	data[0] = channel
-	binary.LittleEndian.PutUint32(data[4:], uint32(cc))
-	binary.LittleEndian.PutUint32(data[8:], uint32(value))
-
-	return writeSeqEvent(fd, seqEvController, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendCC(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, cc, value)
 }
 
 // sendSeqNote sends a MIDI Note On event directly to the Push 3 ALSA seq port.
 // channel 0-indexed, note and velocity 0–127. velocity=0 acts as Note Off.
 func sendSeqNote(channel, note, velocity byte) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-
 	dstClient, dstPort := push3Dest()
-
-	// snd_seq_ev_note: channel(1B) + note(1B) + vel(1B) + off_vel(1B) + duration(uint32 LE)
-	data := make([]byte, 12)
-	data[0] = channel
-	data[1] = note
-	data[2] = velocity
-
-	return writeSeqEvent(fd, seqEvNoteOn, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendNote(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, note, velocity)
 }
 
 // sendSeqSysEx sends a variable-length SysEx event to the Push 3 ALSA seq port.
 // sysex must include the leading F0 and trailing F7.
 func sendSeqSysEx(sysex []byte) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-
 	dstClient, dstPort := push3Dest()
-
-	// Variable-length snd_seq_event: 28-byte header + inline SysEx bytes.
-	// flags |= seqFlagVarLen; data[0..3] = ext.len (uint32 LE); data follows.
-	ev := make([]byte, seqEventSize+len(sysex))
-	ev[seqEvOffType]  = seqEvSysEx
-	ev[seqEvOffFlags] = seqFlagVarLen
-	ev[2] = 0              // tag
-	ev[3] = seqQueueDirect // deliver immediately
-	// bytes 4–11: timestamp = 0 (ignored for QUEUE_DIRECT)
-	ev[12] = srcClient
-	ev[13] = srcPort
-	ev[14] = dstClient
-	ev[15] = dstPort
-	binary.LittleEndian.PutUint32(ev[seqEvOffData:], uint32(len(sysex))) // ext.len
-	copy(ev[seqEventSize:], sysex)
-
-	midiOutMu.Lock()
-	defer midiOutMu.Unlock()
-	if midiOutFd != fd {
-		return fmt.Errorf("midi_out fd invalidated")
-	}
-	_, err := syscall.Write(fd, ev)
-	return err
+	return c.SendSysEx(alsaseq.Addr{Client: dstClient, Port: dstPort}, sysex)
 }
 
 // ── LED Color Palette query ────────────────────────────────────────────────
@@ -405,29 +340,6 @@ drained:
 	return entries, nil
 }
 
-// writeSeqEvent constructs and writes a single 28-byte snd_seq_event to fd.
-func writeSeqEvent(fd int, evType, srcClient, srcPort, dstClient, dstPort byte, data []byte) error {
-	ev := make([]byte, seqEventSize)
-	ev[0] = evType
-	ev[1] = 0              // flags: tick timestamp, absolute
-	ev[2] = 0              // tag
-	ev[3] = seqQueueDirect // deliver immediately, no queue
-	// bytes 4–11: timestamp = 0 (ignored for QUEUE_DIRECT)
-	ev[12] = srcClient
-	ev[13] = srcPort
-	ev[14] = dstClient
-	ev[15] = dstPort
-	copy(ev[16:], data)
-
-	midiOutMu.Lock()
-	defer midiOutMu.Unlock()
-	if midiOutFd != fd {
-		return fmt.Errorf("midi_out fd invalidated")
-	}
-	_, err := syscall.Write(fd, ev)
-	return err
-}
-
 // forwardSeqEvent relays a fixed-length ALSA seq event to the configured forward port.
 // data is the 12-byte data union from the original event.
 func forwardSeqEvent(evType uint8, data []byte) {
@@ -440,14 +352,12 @@ func forwardSeqEvent(evType uint8, data []byte) {
 		return
 	}
 	midiOutMu.Lock()
-	fd := midiOutFd
-	src := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return
 	}
-	writeSeqEvent(fd, evType, src, srcPort, dstClient, dstPort, data) //nolint:errcheck
+	c.WriteEvent(evType, alsaseq.Addr{Client: dstClient, Port: dstPort}, data) //nolint:errcheck
 }
 
 // POST /api/midi/led — set a button/pad LED colour on Push 3.

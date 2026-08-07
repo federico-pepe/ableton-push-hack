@@ -25,7 +25,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
+
+	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 )
 
 // ── ALSA sequencer constants (identical layout to push-manager/automation) ──
@@ -148,42 +149,28 @@ func isPush3Client(client byte) bool {
 // incoming events. Runs forever (or until the fd errors); callers should run
 // it in a goroutine and are free to restart it if it returns.
 func initMidiIn(pushManagerURL string) error {
-	fd, err := syscall.Open(seqDev, syscall.O_RDWR|syscall.O_CLOEXEC, 0)
+	c, err := alsaseq.Open()
 	if err != nil {
-		return fmt.Errorf("open %s: %w", seqDev, err)
+		return err
 	}
-	defer syscall.Close(fd)
+	defer c.Close()
 
-	var clientID int32
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlClientID, uintptr(unsafe.Pointer(&clientID))); errno != 0 {
-		return fmt.Errorf("CLIENT_ID ioctl: %w", errno)
+	if _, err := c.CreatePort("Keyboard Viz In", alsaseq.CapWrite|alsaseq.CapSubsWrite, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
+		return err
 	}
-
-	portInfo := make([]byte, portInfoSize)
-	portInfo[portOffAddrClient] = byte(clientID)
-	copy(portInfo[portOffName:], "Keyboard Viz In\x00")
-	binary.LittleEndian.PutUint32(portInfo[portOffCapability:], capWrite|capSubsWrite)
-	binary.LittleEndian.PutUint32(portInfo[portOffType:], portTypeMidi|portTypeApp)
-
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlCreatePort, uintptr(unsafe.Pointer(&portInfo[0]))); errno != 0 {
-		return fmt.Errorf("CREATE_PORT ioctl: %w", errno)
-	}
-	ourPort := portInfo[portOffAddrPort]
 
 	log.Printf("midi: \"Keyboard Viz In\" ready at client %d port %d — route a Live track's MIDI Out here",
-		clientID, ourPort)
+		c.Addr().Client, c.Addr().Port)
 
 	// Self-subscribe to Push 3's hardware port so this same port also
 	// receives CC49/50 (Shift+Note) for the takeover-toggle chord. Retried
 	// in the background in case Push 3 isn't enumerated yet or its client
 	// number shifts later.
-	go maintainPush3Subscription(fd, byte(clientID), ourPort)
+	go maintainPush3Subscription(c)
 
 	buf := make([]byte, 8192)
 	for {
-		n, err := syscall.Read(fd, buf)
+		n, err := syscall.Read(c.FD(), buf)
 		if err != nil {
 			return fmt.Errorf("read seq: %w", err)
 		}
@@ -191,23 +178,17 @@ func initMidiIn(pushManagerURL string) error {
 	}
 }
 
-// maintainPush3Subscription (re)subscribes fd's port to Push 3's hardware
+// maintainPush3Subscription (re)subscribes c's port to Push 3's hardware
 // port every 30s, logging only on change — handles Push 3 not being
 // enumerated yet at hack startup, and its client number shifting later.
-func maintainPush3Subscription(fd int, clientID, ourPort byte) {
+func maintainPush3Subscription(c *alsaseq.Client) {
 	var lastClient, lastPort byte
 	var lastFound bool
 	for {
 		client, port, ok := detectPush3Port()
 		if ok && (!lastFound || client != lastClient || port != lastPort) {
-			sub := make([]byte, subSize)
-			sub[subOffSenderClient] = client
-			sub[subOffSenderPort] = port
-			sub[subOffDestClient] = clientID
-			sub[subOffDestPort] = ourPort
-			if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-				ioctlSubscribePort, uintptr(unsafe.Pointer(&sub[0]))); errno != 0 {
-				log.Printf("chord: subscribe to Push 3 (%d:%d): %v", client, port, errno)
+			if err := c.Subscribe(alsaseq.Addr{Client: client, Port: port}); err != nil {
+				log.Printf("chord: subscribe to Push 3 (%d:%d): %v", client, port, err)
 			} else {
 				log.Printf("chord: watching Push 3 (%d:%d) for Shift+Note (CC%d+CC%d) → toggle takeover",
 					client, port, ccShift, ccNote)

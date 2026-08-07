@@ -7,16 +7,16 @@ package main
 // All logic lives here + a single call site in processFixedEvent (midi.go); the
 // LD_PRELOAD hook cannot transform MIDI, only neutralize it.
 //
-// Sending reuses the existing output fd (midiOutFd) via writeSeqEvent with an
-// explicit destination — no new ALSA port is created.
+// Sending reuses the existing output port (midiOut) via alsaseq.Client with
+// an explicit destination — no new ALSA port is created.
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
@@ -107,36 +107,24 @@ func applyRemap(srcType string, ch, num, val uint8) bool {
 // sendSeqCCTo sends a MIDI CC event to an explicit destination port.
 func sendSeqCCTo(dstClient, dstPort, channel, cc byte, value int32) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-	data := make([]byte, 12)
-	data[0] = channel
-	binary.LittleEndian.PutUint32(data[4:], uint32(cc))
-	binary.LittleEndian.PutUint32(data[8:], uint32(value))
-	return writeSeqEvent(fd, seqEvController, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendCC(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, cc, value)
 }
 
 // sendSeqNoteTo sends a MIDI Note On event to an explicit destination port.
 // velocity=0 acts as Note Off.
 func sendSeqNoteTo(dstClient, dstPort, channel, note, velocity byte) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-	data := make([]byte, 12)
-	data[0] = channel
-	data[1] = note
-	data[2] = velocity
-	return writeSeqEvent(fd, seqEvNoteOn, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendNote(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, note, velocity)
 }
 
 // ── Persistence hooks (called from loadMidiPersist / saveMidiPersist) ────────
