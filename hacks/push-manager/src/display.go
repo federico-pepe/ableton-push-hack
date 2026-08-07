@@ -218,7 +218,7 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/display/image  multipart field "image" = PNG or JPEG
-// Scales image to 1280×256, converts to BGR565, writes to shm.
+// Scales image to 960×160, converts to BGR565, writes to shm.
 // Also auto-sets mode to 2 (takeover) if currently in passthrough/bar.
 func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
