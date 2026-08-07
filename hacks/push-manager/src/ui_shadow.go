@@ -1327,38 +1327,23 @@ func (mp *MidiPanel) Render(img *image.NRGBA) {
 		mp.renderMonitor(img)
 		return
 	}
-	const rowH = 28
-	const labelW = 120
 	interceptOn := midiInterceptEnabled()
 	midiForwardMu.RLock()
 	forwardOn := midiForwardEnabled
 	midiForwardMu.RUnlock()
 
-	type row struct {
-		label   string
-		enabled bool
-	}
-	rows := []row{
-		{"Intercept", interceptOn},
-		{"Forward", forwardOn},
-	}
-
-	y := suiContentY + 10
-	for _, r := range rows {
-		if y+rowH > suiContentBot {
-			break
+	stateRow := func(label string, on bool) widgets.KVRow {
+		val, col := "OFF", widgets.Default.OffColor
+		if on {
+			val, col = "ON", widgets.Default.OnColor
 		}
-		stateStr := "OFF"
-		stateCol := color.NRGBA{255, 80, 80, 255} // red
-		if r.enabled {
-			stateStr = "ON"
-			stateCol = color.NRGBA{80, 220, 80, 255} // green
-		}
-		drawText(img, 8, y+rowH-6, r.label, suiGray)
-		drawText(img, 8+labelW, y+rowH-6, stateStr, stateCol)
-		fillRect(img, 0, y+rowH-1, suiW, 1, suiDarkGray)
-		y += rowH
+		return widgets.KVRow{Label: label, Value: val, ValueCol: col}
 	}
+	rows := []widgets.KVRow{
+		stateRow("Intercept", interceptOn),
+		stateRow("Forward", forwardOn),
+	}
+	widgets.DrawKVRows(img, widgets.Default, suiContentY+10, suiW, 28, 120, suiContentBot, rows)
 }
 
 // ── BrowserPanel ────────────────────────────────────────────────────────────
