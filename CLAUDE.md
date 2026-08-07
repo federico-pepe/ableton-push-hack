@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Hacks: Push Manager (web file browser + display control), Push Display (LD_PRELOAD display hook), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), Automation (LFO/CC curve sequencer, port 7703), Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes, port 7702).
 
+`core/` is a shared Go module (see "Core shared library" below) that push-manager, automation and keyboard-visualizer all depend on via `require`+`replace` — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across the three hacks.
+
 **Core constraint:** Push is a live performance tool. Hacks must not crash it, hog CPU, or consume significant memory.
 
 **⛔ Hard safety rules — never violate, no exceptions:**
@@ -49,6 +51,13 @@ SSH-based deploy system. `lib/common.sh` — shared SSH helpers (`push_exec`, `p
 - `service.initd` — optional custom init.d template; placeholders: `{{SVC_NAME}}`, `{{HACK_DIR}}`, `{{LOG_DIR}}`, `{{PORT}}`
 - `remote-script/` — optional payload copied to `<remote_hack_dir>/remote-script` by install.sh
 - Binary deployed to `/data/push-hack/hacks/<id>/`; service at `/etc/init.d/push-hack-<id>`
+
+### Core shared library (`core/`)
+Nested Go module (`github.com/federico-pepe/ableton-push-hack/core`, own `go.mod`) that push-manager/automation/keyboard-visualizer each pull in via `require`+`replace ../../../core` in their own `go.mod` — hacks stay independently buildable, and a third-party hack in its own repo could `require` the same path without a `replace` and resolve it from GitHub. See `discovery/push-core-refactor.md` for the full extraction plan/rationale.
+
+| Package | Contents |
+|---|---|
+| `core/push3` | Zero-import Push 3 facts: full button/encoder MIDI map (`buttons.go`), 128-entry named LED palette + `ColorByName` (`colors.go`), display geometry `VisW/VisH/Stride/FrameBytes/TotalBytes` (`geometry.go`), encoder helpers `IsEncoderCC/DecodeRel/ScaleVal/ClampInt` (`encoder.go`, tested in `encoder_test.go`). push-manager's `push3_buttons.go` re-exports the button/encoder consts as package-`main` aliases (`const CCShift = push3.CCShift`, etc.) so its ~180 existing call sites across `midi.go`/`ui_shadow.go` didn't need touching — `core/push3` is still the single source of truth. |
 
 ### Push Manager (`hacks/push-manager/`)
 Go binary, no runtime deps. ~8–15MB RSS. Port 7701. See `hacks/push-manager/README.md` for full API.

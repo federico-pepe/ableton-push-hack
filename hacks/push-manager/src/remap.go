@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // MidiMapping is one source→output rule. Keyed in remapMappings by srcKey().
@@ -47,44 +49,6 @@ func srcKey(srcType string, ch, num uint8) string {
 	return fmt.Sprintf("%s:%d:%d", srcType, ch, num)
 }
 
-// isEncoderCC reports whether a CC number is a Push 3 relative encoder
-// (encoders 1–8 = CC 71–78, volume wheel = CC 79, tempo wheel = CC 14).
-func isEncoderCC(cc uint8) bool {
-	return (cc >= 71 && cc <= 79) || cc == 14
-}
-
-// decodeRel converts a Push relative-encoder CC value to a signed delta.
-// Two's-complement encoding: 1..63 positive, 65..127 negative (127 = -1).
-// NOTE: verify rotation direction on device; flip sign here if inverted.
-func decodeRel(v uint8) int {
-	if v < 64 {
-		return int(v)
-	}
-	return int(v) - 128
-}
-
-// scaleVal maps an incoming 0–127 value into [lo,hi].
-func scaleVal(v, lo, hi uint8) uint8 {
-	if hi >= lo {
-		return uint8(int(lo) + int(v)*(int(hi)-int(lo))/127)
-	}
-	// inverted range: hi < lo
-	return uint8(int(lo) - int(v)*(int(lo)-int(hi))/127)
-}
-
-func clampInt(v, lo, hi int) int {
-	if lo > hi {
-		lo, hi = hi, lo
-	}
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
-}
-
 // interceptOn reports whether the MIDI intercept (midiflt) is active.
 func interceptOn() bool {
 	filt := ensureMidiFilt()
@@ -114,12 +78,12 @@ func applyRemap(srcType string, ch, num, val uint8) bool {
 	var out uint8
 	release := false
 	if m.Relative {
-		acc := clampInt(remapAccum[key]+decodeRel(val), int(m.OutMin), int(m.OutMax))
+		acc := push3.ClampInt(remapAccum[key]+push3.DecodeRel(val), int(m.OutMin), int(m.OutMax))
 		remapAccum[key] = acc
 		out = uint8(acc)
 	} else {
 		release = val == 0
-		out = scaleVal(val, m.OutMin, m.OutMax)
+		out = push3.ScaleVal(val, m.OutMin, m.OutMax)
 	}
 	remapMu.Unlock()
 

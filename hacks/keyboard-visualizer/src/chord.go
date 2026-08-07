@@ -16,11 +16,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 const (
-	ccShift = uint8(49)
-	ccNote  = uint8(50)
+	ccShift = uint8(push3.CCShift)
+	ccNote  = uint8(push3.CCNote)
 
 	chordDebounce = 500 * time.Millisecond
 )

@@ -18,11 +18,13 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 const (
-	screenW = 960
-	screenH = 160
+	screenW = push3.VisW
+	screenH = push3.VisH
 
 	// Fixed 49-key window (4 octaves) centered on middle C (60): notes 36-84.
 	// Simpler than an auto-ranging window; revisit if a fixed span proves too

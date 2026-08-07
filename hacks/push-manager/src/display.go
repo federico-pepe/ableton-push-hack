@@ -29,22 +29,21 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 )
 
+// Display geometry (960×160, stride 1024, frame sent twice) lives in
+// core/push3 as the shared source of truth — see push3.VisW/VisH/Stride/
+// FrameBytes/TotalBytes.
 const (
-	// Display geometry — same as Push 2 (confirmed by user):
-	//   960×160 physical pixels, stride = 1024 pixels per row (64px padding)
-	//   Push 3 sends the frame TWICE per display update (double-buffered):
-	//   chunk 1 = bytes   0..327679  (1024 × 160 × 2)
-	//   chunk 2 = bytes 327680..655359 (identical copy)
-	dispVisW  = 960          // visible pixel columns
-	dispH     = 160          // rows
-	dispStride = 1024        // pixels per row in framebuffer (incl. padding)
-	dispFrameB = dispStride * dispH * 2 // 327680 bytes per single frame
-	dispBytes  = dispFrameB * 2         // 655360 bytes total (sent twice)
+	dispVisW   = push3.VisW
+	dispH      = push3.VisH
+	dispStride = push3.Stride
+	dispFrameB = push3.FrameBytes // 327680 bytes per single frame
+	dispBytes  = push3.TotalBytes // 655360 bytes total (sent twice)
 
 	shmFile    = "/data/push-hack/hacks/push-display/framebuf"
 	shmMagic   = uint32(0x50555348)

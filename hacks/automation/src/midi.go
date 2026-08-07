@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // ── ALSA sequencer constants ───────────────────────────────────────────────
@@ -378,7 +380,7 @@ func readMidiEvents(fd int) {
 					ch := buf[off+seqEvOffData]
 					cc := binary.LittleEndian.Uint32(buf[off+seqEvOffData+4:])
 					val := binary.LittleEndian.Uint32(buf[off+seqEvOffData+8:])
-					if ch == 0 && cc == 85 && val == 127 {
+					if ch == 0 && cc == push3.CCPlay && val == 127 {
 						onPlayButtonPress()
 					}
 				}

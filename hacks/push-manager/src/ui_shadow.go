@@ -39,13 +39,15 @@ import (
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 	xdraw "golang.org/x/image/draw"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 const (
-	suiW          = 960
-	suiH          = 160
+	suiW          = push3.VisW
+	suiH          = push3.VisH
 	suiTopH       = 18  // top strip height
 	suiBotH       = 18  // bottom strip height
 	suiContentY   = suiTopH                  // content starts at y=18
