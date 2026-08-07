@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/png"
 	"log"
 	"os"
@@ -35,11 +34,10 @@ import (
 	"syscall"
 	"time"
 
-	xfont "golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
-	"golang.org/x/image/math/fixed"
 	xdraw "golang.org/x/image/draw"
 
+	"github.com/federico-pepe/ableton-push-hack/core/gfx"
+	gtext "github.com/federico-pepe/ableton-push-hack/core/gfx/text"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
@@ -135,29 +133,7 @@ func iconNameForEntry(e filePanelEntry) string {
 
 // drawIcon composites a cached icon onto img at pixel (x, y).
 func drawIcon(img *image.NRGBA, icon *image.NRGBA, x, y int) {
-	ib := icon.Bounds()
-	for iy := 0; iy < ib.Dy(); iy++ {
-		for ix := 0; ix < ib.Dx(); ix++ {
-			src := icon.NRGBAAt(ix, iy)
-			if src.A == 0 {
-				continue
-			}
-			px := x + ix
-			py := y + iy
-			if px < 0 || py < 0 || px >= img.Bounds().Dx() || py >= img.Bounds().Dy() {
-				continue
-			}
-			dst := img.NRGBAAt(px, py)
-			// Alpha blend: src over dst
-			a := uint32(src.A)
-			na := 255 - a
-			dst.R = uint8((uint32(src.R)*a + uint32(dst.R)*na) / 255)
-			dst.G = uint8((uint32(src.G)*a + uint32(dst.G)*na) / 255)
-			dst.B = uint8((uint32(src.B)*a + uint32(dst.B)*na) / 255)
-			dst.A = 255
-			img.SetNRGBA(px, py, dst)
-		}
-	}
+	gfx.DrawIcon(img, icon, x, y)
 }
 
 // ── Panel interface ────────────────────────────────────────────────────────────
@@ -480,22 +456,16 @@ func (s *ShadowUI) renderFrame() {
 // ── Drawing helpers ───────────────────────────────────────────────────────────
 
 func fillRect(img *image.NRGBA, x, y, w, h int, c color.NRGBA) {
-	draw.Draw(img, image.Rect(x, y, x+w, y+h), &image.Uniform{c}, image.Point{}, draw.Src)
+	gfx.FillRect(img, x, y, w, h, c)
 }
 
 // drawText draws string at pixel (x, baseline) using basicfont at 1× scale.
-func drawText(img *image.NRGBA, x, baseline int, text string, col color.NRGBA) {
-	d := &xfont.Drawer{
-		Dst:  img,
-		Src:  &image.Uniform{col},
-		Face: basicfont.Face7x13,
-		Dot:  fixed.P(x, baseline),
-	}
-	d.DrawString(text)
+func drawText(img *image.NRGBA, x, baseline int, s string, col color.NRGBA) {
+	gtext.Draw(img, x, baseline, s, col)
 }
 
 // textWidth returns pixel width of s at 1× scale.
-func textWidth(s string) int { return len(s) * 7 }
+func textWidth(s string) int { return gtext.Width(s) }
 
 // drawPanelTabs renders the top 18px strip with panel labels.
 // Active panel gets a white background with black text.
@@ -569,11 +539,7 @@ func drawExtraBots(img *image.NRGBA, labels []string) {
 
 // truncate truncates s to at most maxRunes runes, appending "…" if cut.
 func truncate(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
-	}
-	return string(runes[:maxRunes-1]) + "…"
+	return gtext.Truncate(s, maxRunes)
 }
 
 // ── FilePanel ─────────────────────────────────────────────────────────────────

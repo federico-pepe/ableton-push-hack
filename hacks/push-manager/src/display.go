@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	coredisplay "github.com/federico-pepe/ableton-push-hack/core/display"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
@@ -187,53 +188,14 @@ func shmWritePixels(pixels []byte) error {
 // the same frame twice per display update).
 // Returns raw BGR565 little-endian bytes, no XOR — hook applies XOR.
 func imageToBGR565(img image.Image) []byte {
-	b := img.Bounds()
-	srcW := b.Max.X - b.Min.X
-	srcH := b.Max.Y - b.Min.Y
-	pixels := make([]byte, dispBytes)
-
-	for y := 0; y < dispH; y++ {
-		for x := 0; x < dispVisW; x++ {
-			sx := b.Min.X + x*srcW/dispVisW
-			sy := b.Min.Y + y*srcH/dispH
-			r16, g16, b16, _ := img.At(sx, sy).RGBA() // 0–65535
-			b5 := uint16(b16 >> 11)
-			g6 := uint16(g16 >> 10)
-			r5 := uint16(r16 >> 11)
-			v := (b5 << 11) | (g6 << 5) | r5
-			off := (y*dispStride + x) * 2
-			lo, hi := byte(v), byte(v>>8)
-			pixels[off] = lo
-			pixels[off+1] = hi
-			// duplicate into second frame (Push 3 sends frame twice)
-			pixels[dispFrameB+off] = lo
-			pixels[dispFrameB+off+1] = hi
-		}
-	}
-	return pixels
+	return coredisplay.ToBGR565(img)
 }
 
 // bgr565ToImage is the reverse of imageToBGR565: it decodes one framebuf frame
 // (dispFrameB bytes, 1024-pixel stride) into a 960×160 NRGBA image, skipping the
 // 64-pixel-per-row stride padding. Input is raw BGR565 little-endian, no XOR.
 func bgr565ToImage(px []byte) *image.NRGBA {
-	img := image.NewNRGBA(image.Rect(0, 0, dispVisW, dispH))
-	for y := 0; y < dispH; y++ {
-		for x := 0; x < dispVisW; x++ {
-			off := (y*dispStride + x) * 2
-			v := uint16(px[off]) | uint16(px[off+1])<<8
-			b5 := (v >> 11) & 0x1f
-			g6 := (v >> 5) & 0x3f
-			r5 := v & 0x1f
-			img.SetNRGBA(x, y, color.NRGBA{
-				R: byte(r5<<3 | r5>>2),
-				G: byte(g6<<2 | g6>>4),
-				B: byte(b5<<3 | b5>>2),
-				A: 255,
-			})
-		}
-	}
-	return img
+	return coredisplay.FromBGR565(px)
 }
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────

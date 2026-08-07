@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/png"
 	"log"
 	"mime/multipart"
@@ -19,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/federico-pepe/ableton-push-hack/core/gfx"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
@@ -49,10 +49,7 @@ func isBlackKey(note int) bool {
 }
 
 func fillRect(img *image.NRGBA, x, y, w, h int, c color.NRGBA) {
-	if w <= 0 || h <= 0 {
-		return
-	}
-	draw.Draw(img, image.Rect(x, y, x+w, y+h), &image.Uniform{C: c}, image.Point{}, draw.Src)
+	gfx.FillRect(img, x, y, w, h, c)
 }
 
 // renderKeyboard draws the current held-note state into a fresh 960x160 image.
