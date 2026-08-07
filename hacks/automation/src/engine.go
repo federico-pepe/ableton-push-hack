@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/sse"
 )
 
 // ── Data model ────────────────────────────────────────────────────────────
@@ -63,8 +65,7 @@ var (
 	liveBPM   = 120.0
 
 	// SSE broadcast: engine notifies all connected SSE clients
-	autoStreamMu      sync.Mutex
-	autoStreamClients []chan autoStreamPayload
+	autoStreamBroker = sse.NewBroker[autoStreamPayload](4, true)
 
 	resetPhasesRequested uint32 // atomic; set by MIDI stop, cleared by engine tick
 
@@ -366,39 +367,12 @@ func broadcastSSE() {
 		LiveBPM:       bpm,
 	}
 
-	autoStreamMu.Lock()
-	active := make([]chan autoStreamPayload, 0, len(autoStreamClients))
-	for _, ch := range autoStreamClients {
-		select {
-		case ch <- payload:
-			active = append(active, ch)
-		default:
-			// Slow or disconnected client — drop
-		}
-	}
-	autoStreamClients = active
-	autoStreamMu.Unlock()
+	autoStreamBroker.Broadcast(payload)
 }
 
-func registerSSEClient() chan autoStreamPayload {
-	ch := make(chan autoStreamPayload, 4)
-	autoStreamMu.Lock()
-	autoStreamClients = append(autoStreamClients, ch)
-	autoStreamMu.Unlock()
-	return ch
-}
+func registerSSEClient() chan autoStreamPayload { return autoStreamBroker.Register() }
 
-func unregisterSSEClient(ch chan autoStreamPayload) {
-	autoStreamMu.Lock()
-	out := autoStreamClients[:0]
-	for _, c := range autoStreamClients {
-		if c != ch {
-			out = append(out, c)
-		}
-	}
-	autoStreamClients = out
-	autoStreamMu.Unlock()
-}
+func unregisterSSEClient(ch chan autoStreamPayload) { autoStreamBroker.Unregister(ch) }
 
 // ── HTTP handlers ─────────────────────────────────────────────────────────
 
@@ -607,32 +581,9 @@ func handleAutoLaneDelete(w http.ResponseWriter, r *http.Request, id int) {
 
 // GET /api/auto/stream — SSE stream with phase positions at 20Hz
 func handleAutoStream(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
 	ch := registerSSEClient()
 	defer unregisterSSEClient(ch)
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case payload := <-ch:
-			data, err := json.Marshal(payload)
-			if err != nil {
-				continue
-			}
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
-		}
-	}
+	sse.Serve(w, r, ch, func(p autoStreamPayload) ([]byte, error) { return json.Marshal(p) })
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
