@@ -1640,68 +1640,32 @@ func (bp *BrowserPanel) Render(img *image.NRGBA) {
 		return
 	}
 
-	// Breadcrumb / status
-	const crumbH = 13
-	crumbY := suiContentY
-	crumbBg := color.NRGBA{20, 20, 20, 255}
-	crumbCol := color.NRGBA{200, 200, 200, 255}
 	crumbText := fmt.Sprintf("[%s]  %d items", filterLabel, len(entries))
 	if query != "" {
 		crumbText = fmt.Sprintf("[%s]  q=\"%s\"  %d", filterLabel, query, len(entries))
 	}
-	if statusText != "" {
-		crumbBg = color.NRGBA{0, 60, 30, 255}
-		crumbCol = color.NRGBA{100, 255, 150, 255}
-		crumbText = statusText
+
+	rows := make([]widgets.ListRow, len(entries))
+	for i, e := range entries {
+		rows[i] = widgets.ListRow{
+			Icon:    loadSuiIcon(iconNameForPreset(e)),
+			Text:    gtext.Truncate(e.Name, 108),
+			Bg:      widgets.Default.Black,
+			TextCol: widgets.Default.White,
+		}
 	}
-	fillRect(img, 0, crumbY, suiW, crumbH, crumbBg)
-	drawText(img, 4, crumbY+crumbH-2, truncate(crumbText, 120), crumbCol)
-
-	listY := crumbY + crumbH
-	const rowH = fileRowH
-	visRows := (suiContentBot - listY) / rowH
-
+	emptyText := ""
 	if len(entries) == 0 {
-		drawText(img, 8, listY+20, "(no items - press REFRESH)", suiGray)
-		return
+		emptyText = "(no items - press REFRESH)"
 	}
-
-	for i := 0; i < visRows; i++ {
-		idx := scroll + i
-		if idx >= len(entries) {
-			break
-		}
-		e := entries[idx]
-		y := listY + i*rowH
-		var bg, textCol color.NRGBA
-		if idx == cursor {
-			bg = suiSelect
-			textCol = suiWhite
-		} else {
-			bg = suiBlack
-			textCol = suiWhite
-		}
-		fillRect(img, 0, y, suiW-6, rowH, bg)
-		textX := 8
-		if icon := loadSuiIcon(iconNameForPreset(e)); icon != nil {
-			iconY := y + (rowH-suiIconH)/2
-			drawIcon(img, icon, 2, iconY)
-			textX = 2 + icon.Bounds().Dx() + 3
-		}
-		drawText(img, textX, y+rowH-3, truncate(e.Name, 108), textCol)
-	}
-
-	// Scrollbar
-	total := len(entries)
-	if total > visRows {
-		barH := (suiContentBot - listY) * visRows / total
-		if barH < 4 {
-			barH = 4
-		}
-		barY := listY + (suiContentBot-listY)*scroll/total
-		fillRect(img, suiW-4, listY, 4, suiContentBot-listY, suiDarkGray)
-		fillRect(img, suiW-4, barY, 4, barH, suiGray)
-	}
+	widgets.RenderList(img, widgets.Default, widgets.ListView{
+		Rows:       rows,
+		Cursor:     cursor,
+		Scroll:     scroll,
+		Breadcrumb: crumbText,
+		Status:     statusText,
+		EmptyText:  emptyText,
+	}, suiContentY, suiW, fileRowH, suiContentBot)
 }
 
 func (bp *BrowserPanel) renderKeyboard(img *image.NRGBA, query string, matches, kbCursor int) {
