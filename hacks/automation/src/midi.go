@@ -13,67 +13,20 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
-// ── ALSA sequencer constants ───────────────────────────────────────────────
-
-const (
-	seqDev = "/dev/snd/seq"
-
-	ioctlClientID   = uintptr(0x80045301) // _IOR('S',0x01, int32=4)
-	ioctlCreatePort = uintptr(0xC0A85320) // _IOWR('S',0x20, portInfo=168)
-
-	portOffAddrClient = 0
-	portOffAddrPort   = 1
-	portOffName       = 2
-	portOffCapability = 68
-	portOffType       = 72
-	portInfoSize      = 168
-
-	capRead      = uint32(0x01)
-	capSubsRead  = uint32(0x20)
-	capWrite     = uint32(0x02)
-	capSubsWrite = uint32(0x40)
-
-	seqQueueDirect = byte(253)
-
-	portTypeMidi = uint32(1 << 1)
-	portTypeApp  = uint32(1 << 20)
-
-	seqEvOffType    = 0
-	seqEvOffData    = 16
-	seqEventSize    = 28
-	seqEvController = uint8(10)
-
-	// Clock / transport event types
-	seqEvStart    = uint8(30)
-	seqEvContinue = uint8(32)
-	seqEvStop     = uint8(31)
-	seqEvClock    = uint8(36)
-
-	// Subscribe struct constants (identical to push-manager)
-	ioctlSubscribePort = uintptr(0x40505330) // _IOW('S', 0x30, subscribe=80)
-	subSize            = 80
-	subOffSenderClient = 0
-	subOffSenderPort   = 1
-	subOffDestClient   = 2
-	subOffDestPort     = 3
-
-	push3ClientDefault = byte(16)
-	push3PortDefault   = byte(0)
-)
+// ALSA seq kernel ABI constants live in core/alsaseq.
 
 // ── Global MIDI output state ───────────────────────────────────────────────
 
 var (
 	midiTargetMu     sync.Mutex
-	midiTargetClient = push3ClientDefault
-	midiTargetPort   = push3PortDefault
+	midiTargetClient = alsaseq.Push3ClientDefault
+	midiTargetPort   = alsaseq.Push3PortDefault
 
 	liveDestMu     sync.Mutex
 	liveDestClient = byte(128) // Ableton Live — may shift, updated by detectLivePort
@@ -225,37 +178,39 @@ func initMidiIn() {
 	midiIn = c
 	midiInMu.Unlock()
 
-	go readMidiEvents(c.FD())
+	go func() {
+		if err := c.ReadLoop(autoSeqHandler{}); err != nil {
+			log.Printf("midi_in: read stopped: %v", err)
+		}
+	}()
 }
 
-func readMidiEvents(fd int) {
-	buf := make([]byte, 8192)
-	for {
-		n, err := syscall.Read(fd, buf)
-		if err != nil || n < seqEventSize {
-			log.Printf("midi_in: read stopped: %v", err)
-			return
-		}
-		for off := 0; off+seqEventSize <= n; off += seqEventSize {
-			evType := buf[off+seqEvOffType]
-			switch evType {
-			case seqEvClock:
-				onMidiClock()
-			case seqEvStart, seqEvContinue:
-				onMidiTransportStart()
-			case seqEvController:
-				if off+seqEvOffData+12 <= n {
-					ch := buf[off+seqEvOffData]
-					cc := binary.LittleEndian.Uint32(buf[off+seqEvOffData+4:])
-					val := binary.LittleEndian.Uint32(buf[off+seqEvOffData+8:])
-					if ch == 0 && cc == push3.CCPlay && val == 127 {
-						onPlayButtonPress()
-					}
-				}
-			}
+// autoSeqHandler adapts automation's clock/transport/CC processing to
+// alsaseq.Handler. Previously readMidiEvents walked the buffer with a fixed
+// 28-byte stride and no variable-length branch — any SysEx byte stream from
+// Push 3 (this hack subscribes to Push3 16:0 for clock) desynced the decode
+// until a buffer boundary happened to realign it. Sharing alsaseq.Walk fixes
+// that by construction: VarLen is a no-op here, but it correctly consumes
+// the SysEx bytes instead of misreading them as fixed events.
+type autoSeqHandler struct{}
+
+func (autoSeqHandler) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
+	switch evType {
+	case alsaseq.EvClock:
+		onMidiClock()
+	case alsaseq.EvStart, alsaseq.EvContinue:
+		onMidiTransportStart()
+	case alsaseq.EvController:
+		ch := data[0]
+		cc := binary.LittleEndian.Uint32(data[4:])
+		val := binary.LittleEndian.Uint32(data[8:])
+		if ch == 0 && cc == push3.CCPlay && val == 127 {
+			onPlayButtonPress()
 		}
 	}
 }
+
+func (autoSeqHandler) VarLen(evType uint8, src alsaseq.Addr, payload []byte) {}
 
 // onPlayButtonPress handles CC85 val=127 (Push Play button press).
 // When TransportSync is on this is the SOLE authority over Running — Push has

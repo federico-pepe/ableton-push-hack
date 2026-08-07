@@ -23,54 +23,12 @@ import (
 	"log"
 	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 )
 
-// ── ALSA sequencer constants (identical layout to push-manager/automation) ──
-
-const (
-	seqDev = "/dev/snd/seq"
-
-	ioctlClientID   = uintptr(0x80045301) // _IOR('S',0x01, int32=4)
-	ioctlCreatePort = uintptr(0xC0A85320) // _IOWR('S',0x20, portInfo=168)
-
-	portOffAddrClient = 0
-	portOffAddrPort   = 1
-	portOffName       = 2
-	portOffCapability = 68
-	portOffType       = 72
-	portInfoSize      = 168
-
-	capWrite     = uint32(0x02)
-	capSubsWrite = uint32(0x40)
-
-	portTypeMidi = uint32(1 << 1)
-	portTypeApp  = uint32(1 << 20)
-
-	seqEvOffType      = 0
-	seqEvOffFlags     = 1
-	seqEvOffSrcClient = 12
-	seqEvOffSrcPort   = 13
-	seqEvOffData      = 16
-	seqEventSize      = 28
-
-	seqFlagVarLen = uint8(1 << 2)
-
-	seqEvNoteOn  = uint8(6)
-	seqEvNoteOff = uint8(7)
-
-	seqEvController = uint8(10)
-
-	ioctlSubscribePort = uintptr(0x40505330) // _IOW('S', 0x30, subscribe=80)
-	subSize            = 80
-	subOffSenderClient = 0
-	subOffSenderPort   = 1
-	subOffDestClient   = 2
-	subOffDestPort     = 3
-)
+// ALSA seq kernel ABI constants live in core/alsaseq.
 
 const bootSettleSecs = 30.0
 
@@ -168,14 +126,7 @@ func initMidiIn(pushManagerURL string) error {
 	// number shifts later.
 	go maintainPush3Subscription(c)
 
-	buf := make([]byte, 8192)
-	for {
-		n, err := syscall.Read(c.FD(), buf)
-		if err != nil {
-			return fmt.Errorf("read seq: %w", err)
-		}
-		processSeqBuf(buf[:n], pushManagerURL)
-	}
+	return c.ReadLoop(kvSeqHandler{pushManagerURL: pushManagerURL})
 }
 
 // maintainPush3Subscription (re)subscribes c's port to Push 3's hardware
@@ -200,49 +151,35 @@ func maintainPush3Subscription(c *alsaseq.Client) {
 	}
 }
 
-// processSeqBuf decodes fixed-length snd_seq_event records, ignoring
-// variable-length ones (sysex etc.). Handles Note On/Off (Live's sounding
-// notes only — Push 3's own raw pad Note On/Off is filtered out by source,
-// see isPush3Client) and CC (Push 3 hardware, for the Shift+Note takeover
-// chord).
-func processSeqBuf(buf []byte, pushManagerURL string) {
-	for off := 0; off+seqEventSize <= len(buf); {
-		evType := buf[off+seqEvOffType]
-		evFlags := buf[off+seqEvOffFlags]
-		srcClient := buf[off+seqEvOffSrcClient]
-		data := buf[off+seqEvOffData : off+seqEventSize]
+// kvSeqHandler adapts keyboard-visualizer's note/chord processing to
+// alsaseq.Handler. Handles Note On/Off (Live's sounding notes only —
+// Push 3's own raw pad Note On/Off is filtered out by source, see
+// isPush3Client) and CC (Push 3 hardware, for the Shift+Note takeover
+// chord). Variable-length events (SysEx etc.) are ignored, same as before.
+type kvSeqHandler struct{ pushManagerURL string }
 
-		if evFlags&seqFlagVarLen != 0 {
-			varLen := int(binary.LittleEndian.Uint32(data[0:]))
-			end := off + seqEventSize + varLen
-			if end > len(buf) {
-				break
-			}
-			off = end
-			continue
+func (h kvSeqHandler) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
+	switch evType {
+	case alsaseq.EvNoteOn:
+		if !isPush3Client(src.Client) {
+			note, vel := data[1], data[2]
+			setNoteHeld(note, vel > 0) // vel=0 Note-On is a Note-Off
 		}
-
-		switch evType {
-		case seqEvNoteOn:
-			if !isPush3Client(srcClient) {
-				note, vel := data[1], data[2]
-				setNoteHeld(note, vel > 0) // vel=0 Note-On is a Note-Off
-			}
-		case seqEvNoteOff:
-			if !isPush3Client(srcClient) {
-				note := data[1]
-				setNoteHeld(note, false)
-			}
-		case seqEvController:
-			cc := byte(binary.LittleEndian.Uint32(data[4:]))
-			val := byte(binary.LittleEndian.Uint32(data[8:]))
-			if cc == ccShift || cc == ccNote {
-				onChordCC(cc, val, pushManagerURL)
-			}
+	case alsaseq.EvNoteOff:
+		if !isPush3Client(src.Client) {
+			note := data[1]
+			setNoteHeld(note, false)
 		}
-		off += seqEventSize
+	case alsaseq.EvController:
+		cc := byte(binary.LittleEndian.Uint32(data[4:]))
+		val := byte(binary.LittleEndian.Uint32(data[8:]))
+		if cc == ccShift || cc == ccNote {
+			onChordCC(cc, val, h.pushManagerURL)
+		}
 	}
 }
+
+func (h kvSeqHandler) VarLen(evType uint8, src alsaseq.Addr, payload []byte) {}
 
 // runMidiIn retries initMidiIn forever with a backoff, so a transient ALSA
 // error (or Live not routed yet) doesn't kill the process.

@@ -32,97 +32,13 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
-// ── ALSA sequencer constants ───────────────────────────────────────────────
-
-const (
-	seqDev = "/dev/snd/seq"
-
-	// ioctl codes: _IOR/_IOW/_IOWR('S', nr, sizeof_struct)
-	//   _IOR  = (2<<30) | (size<<16) | ('S'<<8) | nr
-	//   _IOW  = (1<<30) | (size<<16) | ('S'<<8) | nr
-	//   _IOWR = (3<<30) | (size<<16) | ('S'<<8) | nr
-	ioctlClientID      = uintptr(0x80045301) // _IOR('S',0x01, int32=4)
-	ioctlCreatePort    = uintptr(0xC0A85320) // _IOWR('S',0x20, portInfo=168)
-	ioctlSubscribePort = uintptr(0x40505330) // _IOW('S', 0x30, subscribe=80)
-
-	// snd_seq_port_info byte offsets (168 bytes total, x86-64):
-	//   0:  addr.client (1B), addr.port (1B)
-	//   2:  name[64]
-	//  66:  (2 bytes padding for uint32 alignment)
-	//  68:  capability (uint32)
-	//  72:  type (uint32)
-	//  76–95: midi_channels/voices/synth_voices/read_use/write_use (5×int32)
-	//  96:  kernel ptr (8B, 8-byte aligned)
-	// 104:  flags (uint32)
-	// 108:  time_queue (1B)
-	// 109:  reserved[59]
-	portOffAddrClient  = 0
-	portOffAddrPort    = 1
-	portOffName        = 2
-	portOffCapability  = 68
-	portOffType        = 72
-	portInfoSize       = 168
-
-	// Port capability bits (snd_seq_port_info.capability)
-	capRead      = uint32(0x01) // can send events out (readable by others)
-	capWrite     = uint32(0x02) // can receive events (writable)
-	capSubsRead  = uint32(0x20) // allow read subscriptions
-	capSubsWrite = uint32(0x40) // allow write subscriptions
-
-	// Direct-delivery queue: bypass sequencer queue, deliver immediately.
-	seqQueueDirect = byte(253) // SNDRV_SEQ_QUEUE_DIRECT
-
-	// Port type bits
-	portTypeMidi = uint32(1 << 1)  // MIDI generic
-	portTypeApp  = uint32(1 << 20) // application
-
-	// snd_seq_port_subscribe byte offsets (80 bytes):
-	//   0: sender.client (1B), sender.port (1B)
-	//   2: dest.client (1B), dest.port (1B)
-	//   4: voices (uint32)
-	//   8: flags (uint32)
-	//  12: queue (1B), pad[3]
-	//  16: reserved[64]
-	subOffSenderClient = 0
-	subOffSenderPort   = 1
-	subOffDestClient   = 2
-	subOffDestPort     = 3
-	subSize            = 80
-
-	// snd_seq_event layout (28 bytes):
-	//   0: type (1B), flags (1B), tag (1B), queue (1B)
-	//   4: timestamp union (8B)
-	//  12: src.client (1B), src.port (1B), dst.client (1B), dst.port (1B)
-	//  16: data union (12B)
-	seqEvOffType  = 0
-	seqEvOffFlags = 1
-	seqEvOffData  = 16
-	seqEventSize  = 28
-
-	seqFlagVarLen = uint8(1 << 2) // variable-length event
-
-	// ALSA sequencer event types
-	seqEvNoteOn     = uint8(6)
-	seqEvNoteOff    = uint8(7)
-	seqEvKeyPress   = uint8(8)   // poly aftertouch
-	seqEvController = uint8(10)  // CC, pitch bend (all control events)
-	seqEvPgmChange  = uint8(11)
-	seqEvChanPress  = uint8(12)  // channel aftertouch
-	seqEvPitchBend  = uint8(13)
-	seqEvSensing    = uint8(40)  // active sensing
-	seqEvSysEx      = uint8(130) // variable length
-
-	// Push 3 ALSA seq address defaults (kernel client 16 = first sound card).
-	// Shift if external MIDI devices are connected at boot — use port selector.
-	push3ClientDefault = byte(16)
-	push3PortDefault   = byte(0) // "Ableton Push 3 Live Port"
-)
+// ALSA seq kernel ABI constants (ioctl numbers, struct offsets, event
+// types) live in core/alsaseq — see that package for the source of truth.
 
 // ── Mutable subscription target + cancellation ────────────────────────────
 
@@ -132,9 +48,9 @@ const (
 // Protected by midiTargetMu.
 var (
 	midiTargetMu     sync.Mutex
-	midiTargetClient = push3ClientDefault
-	midiTargetPort   = push3PortDefault
-	midiSeqFd        = -1  // -1 = not connected
+	midiTargetClient = alsaseq.Push3ClientDefault
+	midiTargetPort   = alsaseq.Push3PortDefault
+	midiSeqFd        = -1   // -1 = not connected
 	midiAutoDetect   = true // false once user manually selects a port
 )
 
@@ -693,6 +609,27 @@ func startMidiReader() {
 	}()
 }
 
+// midiSeqHandler adapts push-manager's MIDI processing to alsaseq.Handler.
+type midiSeqHandler struct{}
+
+func (midiSeqHandler) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
+	processFixedEvent(evType, data)
+}
+
+func (midiSeqHandler) VarLen(evType uint8, src alsaseq.Addr, payload []byte) {
+	if evType != alsaseq.EvSysEx {
+		return
+	}
+	// Route Ableton palette responses to query waiter before emitting.
+	if isPaletteResponse(payload) {
+		select {
+		case paletteRespCh <- append([]byte(nil), payload...):
+		default:
+		}
+	}
+	emitMidi(payload)
+}
+
 func readAlsaSeq() error {
 	// Auto-detect Push 3 client by name unless the user has manually subscribed.
 	midiTargetMu.Lock()
@@ -706,15 +643,16 @@ func readAlsaSeq() error {
 	// the subscription-change handler will close this fd and trigger a restart).
 	midiTargetMu.Lock()
 	targetClient := midiTargetClient
-	targetPort   := midiTargetPort
+	targetPort := midiTargetPort
 	midiTargetMu.Unlock()
 
-	fd, err := syscall.Open(seqDev, syscall.O_RDWR|syscall.O_CLOEXEC, 0)
+	c, err := alsaseq.Open()
 	if err != nil {
-		return fmt.Errorf("open %s: %w", seqDev, err)
+		return err
 	}
 
 	// Register fd so handleMidiSubscribe can close it to interrupt a blocked Read.
+	fd := c.FD()
 	midiTargetMu.Lock()
 	midiSeqFd = fd
 	midiTargetMu.Unlock()
@@ -729,102 +667,38 @@ func readAlsaSeq() error {
 		}
 		midiTargetMu.Unlock()
 		if wasOurs {
-			syscall.Close(fd)
+			c.Close()
 		}
 	}()
 
-	// Get our assigned ALSA seq client ID
-	var clientID int32
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlClientID, uintptr(unsafe.Pointer(&clientID))); errno != 0 {
-		return fmt.Errorf("CLIENT_ID ioctl: %w", errno)
+	if _, err := c.CreatePort("Push Manager In", alsaseq.CapWrite|alsaseq.CapSubsWrite, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
+		return err
 	}
 
-	// Create a receive port
-	portInfo := make([]byte, portInfoSize)
-	portInfo[portOffAddrClient] = byte(clientID) // kernel checks addr.client == our ID → EPERM if 0
-	copy(portInfo[portOffName:], "Push Manager In\x00")
-	binary.LittleEndian.PutUint32(portInfo[portOffCapability:], capWrite|capSubsWrite)
-	binary.LittleEndian.PutUint32(portInfo[portOffType:], portTypeMidi|portTypeApp)
-
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlCreatePort, uintptr(unsafe.Pointer(&portInfo[0]))); errno != 0 {
-		return fmt.Errorf("CREATE_PORT ioctl: %w", errno)
-	}
-	ourPort := portInfo[portOffAddrPort]
-
-	// Subscribe to target → our port
-	sub := make([]byte, subSize)
-	sub[subOffSenderClient] = targetClient
-	sub[subOffSenderPort]   = targetPort
-	sub[subOffDestClient]   = byte(clientID)
-	sub[subOffDestPort]     = ourPort
-
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlSubscribePort, uintptr(unsafe.Pointer(&sub[0]))); errno != 0 {
-		return fmt.Errorf("SUBSCRIBE_PORT ioctl (target %d:%d): %w", targetClient, targetPort, errno)
+	target := alsaseq.Addr{Client: targetClient, Port: targetPort}
+	if err := c.Subscribe(target); err != nil {
+		return fmt.Errorf("SUBSCRIBE_PORT ioctl (target %d:%d): %w", targetClient, targetPort, err)
 	}
 
 	log.Printf("midi: subscribed to ALSA seq %d:%d → client %d port %d",
-		targetClient, targetPort, clientID, ourPort)
+		targetClient, targetPort, c.Addr().Client, c.Addr().Port)
 
 	midiRingMu.Lock()
 	midiOnline = true
 	midiRingMu.Unlock()
 
-	// Read and process events
-	buf := make([]byte, 8192)
-	for {
-		n, err := syscall.Read(fd, buf)
-		if err != nil {
-			return fmt.Errorf("read seq: %w", err)
-		}
-		processSeqBuf(buf[:n])
-	}
-}
-
-// processSeqBuf decodes one or more snd_seq_event records from buf.
-func processSeqBuf(buf []byte) {
-	for off := 0; off+seqEventSize <= len(buf); {
-		evType := buf[off+seqEvOffType]
-		evFlags := buf[off+seqEvOffFlags]
-		data := buf[off+seqEvOffData : off+seqEventSize]
-
-		if evFlags&seqFlagVarLen != 0 {
-			// Variable-length: ext.len (uint32 LE) at data[0], bytes follow header
-			varLen := int(binary.LittleEndian.Uint32(data[0:]))
-			end := off + seqEventSize + varLen
-			if end > len(buf) {
-				break // incomplete; shouldn't happen with proper seq reads
-			}
-			if evType == seqEvSysEx {
-				raw := buf[off+seqEventSize : end]
-				// Route Ableton palette responses to query waiter before emitting.
-				if isPaletteResponse(raw) {
-					select {
-					case paletteRespCh <- append([]byte(nil), raw...):
-					default:
-					}
-				}
-				emitMidi(raw)
-			}
-			off = end
-		} else {
-			processFixedEvent(evType, data)
-			off += seqEventSize
-		}
-	}
+	return c.ReadLoop(midiSeqHandler{})
 }
 
 // processFixedEvent converts an ALSA seq event to raw MIDI bytes and emits it.
-// data = 12-byte data union starting at seqEvOffData.
+// data = 12-byte data union starting at alsaseq.EventOffData.
 //
 // Fixed-length event data layouts:
 //   Note (snd_seq_ev_note):    data[0]=ch, data[1]=note, data[2]=vel, data[3]=off_vel
 //   Control (snd_seq_ev_ctrl): data[0]=ch, data[1..3]=unused, data[4..7]=param, data[8..11]=value
 func processFixedEvent(evType uint8, data []byte) {
 	switch evType {
-	case seqEvNoteOn:
+	case alsaseq.EvNoteOn:
 		ch, note, vel := data[0], data[1], data[2]
 		if vel == 0 {
 			emitMidi([]byte{0x80 | ch, note, vel})
@@ -832,12 +706,12 @@ func processFixedEvent(evType uint8, data []byte) {
 			emitMidi([]byte{0x90 | ch, note, vel})
 		}
 		applyRemap("note", ch, note, vel)
-	case seqEvNoteOff:
+	case alsaseq.EvNoteOff:
 		emitMidi([]byte{0x80 | data[0], data[1], data[2]})
 		applyRemap("note", data[0], data[1], 0)
-	case seqEvKeyPress:
+	case alsaseq.EvKeyPress:
 		emitMidi([]byte{0xA0 | data[0], data[1], data[2]})
-	case seqEvController:
+	case alsaseq.EvController:
 		ch := data[0]
 		param := binary.LittleEndian.Uint32(data[4:])
 		value := binary.LittleEndian.Uint32(data[8:])
@@ -887,18 +761,18 @@ func processFixedEvent(evType uint8, data []byte) {
 				}
 			}
 		}
-	case seqEvPgmChange:
+	case alsaseq.EvPgmChange:
 		ch := data[0]
 		param := binary.LittleEndian.Uint32(data[4:])
 		emitMidi([]byte{0xC0 | ch, byte(param & 0x7F)})
-	case seqEvChanPress:
+	case alsaseq.EvChanPress:
 		ch := data[0]
 		value := int32(binary.LittleEndian.Uint32(data[8:]))
 		if value < 0 {
 			value = 0
 		}
 		emitMidi([]byte{0xD0 | ch, byte(value & 0x7F)})
-	case seqEvPitchBend:
+	case alsaseq.EvPitchBend:
 		ch := data[0]
 		// ALSA stores pitch bend as signed -8192..+8191; reconstruct 14-bit
 		v := int32(binary.LittleEndian.Uint32(data[8:])) + 8192
@@ -908,10 +782,10 @@ func processFixedEvent(evType uint8, data []byte) {
 			v = 16383
 		}
 		emitMidi([]byte{0xE0 | ch, byte(v & 0x7F), byte((v >> 7) & 0x7F)})
-	case seqEvSensing:
+	case alsaseq.EvSensing:
 		emitMidi([]byte{0xFE})
 	}
-	if evType != seqEvSensing {
+	if evType != alsaseq.EvSensing {
 		forwardSeqEvent(evType, data)
 	}
 }
