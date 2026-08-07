@@ -22,7 +22,6 @@ package main
 //   GET /api/midi/stream            — SSE live stream
 
 import (
-	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -30,7 +29,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -664,26 +662,21 @@ func midiAppend(ev midiEventJSON) {
 // (e.g. 20 when a USB MIDI device is connected at boot) is found automatically.
 func detectPush3Port() {
 	const push3PortName = "Ableton Push 3 Live Port"
-	ports, err := enumMidiPorts(false)
-	if err != nil {
+	p, ok := alsaseq.FindByName(push3PortName, alsaseq.CapRead)
+	if !ok {
+		log.Printf("midi: Push 3 Live Port not found in /proc/asound/seq/clients — using %d:%d",
+			midiTargetClient, midiTargetPort)
 		return
 	}
-	for _, p := range ports {
-		if p.Name == push3PortName {
-			c, port := byte(p.Client), byte(p.Port)
-			midiTargetMu.Lock()
-			if c != midiTargetClient || port != midiTargetPort {
-				log.Printf("midi: auto-detected Push 3 at %d:%d (was %d:%d)",
-					c, port, midiTargetClient, midiTargetPort)
-				midiTargetClient = c
-				midiTargetPort = port
-			}
-			midiTargetMu.Unlock()
-			return
-		}
+	c, port := p.Addr.Client, p.Addr.Port
+	midiTargetMu.Lock()
+	if c != midiTargetClient || port != midiTargetPort {
+		log.Printf("midi: auto-detected Push 3 at %d:%d (was %d:%d)",
+			c, port, midiTargetClient, midiTargetPort)
+		midiTargetClient = c
+		midiTargetPort = port
 	}
-	log.Printf("midi: Push 3 Live Port not found in /proc/asound/seq/clients — using %d:%d",
-		midiTargetClient, midiTargetPort)
+	midiTargetMu.Unlock()
 }
 
 func startMidiReader() {
@@ -1669,91 +1662,31 @@ func handleMidiChords(w http.ResponseWriter, r *http.Request) {
 //	Client  16 : "Ableton Push 3 Live Port" [Kernel]
 //	  Port   0 : "Ableton Push 3 Live Port" (RWe)
 func enumMidiPorts(wantWritable bool) ([]MidiPort, error) {
-	f, err := os.Open("/proc/asound/seq/clients")
+	requireCaps := alsaseq.CapRead
+	if wantWritable {
+		requireCaps = alsaseq.CapWrite
+	}
+	raw, err := alsaseq.EnumPorts(requireCaps)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
 	midiTargetMu.Lock()
-	activeClient := int(midiTargetClient)
-	activePort   := int(midiTargetPort)
+	activeClient := midiTargetClient
+	activePort := midiTargetPort
 	midiTargetMu.Unlock()
 
-	var ports []MidiPort
-	curClient := -1
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-
-		// Client line: "Client  16 : "Ableton Push 3 Live Port" [Kernel]"
-		if strings.HasPrefix(trimmed, "Client ") && !strings.HasPrefix(trimmed, "Client info") {
-			rest := strings.TrimPrefix(trimmed, "Client ")
-			rest = strings.TrimSpace(rest)
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			id, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			curClient = id
-			continue
-		}
-
-		// Port line: "  Port   0 : "Ableton Push 3 Live Port" (RWe)"
-		if strings.HasPrefix(trimmed, "Port ") && curClient >= 0 {
-			rest := strings.TrimPrefix(trimmed, "Port ")
-			rest = strings.TrimSpace(rest)
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			portID, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			after := rest[colonIdx+1:]
-			// capability string is in the last set of parens
-			parenOpen  := strings.LastIndex(after, "(")
-			parenClose := strings.LastIndex(after, ")")
-			if parenOpen < 0 || parenClose <= parenOpen {
-				continue
-			}
-			caps := after[parenOpen+1 : parenClose]
-			readable := strings.Contains(caps, "R")
-			writable := strings.Contains(caps, "W")
-			if wantWritable {
-				if !writable {
-					continue // not writable (can't receive output)
-				}
-			} else if !readable {
-				continue // not readable (can't be subscribed for input)
-			}
-			// port name is in first set of quotes
-			q1 := strings.Index(after, `"`)
-			if q1 < 0 {
-				continue
-			}
-			q2 := strings.Index(after[q1+1:], `"`)
-			if q2 < 0 {
-				continue
-			}
-			portName := after[q1+1 : q1+1+q2]
-
-			ports = append(ports, MidiPort{
-				Client:   curClient,
-				Port:     portID,
-				Name:     portName,
-				Active:   curClient == activeClient && portID == activePort,
-				Writable: writable,
-			})
-		}
+	ports := make([]MidiPort, 0, len(raw))
+	for _, p := range raw {
+		ports = append(ports, MidiPort{
+			Client:   int(p.Addr.Client),
+			Port:     int(p.Addr.Port),
+			Name:     p.PortName,
+			Active:   p.Addr.Client == activeClient && p.Addr.Port == activePort,
+			Writable: p.Caps&alsaseq.CapWrite != 0,
+		})
 	}
-	return ports, scanner.Err()
+	return ports, nil
 }
 
 // GET /api/midi/ports — enumerate ALSA sequencer ports.

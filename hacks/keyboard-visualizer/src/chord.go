@@ -10,13 +10,10 @@ package main
 // scoped to this single hardcoded chord.
 
 import (
-	"bufio"
-	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
@@ -59,61 +56,15 @@ func onChordCC(cc, val byte, pushManagerURL string) {
 	}
 }
 
-// detectPush3Port scans /proc/asound/seq/clients for "Ableton Push 3 Live Port".
+// detectPush3Port scans /proc/asound/seq/clients for "Ableton Push 3 Live
+// Port". requireCaps=0 — matches on port name alone, unlike push-manager's
+// and automation's equivalents which require the R capability bit — because
+// this hack only watches CC49/50 on the port, it never subscribes for a
+// dedicated read.
 func detectPush3Port() (client, port byte, ok bool) {
-	const push3PortName = "Ableton Push 3 Live Port"
-
-	f, err := os.Open("/proc/asound/seq/clients")
-	if err != nil {
+	p, found := alsaseq.FindByName("Ableton Push 3 Live Port", 0)
+	if !found {
 		return 0, 0, false
 	}
-	defer f.Close()
-
-	curClient := -1
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		trimmed := strings.TrimSpace(scanner.Text())
-
-		if strings.HasPrefix(trimmed, "Client ") && !strings.HasPrefix(trimmed, "Client info") {
-			rest := strings.TrimPrefix(trimmed, "Client ")
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				curClient = -1
-				continue
-			}
-			id, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				curClient = -1
-				continue
-			}
-			curClient = id
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "Port ") && curClient >= 0 {
-			rest := strings.TrimPrefix(trimmed, "Port ")
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			portID, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			after := rest[colonIdx+1:]
-			q1 := strings.Index(after, `"`)
-			if q1 < 0 {
-				continue
-			}
-			q2 := strings.Index(after[q1+1:], `"`)
-			if q2 < 0 {
-				continue
-			}
-			name := after[q1+1 : q1+1+q2]
-			if name == push3PortName {
-				return byte(curClient), byte(portID), true
-			}
-		}
-	}
-	return 0, 0, false
+	return p.Addr.Client, p.Addr.Port, true
 }

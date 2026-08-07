@@ -7,13 +7,10 @@ package main
 // Patterns copied from push-manager/src/midi.go.
 
 import (
-	"bufio"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -156,80 +153,24 @@ func liveDest() (client, port byte) {
 // detectLivePort scans /proc/asound/seq/clients for "Ableton Live" and finds
 // its first writable non-Announce port — that is Live's MIDI input.
 func detectLivePort() {
-	f, err := os.Open("/proc/asound/seq/clients")
+	ports, err := alsaseq.EnumPorts(alsaseq.CapWrite)
 	if err != nil {
 		return
 	}
-	defer f.Close()
-
-	curClient := -1
-	inLive := false
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		trimmed := strings.TrimSpace(scanner.Text())
-
-		if strings.HasPrefix(trimmed, "Client ") && !strings.HasPrefix(trimmed, "Client info") {
-			rest := strings.TrimPrefix(trimmed, "Client ")
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				curClient = -1
-				inLive = false
-				continue
-			}
-			id, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				curClient = -1
-				inLive = false
-				continue
-			}
-			curClient = id
-			inLive = strings.Contains(rest[colonIdx+1:], `"Ableton Live"`)
+	for _, p := range ports {
+		if p.ClientName != "Ableton Live" || p.PortName == "Announce" {
 			continue
 		}
-
-		if inLive && strings.HasPrefix(trimmed, "Port ") && curClient >= 0 {
-			rest := strings.TrimPrefix(trimmed, "Port ")
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			portID, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			after := rest[colonIdx+1:]
-
-			parenOpen := strings.LastIndex(after, "(")
-			parenClose := strings.LastIndex(after, ")")
-			if parenOpen < 0 || parenClose <= parenOpen {
-				continue
-			}
-			caps := after[parenOpen+1 : parenClose]
-			if !strings.Contains(caps, "W") {
-				continue
-			}
-
-			// Skip "Announce" port
-			q1 := strings.Index(after, `"`)
-			if q1 >= 0 {
-				q2 := strings.Index(after[q1+1:], `"`)
-				if q2 >= 0 && after[q1+1:q1+1+q2] == "Announce" {
-					continue
-				}
-			}
-
-			liveDestMu.Lock()
-			oldC, oldP, oldFound := liveDestClient, liveDestPort, liveDestFound
-			liveDestClient = byte(curClient)
-			liveDestPort = byte(portID)
-			liveDestFound = true
-			liveDestMu.Unlock()
-			if !oldFound || oldC != byte(curClient) || oldP != byte(portID) {
-				log.Printf("midi: detected Ableton Live MIDI input at %d:%d", curClient, portID)
-			}
-			return
+		liveDestMu.Lock()
+		oldC, oldP, oldFound := liveDestClient, liveDestPort, liveDestFound
+		liveDestClient = p.Addr.Client
+		liveDestPort = p.Addr.Port
+		liveDestFound = true
+		liveDestMu.Unlock()
+		if !oldFound || oldC != p.Addr.Client || oldP != p.Addr.Port {
+			log.Printf("midi: detected Ableton Live MIDI input at %d:%d", p.Addr.Client, p.Addr.Port)
 		}
+		return
 	}
 
 	liveDestMu.Lock()
@@ -371,94 +312,19 @@ func onMidiTransportStart() {
 // USB MIDI devices are connected at boot.
 func detectPush3Port() {
 	const push3PortName = "Ableton Push 3 Live Port"
-	ports, err := enumMidiPorts()
-	if err != nil {
+	p, ok := alsaseq.FindByName(push3PortName, alsaseq.CapRead)
+	if !ok {
+		log.Printf("midi: Push 3 Live Port not found — using %d:%d",
+			midiTargetClient, midiTargetPort)
 		return
 	}
-	for _, p := range ports {
-		if p.Name == push3PortName {
-			c, port := byte(p.Client), byte(p.Port)
-			midiTargetMu.Lock()
-			if c != midiTargetClient || port != midiTargetPort {
-				log.Printf("midi: auto-detected Push 3 at %d:%d (was %d:%d)",
-					c, port, midiTargetClient, midiTargetPort)
-				midiTargetClient = c
-				midiTargetPort = port
-			}
-			midiTargetMu.Unlock()
-			return
-		}
+	c, port := p.Addr.Client, p.Addr.Port
+	midiTargetMu.Lock()
+	if c != midiTargetClient || port != midiTargetPort {
+		log.Printf("midi: auto-detected Push 3 at %d:%d (was %d:%d)",
+			c, port, midiTargetClient, midiTargetPort)
+		midiTargetClient = c
+		midiTargetPort = port
 	}
-	log.Printf("midi: Push 3 Live Port not found — using %d:%d",
-		midiTargetClient, midiTargetPort)
-}
-
-type midiPort struct {
-	Client int
-	Port   int
-	Name   string
-}
-
-func enumMidiPorts() ([]midiPort, error) {
-	f, err := os.Open("/proc/asound/seq/clients")
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var ports []midiPort
-	curClient := -1
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-
-		if strings.HasPrefix(trimmed, "Client ") && !strings.HasPrefix(trimmed, "Client info") {
-			rest := strings.TrimPrefix(trimmed, "Client ")
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			id, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			curClient = id
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "Port ") && curClient >= 0 {
-			rest := strings.TrimPrefix(trimmed, "Port ")
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			portID, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			after := rest[colonIdx+1:]
-			parenOpen := strings.LastIndex(after, "(")
-			parenClose := strings.LastIndex(after, ")")
-			if parenOpen < 0 || parenClose <= parenOpen {
-				continue
-			}
-			caps := after[parenOpen+1 : parenClose]
-			if !strings.Contains(caps, "R") {
-				continue
-			}
-			q1 := strings.Index(after, `"`)
-			if q1 < 0 {
-				continue
-			}
-			q2 := strings.Index(after[q1+1:], `"`)
-			if q2 < 0 {
-				continue
-			}
-			portName := after[q1+1 : q1+1+q2]
-			ports = append(ports, midiPort{Client: curClient, Port: portID, Name: portName})
-		}
-	}
-	return ports, scanner.Err()
+	midiTargetMu.Unlock()
 }
