@@ -42,25 +42,7 @@ The install/uninstall scripts are bash scripts — they don't run in PowerShell 
 4. Go to the downloaded folder, e.g.: `cd "/c/Users/<you>/Downloads/push-hack"`
 5. Run `./scripts/install.sh` and follow the on-screen instructions.
 
-**`jq` requirement:** the scripts need `jq` (or a working `python3`/`python`) on PATH to read `hack.json` files. Most Windows machines have neither by default. If you see an error like:
-
-```
-no jq or working python found to read .../hack.json
-```
-
-install `jq` with one of:
-
-```
-winget install jqlang.jq
-```
-```
-choco install jq
-```
-```
-scoop install jq
-```
-
-Close and reopen Git Bash afterwards so it picks up the updated PATH, then verify with `jq --version` before re-running the install script.
+No other tools needed — the scripts don't depend on `jq`, `python`, or anything else outside Git Bash's built-in coreutils.
 
 **Note on `python`/`python3` on Windows:** Windows ships fake `python`/`python3` stubs that just open the Microsoft Store instead of running Python, even if you don't have Python installed. If `command -v python3` seems to "find" something but it fails when run, that's why — installing `jq` sidesteps the issue entirely.
 

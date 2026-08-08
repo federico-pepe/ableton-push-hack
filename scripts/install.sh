@@ -237,30 +237,21 @@ deploy_hack() {
 
     # Copy hack.json (with resolved paths)
     info "  Copying config..."
-    local tmp_json
+    local tmp_json tmp_json2
     tmp_json=$(mktemp)
-    # Inject resolved remote paths into hack.json
-    local py
-    if py=$(find_python); then
-        "${py}" - "${hack_json}" "${PUSH_HACK_REMOTE_DIR}" "${remote_hack_dir}" > "${tmp_json}" <<'PYEOF'
-import json, sys
-with open(sys.argv[1]) as f:
-    d = json.load(f)
-d['_push_hack_dir'] = sys.argv[2]
-d['_hack_dir'] = sys.argv[3]
-# Resolve allowed_roots: replace placeholder with detected user data dir
-roots = d.get('allowed_roots', [])
-resolved = []
-for r in roots:
-    resolved.append(r.replace('${USER_DATA}', sys.argv[2].replace('/push-hack', '')))
-d['allowed_roots'] = resolved
-print(json.dumps(d, indent=2))
-PYEOF
-    else
-        cp "${hack_json}" "${tmp_json}"
-    fi
-    maybe push_copy "${tmp_json}" "${remote_hack_dir}/hack.json"
-    rm -f "${tmp_json}"
+    tmp_json2=$(mktemp)
+    # Inject resolved remote paths after the opening brace (hack.json always
+    # starts with a bare "{" on its own line) — no python/jq needed.
+    {
+        head -n 1 "${hack_json}"
+        printf '  "_push_hack_dir": "%s",\n' "${PUSH_HACK_REMOTE_DIR}"
+        printf '  "_hack_dir": "%s",\n' "${remote_hack_dir}"
+        tail -n +2 "${hack_json}"
+    } > "${tmp_json}"
+    # Resolve allowed_roots placeholder: ${USER_DATA} -> detected user data dir
+    sed "s|\${USER_DATA}|${PUSH_HACK_REMOTE_DIR%/push-hack}|g" "${tmp_json}" > "${tmp_json2}"
+    maybe push_copy "${tmp_json2}" "${remote_hack_dir}/hack.json"
+    rm -f "${tmp_json}" "${tmp_json2}"
 
     # Generate and install service (systemd or init.d)
     install_hack_service "${hack_id}" "${hack_dir}" "${remote_hack_dir}" "${binary_name}" "${port}"
