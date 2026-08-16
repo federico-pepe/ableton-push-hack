@@ -7,6 +7,7 @@ An unofficial extensible hack framework for **Ableton Push 3 Standalone**. Deplo
 This project was inspired by the work done in the [Move Anything](https://github.com/bobbydigitales/move-anything) and [Schwung](https://github.com/charlesvestal/schwung) projects.
 
 * 📕 [Read the Manual](MANUAL.md)
+* 🛟 [Would you like to contribute to the project?](CONTRIBUTING.md)
 * 💬 [Join the Discord Community](https://discord.gg/8y6aYxy9nU) to discuss this project.
 * 🎥 [Watch the demo video on YouTube](https://www.youtube.com/watch?v=fsYWSZ-MSDk)
 
