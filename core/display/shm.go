@@ -1,3 +1,12 @@
+//go:build linux
+
+// Linux-only: push_hook.so's shared-memory framebuf only ever exists on the
+// Push device itself (an on-device Linux hack, deployed over SSH), and this
+// file's syscall.Mmap/PROT_READ/MAP_SHARED constants do not exist on Windows.
+// A cross-platform consumer of this package (e.g. push-tethered-app) must not
+// pull this file in on non-Linux — ToBGR565/FromBGR565 in codec.go are the
+// portable half of this package and live in a separate file for that reason.
+
 package display
 
 // shm.go — mmap bridge to push_hook.so's shared-memory framebuf. Moved from
