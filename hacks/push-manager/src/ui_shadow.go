@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/png"
 	"log"
 	"os"
@@ -35,17 +34,19 @@ import (
 	"syscall"
 	"time"
 
-	xfont "golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
-	"golang.org/x/image/math/fixed"
 	xdraw "golang.org/x/image/draw"
+
+	"github.com/federico-pepe/ableton-push-hack/core/gfx"
+	gtext "github.com/federico-pepe/ableton-push-hack/core/gfx/text"
+	"github.com/federico-pepe/ableton-push-hack/core/gfx/widgets"
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 const (
-	suiW          = 960
-	suiH          = 160
+	suiW          = push3.VisW
+	suiH          = push3.VisH
 	suiTopH       = 18  // top strip height
 	suiBotH       = 18  // bottom strip height
 	suiContentY   = suiTopH                  // content starts at y=18
@@ -133,29 +134,7 @@ func iconNameForEntry(e filePanelEntry) string {
 
 // drawIcon composites a cached icon onto img at pixel (x, y).
 func drawIcon(img *image.NRGBA, icon *image.NRGBA, x, y int) {
-	ib := icon.Bounds()
-	for iy := 0; iy < ib.Dy(); iy++ {
-		for ix := 0; ix < ib.Dx(); ix++ {
-			src := icon.NRGBAAt(ix, iy)
-			if src.A == 0 {
-				continue
-			}
-			px := x + ix
-			py := y + iy
-			if px < 0 || py < 0 || px >= img.Bounds().Dx() || py >= img.Bounds().Dy() {
-				continue
-			}
-			dst := img.NRGBAAt(px, py)
-			// Alpha blend: src over dst
-			a := uint32(src.A)
-			na := 255 - a
-			dst.R = uint8((uint32(src.R)*a + uint32(dst.R)*na) / 255)
-			dst.G = uint8((uint32(src.G)*a + uint32(dst.G)*na) / 255)
-			dst.B = uint8((uint32(src.B)*a + uint32(dst.B)*na) / 255)
-			dst.A = 255
-			img.SetNRGBA(px, py, dst)
-		}
-	}
+	gfx.DrawIcon(img, icon, x, y)
 }
 
 // ── Panel interface ────────────────────────────────────────────────────────────
@@ -179,9 +158,11 @@ type Panel interface {
 	Render(img *image.NRGBA)
 	HandleCC(cc, val uint8)
 	Label() string
-	// BotStrip returns up to 4 action labels for bottom buttons (CC20-23)
+	// SoftBotStrip returns up to 4 soft-buttons for bottom buttons (CC20-23)
 	// and a navigation hint shown on the right side of the bottom strip.
-	BotStrip() ([4]string, string)
+	// State drives styling (see widgets.SoftButtonState) instead of the
+	// label text itself — see discovery/shadow-ui-component-framework.md.
+	SoftBotStrip() ([4]widgets.SoftButton, string)
 	// BotLEDColors returns the LED color (0–127) for each of the 4 bottom buttons.
 	// 0 = off; non-zero = lit at that palette index. Called on panel activation
 	// and whenever state changes (e.g. clipboard filled, USB cursor moved).
@@ -460,8 +441,8 @@ func (s *ShadowUI) renderFrame() {
 
 	// Strips
 	drawPanelTabs(img, shadowUI.panels, panelIdx)
-	labels, hint := panel.BotStrip()
-	drawBotStrip(img, labels, hint)
+	buttons, hint := panel.SoftBotStrip()
+	widgets.DrawBotStrip(img, widgets.Default, suiContentBot, suiW, suiColW, suiBotH, buttons, hint)
 	if eb, ok := panel.(extraBots); ok {
 		drawExtraBots(img, eb.extraBotStrip())
 	}
@@ -478,22 +459,16 @@ func (s *ShadowUI) renderFrame() {
 // ── Drawing helpers ───────────────────────────────────────────────────────────
 
 func fillRect(img *image.NRGBA, x, y, w, h int, c color.NRGBA) {
-	draw.Draw(img, image.Rect(x, y, x+w, y+h), &image.Uniform{c}, image.Point{}, draw.Src)
+	gfx.FillRect(img, x, y, w, h, c)
 }
 
 // drawText draws string at pixel (x, baseline) using basicfont at 1× scale.
-func drawText(img *image.NRGBA, x, baseline int, text string, col color.NRGBA) {
-	d := &xfont.Drawer{
-		Dst:  img,
-		Src:  &image.Uniform{col},
-		Face: basicfont.Face7x13,
-		Dot:  fixed.P(x, baseline),
-	}
-	d.DrawString(text)
+func drawText(img *image.NRGBA, x, baseline int, s string, col color.NRGBA) {
+	gtext.Draw(img, x, baseline, s, col)
 }
 
 // textWidth returns pixel width of s at 1× scale.
-func textWidth(s string) int { return len(s) * 7 }
+func textWidth(s string) int { return gtext.Width(s) }
 
 // drawPanelTabs renders the top 18px strip with panel labels.
 // Active panel gets a white background with black text.
@@ -511,40 +486,6 @@ func drawPanelTabs(img *image.NRGBA, panels []Panel, activeIdx int) {
 			lx := x + (suiColW-textWidth(label))/2
 			drawText(img, lx, suiTopH-4, label, suiGray)
 		}
-	}
-}
-
-// drawBotStrip renders the bottom 18px strip.
-// labels: up to 4 action labels for bottom buttons 1-4 (120px columns each).
-// hint: navigation text shown to the right of the labels.
-func drawBotStrip(img *image.NRGBA, labels [4]string, hint string) {
-	y := suiContentBot
-	fillRect(img, 0, y, suiW, suiBotH, suiDarkGray)
-
-	for i, label := range labels {
-		if label == "" {
-			continue
-		}
-		x := i * suiColW
-		col := suiWhite // default: white for any non-empty label
-		bg := suiDarkGray
-		if label == "CONFIRM?" {
-			bg = suiAccent
-		} else if label == "DELETE" || label == "INTRCPT OFF" || label == "FWRD OFF" {
-			col = color.NRGBA{255, 100, 100, 255} // red for destructive/off states
-		} else if label == "INTRCPT ON" || label == "FWRD ON" {
-			col = color.NRGBA{80, 220, 80, 255} // green for active states
-		}
-		if bg != suiDarkGray {
-			fillRect(img, x, y, suiColW, suiBotH, bg)
-		}
-		lx := x + (suiColW-textWidth(label))/2
-		drawText(img, lx, y+suiBotH-4, label, col)
-	}
-
-	// Navigation hint right of the 4 action columns
-	if hint != "" {
-		drawText(img, 4*suiColW+8, y+suiBotH-4, hint, suiGray)
 	}
 }
 
@@ -567,11 +508,7 @@ func drawExtraBots(img *image.NRGBA, labels []string) {
 
 // truncate truncates s to at most maxRunes runes, appending "…" if cut.
 func truncate(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
-	}
-	return string(runes[:maxRunes-1]) + "…"
+	return gtext.Truncate(s, maxRunes)
 }
 
 // ── FilePanel ─────────────────────────────────────────────────────────────────
@@ -787,8 +724,8 @@ func (fp *FilePanel) setStatus(msg string) {
 	fp.statusTime = time.Now()
 }
 
-// BotStrip returns context-sensitive bottom button labels and nav hint.
-func (fp *FilePanel) BotStrip() ([4]string, string) {
+// SoftBotStrip returns context-sensitive bottom buttons and nav hint.
+func (fp *FilePanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	fp.mu.Lock()
 	clipboard := fp.clipboard
 	deleteConfirm := fp.deleteConfirm
@@ -799,20 +736,20 @@ func (fp *FilePanel) BotStrip() ([4]string, string) {
 	}
 	fp.mu.Unlock()
 
-	var labels [4]string
-	labels[0] = "COPY"
+	var buttons [4]widgets.SoftButton
+	buttons[0] = widgets.SoftButton{Label: "COPY"}
 	if clipboard != "" {
-		labels[1] = "PASTE"
+		buttons[1] = widgets.SoftButton{Label: "PASTE"}
 	}
 	if deleteConfirm {
-		labels[2] = "CONFIRM?"
+		buttons[2] = widgets.SoftButton{Label: "CONFIRM?", State: widgets.SoftConfirm}
 	} else {
-		labels[2] = "DELETE"
+		buttons[2] = widgets.SoftButton{Label: "DELETE", State: widgets.SoftOff}
 	}
 	if isUSBCursor {
-		labels[3] = "EJECT"
+		buttons[3] = widgets.SoftButton{Label: "EJECT"}
 	}
-	return labels, ""
+	return buttons, ""
 }
 
 // BotLEDColors returns LED colors for the 4 bottom buttons reflecting current state.
@@ -974,72 +911,35 @@ func (fp *FilePanel) Render(img *image.NRGBA) {
 	}
 	fp.mu.Unlock()
 
-	// Breadcrumb / status bar just below top strip
-	const crumbH = 13
-	crumbY := suiContentY
-	crumbBg := color.NRGBA{20, 20, 20, 255}
-	crumbCol := color.NRGBA{200, 200, 200, 255}
-	crumbText := truncate(breadcrumb, 100)
-	if statusText != "" {
-		crumbBg = color.NRGBA{0, 60, 30, 255} // dark green tint for status
-		crumbCol = color.NRGBA{100, 255, 150, 255}
-		crumbText = statusText
-	}
-	fillRect(img, 0, crumbY, suiW, crumbH, crumbBg)
-	drawText(img, 4, crumbY+crumbH-2, truncate(crumbText, 120), crumbCol)
-
-	// File list rows below breadcrumb
-	listY := crumbY + crumbH
-	const rowH = fileRowH
-	visRows := (suiContentBot - listY) / rowH
-
-	if len(entries) == 0 {
-		drawText(img, 8, listY+20, "(empty)", suiGray)
-		return
-	}
-
-	for i := 0; i < visRows; i++ {
-		idx := scroll + i
-		if idx >= len(entries) {
-			break
+	rows := make([]widgets.ListRow, len(entries))
+	for i, e := range entries {
+		bg, textCol := widgets.Default.Black, widgets.Default.White
+		if e.isDir {
+			textCol = widgets.Default.DirColor
 		}
-		e := entries[idx]
-		y := listY + i*rowH
-
-		var bg, textCol color.NRGBA
-		if idx == cursor {
-			bg = suiSelect
-			textCol = suiWhite
-		} else if e.isDir {
-			bg = suiBlack
-			textCol = suiDirColor
-		} else {
-			bg = suiBlack
-			textCol = suiWhite
-		}
-		fillRect(img, 0, y, suiW-6, rowH, bg)
-		textX := 8
+		var icon *image.NRGBA
 		if iconName := iconNameForEntry(e); iconName != "" {
-			if icon := loadSuiIcon(iconName); icon != nil {
-				iconY := y + (rowH-suiIconH)/2
-				drawIcon(img, icon, 2, iconY)
-				textX = 2 + icon.Bounds().Dx() + 3
-			}
+			icon = loadSuiIcon(iconName)
 		}
-		drawText(img, textX, y+rowH-3, truncate(e.name, 110), textCol)
-	}
-
-	// Scrollbar
-	total := len(entries)
-	if total > visRows {
-		barH := suiContentH * visRows / total
-		if barH < 4 {
-			barH = 4
+		rows[i] = widgets.ListRow{
+			Icon:    icon,
+			Text:    gtext.Truncate(e.name, 110),
+			Bg:      bg,
+			TextCol: textCol,
 		}
-		barY := listY + (suiContentBot-listY)*scroll/total
-		fillRect(img, suiW-4, listY, 4, suiContentBot-listY, suiDarkGray)
-		fillRect(img, suiW-4, barY, 4, barH, suiGray)
 	}
+	emptyText := ""
+	if len(entries) == 0 {
+		emptyText = "(empty)"
+	}
+	widgets.RenderList(img, widgets.Default, widgets.ListView{
+		Rows:       rows,
+		Cursor:     cursor,
+		Scroll:     scroll,
+		Breadcrumb: gtext.Truncate(breadcrumb, 100),
+		Status:     statusText,
+		EmptyText:  emptyText,
+	}, suiContentY, suiW, fileRowH, suiContentBot)
 }
 
 // ── StatsPanel ────────────────────────────────────────────────────────────────
@@ -1055,8 +955,8 @@ type StatsPanel struct {
 func newStatsPanel() *StatsPanel { return &StatsPanel{} }
 func (sp *StatsPanel) Label() string { return "STATS" }
 func (sp *StatsPanel) HandleCC(cc, val uint8) {} // no navigation
-func (sp *StatsPanel) BotStrip() ([4]string, string) {
-	return [4]string{}, ""
+func (sp *StatsPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
+	return [4]widgets.SoftButton{}, ""
 }
 func (sp *StatsPanel) BotLEDColors() [4]uint8 { return [4]uint8{} } // no actions on Stats
 
@@ -1108,19 +1008,11 @@ func (sp *StatsPanel) Render(img *image.NRGBA) {
 		lines = append(lines, line{"Hotspot", stats.HotspotPassword})
 	}
 
-	const rowH = 20
-	const labelW = 80
-	y := suiContentY + 6
-	for _, l := range lines {
-		if y+rowH > suiContentBot {
-			break
-		}
-		drawText(img, 8, y+rowH-4, l.label, suiGray)
-		drawText(img, 8+labelW, y+rowH-4, l.value, suiWhite)
-		// Thin separator line
-		fillRect(img, 0, y+rowH-1, suiW, 1, suiDarkGray)
-		y += rowH
+	rows := make([]widgets.KVRow, len(lines))
+	for i, l := range lines {
+		rows[i] = widgets.KVRow{Label: l.label, Value: l.value, ValueCol: widgets.Default.White}
 	}
+	widgets.DrawKVRows(img, widgets.Default, suiContentY+6, suiW, 20, 80, suiContentBot, rows)
 }
 
 // ── MidiPanel ─────────────────────────────────────────────────────────────────
@@ -1216,29 +1108,28 @@ func (mp *MidiPanel) toggleForward() {
 	go updateBotLEDs(mp)
 }
 
-func (mp *MidiPanel) BotStrip() ([4]string, string) {
+func (mp *MidiPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	if mp.monitor {
 		// CHPRES (button 5) is drawn via extraBots; MIDI tab re-press exits.
-		return [4]string{"SENS", "SYSEX", "CC", "NOTE"}, ""
+		return [4]widgets.SoftButton{{Label: "SENS"}, {Label: "SYSEX"}, {Label: "CC"}, {Label: "NOTE"}}, ""
 	}
 	interceptOn := midiInterceptEnabled()
 	midiForwardMu.RLock()
 	forwardOn := midiForwardEnabled
 	midiForwardMu.RUnlock()
 
-	interceptLabel := "INTERCEPT"
-	if interceptOn {
-		interceptLabel = "INTRCPT ON"
-	} else {
-		interceptLabel = "INTRCPT OFF"
+	stateButton := func(onLabel, offLabel string, on bool) widgets.SoftButton {
+		if on {
+			return widgets.SoftButton{Label: onLabel, State: widgets.SoftOn}
+		}
+		return widgets.SoftButton{Label: offLabel, State: widgets.SoftOff}
 	}
-	forwardLabel := "FORWARD"
-	if forwardOn {
-		forwardLabel = "FWRD ON"
-	} else {
-		forwardLabel = "FWRD OFF"
-	}
-	return [4]string{interceptLabel, forwardLabel, "MONITOR", ""}, ""
+	return [4]widgets.SoftButton{
+		stateButton("INTRCPT ON", "INTRCPT OFF", interceptOn),
+		stateButton("FWRD ON", "FWRD OFF", forwardOn),
+		{Label: "MONITOR"},
+		{},
+	}, ""
 }
 
 // BotLEDColors:
@@ -1366,38 +1257,23 @@ func (mp *MidiPanel) Render(img *image.NRGBA) {
 		mp.renderMonitor(img)
 		return
 	}
-	const rowH = 28
-	const labelW = 120
 	interceptOn := midiInterceptEnabled()
 	midiForwardMu.RLock()
 	forwardOn := midiForwardEnabled
 	midiForwardMu.RUnlock()
 
-	type row struct {
-		label   string
-		enabled bool
-	}
-	rows := []row{
-		{"Intercept", interceptOn},
-		{"Forward", forwardOn},
-	}
-
-	y := suiContentY + 10
-	for _, r := range rows {
-		if y+rowH > suiContentBot {
-			break
+	stateRow := func(label string, on bool) widgets.KVRow {
+		val, col := "OFF", widgets.Default.OffColor
+		if on {
+			val, col = "ON", widgets.Default.OnColor
 		}
-		stateStr := "OFF"
-		stateCol := color.NRGBA{255, 80, 80, 255} // red
-		if r.enabled {
-			stateStr = "ON"
-			stateCol = color.NRGBA{80, 220, 80, 255} // green
-		}
-		drawText(img, 8, y+rowH-6, r.label, suiGray)
-		drawText(img, 8+labelW, y+rowH-6, stateStr, stateCol)
-		fillRect(img, 0, y+rowH-1, suiW, 1, suiDarkGray)
-		y += rowH
+		return widgets.KVRow{Label: label, Value: val, ValueCol: col}
 	}
+	rows := []widgets.KVRow{
+		stateRow("Intercept", interceptOn),
+		stateRow("Forward", forwardOn),
+	}
+	widgets.DrawKVRows(img, widgets.Default, suiContentY+10, suiW, 28, 120, suiContentBot, rows)
 }
 
 // ── BrowserPanel ────────────────────────────────────────────────────────────
@@ -1662,14 +1538,14 @@ func (bp *BrowserPanel) filterLabel() string {
 	return filterCycle[bp.filterIdx].Label
 }
 
-func (bp *BrowserPanel) BotStrip() ([4]string, string) {
+func (bp *BrowserPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 	if bp.search {
-		return [4]string{"", "DONE", "", ""}, "L/R move - CTR pick"
+		return [4]widgets.SoftButton{{}, {Label: "DONE"}, {}, {}}, "L/R move - CTR pick"
 	}
 	hint := fmt.Sprintf("%s - %d", bp.filterLabel(), len(bp.entries))
-	return [4]string{"LOAD", "SEARCH", "FILTER", "REFRESH"}, hint
+	return [4]widgets.SoftButton{{Label: "LOAD"}, {Label: "SEARCH"}, {Label: "FILTER"}, {Label: "REFRESH"}}, hint
 }
 
 func (bp *BrowserPanel) BotLEDColors() [4]uint8 {
@@ -1731,68 +1607,32 @@ func (bp *BrowserPanel) Render(img *image.NRGBA) {
 		return
 	}
 
-	// Breadcrumb / status
-	const crumbH = 13
-	crumbY := suiContentY
-	crumbBg := color.NRGBA{20, 20, 20, 255}
-	crumbCol := color.NRGBA{200, 200, 200, 255}
 	crumbText := fmt.Sprintf("[%s]  %d items", filterLabel, len(entries))
 	if query != "" {
 		crumbText = fmt.Sprintf("[%s]  q=\"%s\"  %d", filterLabel, query, len(entries))
 	}
-	if statusText != "" {
-		crumbBg = color.NRGBA{0, 60, 30, 255}
-		crumbCol = color.NRGBA{100, 255, 150, 255}
-		crumbText = statusText
+
+	rows := make([]widgets.ListRow, len(entries))
+	for i, e := range entries {
+		rows[i] = widgets.ListRow{
+			Icon:    loadSuiIcon(iconNameForPreset(e)),
+			Text:    gtext.Truncate(e.Name, 108),
+			Bg:      widgets.Default.Black,
+			TextCol: widgets.Default.White,
+		}
 	}
-	fillRect(img, 0, crumbY, suiW, crumbH, crumbBg)
-	drawText(img, 4, crumbY+crumbH-2, truncate(crumbText, 120), crumbCol)
-
-	listY := crumbY + crumbH
-	const rowH = fileRowH
-	visRows := (suiContentBot - listY) / rowH
-
+	emptyText := ""
 	if len(entries) == 0 {
-		drawText(img, 8, listY+20, "(no items - press REFRESH)", suiGray)
-		return
+		emptyText = "(no items - press REFRESH)"
 	}
-
-	for i := 0; i < visRows; i++ {
-		idx := scroll + i
-		if idx >= len(entries) {
-			break
-		}
-		e := entries[idx]
-		y := listY + i*rowH
-		var bg, textCol color.NRGBA
-		if idx == cursor {
-			bg = suiSelect
-			textCol = suiWhite
-		} else {
-			bg = suiBlack
-			textCol = suiWhite
-		}
-		fillRect(img, 0, y, suiW-6, rowH, bg)
-		textX := 8
-		if icon := loadSuiIcon(iconNameForPreset(e)); icon != nil {
-			iconY := y + (rowH-suiIconH)/2
-			drawIcon(img, icon, 2, iconY)
-			textX = 2 + icon.Bounds().Dx() + 3
-		}
-		drawText(img, textX, y+rowH-3, truncate(e.Name, 108), textCol)
-	}
-
-	// Scrollbar
-	total := len(entries)
-	if total > visRows {
-		barH := (suiContentBot - listY) * visRows / total
-		if barH < 4 {
-			barH = 4
-		}
-		barY := listY + (suiContentBot-listY)*scroll/total
-		fillRect(img, suiW-4, listY, 4, suiContentBot-listY, suiDarkGray)
-		fillRect(img, suiW-4, barY, 4, barH, suiGray)
-	}
+	widgets.RenderList(img, widgets.Default, widgets.ListView{
+		Rows:       rows,
+		Cursor:     cursor,
+		Scroll:     scroll,
+		Breadcrumb: crumbText,
+		Status:     statusText,
+		EmptyText:  emptyText,
+	}, suiContentY, suiW, fileRowH, suiContentBot)
 }
 
 func (bp *BrowserPanel) renderKeyboard(img *image.NRGBA, query string, matches, kbCursor int) {

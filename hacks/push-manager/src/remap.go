@@ -7,15 +7,17 @@ package main
 // All logic lives here + a single call site in processFixedEvent (midi.go); the
 // LD_PRELOAD hook cannot transform MIDI, only neutralize it.
 //
-// Sending reuses the existing output fd (midiOutFd) via writeSeqEvent with an
-// explicit destination — no new ALSA port is created.
+// Sending reuses the existing output port (midiOut) via alsaseq.Client with
+// an explicit destination — no new ALSA port is created.
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // MidiMapping is one source→output rule. Keyed in remapMappings by srcKey().
@@ -47,44 +49,6 @@ func srcKey(srcType string, ch, num uint8) string {
 	return fmt.Sprintf("%s:%d:%d", srcType, ch, num)
 }
 
-// isEncoderCC reports whether a CC number is a Push 3 relative encoder
-// (encoders 1–8 = CC 71–78, volume wheel = CC 79, tempo wheel = CC 14).
-func isEncoderCC(cc uint8) bool {
-	return (cc >= 71 && cc <= 79) || cc == 14
-}
-
-// decodeRel converts a Push relative-encoder CC value to a signed delta.
-// Two's-complement encoding: 1..63 positive, 65..127 negative (127 = -1).
-// NOTE: verify rotation direction on device; flip sign here if inverted.
-func decodeRel(v uint8) int {
-	if v < 64 {
-		return int(v)
-	}
-	return int(v) - 128
-}
-
-// scaleVal maps an incoming 0–127 value into [lo,hi].
-func scaleVal(v, lo, hi uint8) uint8 {
-	if hi >= lo {
-		return uint8(int(lo) + int(v)*(int(hi)-int(lo))/127)
-	}
-	// inverted range: hi < lo
-	return uint8(int(lo) - int(v)*(int(lo)-int(hi))/127)
-}
-
-func clampInt(v, lo, hi int) int {
-	if lo > hi {
-		lo, hi = hi, lo
-	}
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
-}
-
 // interceptOn reports whether the MIDI intercept (midiflt) is active.
 func interceptOn() bool {
 	filt := ensureMidiFilt()
@@ -114,12 +78,12 @@ func applyRemap(srcType string, ch, num, val uint8) bool {
 	var out uint8
 	release := false
 	if m.Relative {
-		acc := clampInt(remapAccum[key]+decodeRel(val), int(m.OutMin), int(m.OutMax))
+		acc := push3.ClampInt(remapAccum[key]+push3.DecodeRel(val), int(m.OutMin), int(m.OutMax))
 		remapAccum[key] = acc
 		out = uint8(acc)
 	} else {
 		release = val == 0
-		out = scaleVal(val, m.OutMin, m.OutMax)
+		out = push3.ScaleVal(val, m.OutMin, m.OutMax)
 	}
 	remapMu.Unlock()
 
@@ -143,36 +107,24 @@ func applyRemap(srcType string, ch, num, val uint8) bool {
 // sendSeqCCTo sends a MIDI CC event to an explicit destination port.
 func sendSeqCCTo(dstClient, dstPort, channel, cc byte, value int32) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-	data := make([]byte, 12)
-	data[0] = channel
-	binary.LittleEndian.PutUint32(data[4:], uint32(cc))
-	binary.LittleEndian.PutUint32(data[8:], uint32(value))
-	return writeSeqEvent(fd, seqEvController, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendCC(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, cc, value)
 }
 
 // sendSeqNoteTo sends a MIDI Note On event to an explicit destination port.
 // velocity=0 acts as Note Off.
 func sendSeqNoteTo(dstClient, dstPort, channel, note, velocity byte) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-	data := make([]byte, 12)
-	data[0] = channel
-	data[1] = note
-	data[2] = velocity
-	return writeSeqEvent(fd, seqEvNoteOn, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendNote(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, note, velocity)
 }
 
 // ── Persistence hooks (called from loadMidiPersist / saveMidiPersist) ────────

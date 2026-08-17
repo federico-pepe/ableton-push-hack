@@ -27,8 +27,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `GET` | `/api/display/status` | Display hook status: `{connected, mode, frame_seq, width, height}` |
 | `POST` | `/api/display/mode` | Set display mode. JSON body: `{"mode": 0\|1\|2}` (0=passthrough, 1=bar overlay, 2=custom). Entering mode 2 clears framebuf to black — no stale pixels from a previous session. |
 | `POST` | `/api/display/image` | Upload image to display. Multipart form field `image` (PNG or JPEG). Scales to 960×160. Does **not** auto-set mode — caller must set mode=2 explicitly before sending frames. |
-| `POST` | `/api/display/testpattern` | Paint calibration color bars, auto-sets mode=2. |
-| `GET` | `/api/display/screenshot` | PNG of the current framebuf (960×160). Reads shm back (`shmReadFrame`) and encodes via `bgr565ToImage`+`png.Encode`. Only reflects **push-manager-owned** frames (Shadow UI, OSD, image upload, test pattern) — the native Ableton UI is never copied into shm in passthrough, so it can't be captured. `X-Display-Mode` response header (`0`/`1`/`2`) lets the client warn when not in takeover (frame is stale). `Content-Disposition: attachment; filename="push-screenshot.png"`. Returns 503 if the hook isn't connected. |
+| `GET` | `/api/display/screenshot` | PNG of the current framebuf (960×160). Reads shm back (`shmReadFrame`) and encodes via `bgr565ToImage`+`png.Encode`. Only reflects **push-manager-owned** frames (Shadow UI, OSD, image upload) — the native Ableton UI is never copied into shm in passthrough, so it can't be captured. `X-Display-Mode` response header (`0`/`1`/`2`) lets the client warn when not in takeover (frame is stale). `Content-Disposition: attachment; filename="push-screenshot.png"`. Returns 503 if the hook isn't connected. |
 | `GET` | `/api/assets/<path>` | Proxy Push's own PNG assets from `/opt/push3/products/push3/assets/Images/`. Cached 24h. |
 | `GET` | `/api/status` | Health check + config summary |
 | `GET` | `/api/midi/events?n=<N>` | Return last N MIDI events from ring buffer (default 50). JSON: `{connected, total, write_idx, events[]}` |
@@ -227,7 +226,7 @@ Accessed via "Display" button in header. Tab-based layout:
 - Image upload section (drag-drop or tap; only visible in Image mode): upload any PNG/JPEG, scaled to 960×160. Caller must set mode=2 explicitly before uploading — the endpoint no longer auto-sets mode.
 - When entering Image, Video, or Draw mode (mode=2): server always clears framebuf to black first — no stale pixels from a previous session.
 - Display mode is reset to 0 (passthrough) by push-manager on every shm connect/reconnect — prevents stale mode=2 surviving push-manager restarts.
-- **📷 Screenshot** button (in the Preview label row): `GET /api/display/screenshot` → inline PNG preview + **↓ Download PNG** button. Captures whatever push-manager currently owns on the display (Shadow UI, OSD, uploaded image, test pattern). If the display isn't in takeover (`X-Display-Mode` ≠ 2), a toast warns the frame may be stale — the native Ableton UI can't be captured this way.
+- **📷 Screenshot** button (in the Preview label row): `GET /api/display/screenshot` → inline PNG preview + **↓ Download PNG** button. Captures whatever push-manager currently owns on the display (Shadow UI, OSD, uploaded image). If the display isn't in takeover (`X-Display-Mode` ≠ 2), a toast warns the frame may be stale — the native Ableton UI can't be captured this way.
 
 **Video mode:**
 - UI-only mode: sets shm mode=2 (same as Image), but shows video controls instead of an upload drop zone
@@ -369,7 +368,7 @@ The correct path is the same as `RtMidi Output Client` (client 130): open `/dev/
 
 ### Implementation (`midi.go`)
 
-`initMidiOut()` opens a **separate** persistent fd (not shared with the reader, which gets closed on subscription changes). Stores `midiOutFd`, `midiOutClient`, `midiOutPort`. The output port is named **Push Manager**; the receive port is named **Push Manager In**.
+`initMidiOut()` opens a **separate** persistent `core/alsaseq.Client` (not shared with the reader, which gets closed on subscription changes), stored in `midiOut`. The output port is named **Push Manager**; the receive port is named **Push Manager In**.
 
 ```go
 // Light up first top-left button (CC 102) with palette index 127 (red)

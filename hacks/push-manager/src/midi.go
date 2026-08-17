@@ -22,7 +22,6 @@ package main
 //   GET /api/midi/stream            — SSE live stream
 
 import (
-	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -30,98 +29,16 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
+
+	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
-// ── ALSA sequencer constants ───────────────────────────────────────────────
-
-const (
-	seqDev = "/dev/snd/seq"
-
-	// ioctl codes: _IOR/_IOW/_IOWR('S', nr, sizeof_struct)
-	//   _IOR  = (2<<30) | (size<<16) | ('S'<<8) | nr
-	//   _IOW  = (1<<30) | (size<<16) | ('S'<<8) | nr
-	//   _IOWR = (3<<30) | (size<<16) | ('S'<<8) | nr
-	ioctlClientID      = uintptr(0x80045301) // _IOR('S',0x01, int32=4)
-	ioctlCreatePort    = uintptr(0xC0A85320) // _IOWR('S',0x20, portInfo=168)
-	ioctlSubscribePort = uintptr(0x40505330) // _IOW('S', 0x30, subscribe=80)
-
-	// snd_seq_port_info byte offsets (168 bytes total, x86-64):
-	//   0:  addr.client (1B), addr.port (1B)
-	//   2:  name[64]
-	//  66:  (2 bytes padding for uint32 alignment)
-	//  68:  capability (uint32)
-	//  72:  type (uint32)
-	//  76–95: midi_channels/voices/synth_voices/read_use/write_use (5×int32)
-	//  96:  kernel ptr (8B, 8-byte aligned)
-	// 104:  flags (uint32)
-	// 108:  time_queue (1B)
-	// 109:  reserved[59]
-	portOffAddrClient  = 0
-	portOffAddrPort    = 1
-	portOffName        = 2
-	portOffCapability  = 68
-	portOffType        = 72
-	portInfoSize       = 168
-
-	// Port capability bits (snd_seq_port_info.capability)
-	capRead      = uint32(0x01) // can send events out (readable by others)
-	capWrite     = uint32(0x02) // can receive events (writable)
-	capSubsRead  = uint32(0x20) // allow read subscriptions
-	capSubsWrite = uint32(0x40) // allow write subscriptions
-
-	// Direct-delivery queue: bypass sequencer queue, deliver immediately.
-	seqQueueDirect = byte(253) // SNDRV_SEQ_QUEUE_DIRECT
-
-	// Port type bits
-	portTypeMidi = uint32(1 << 1)  // MIDI generic
-	portTypeApp  = uint32(1 << 20) // application
-
-	// snd_seq_port_subscribe byte offsets (80 bytes):
-	//   0: sender.client (1B), sender.port (1B)
-	//   2: dest.client (1B), dest.port (1B)
-	//   4: voices (uint32)
-	//   8: flags (uint32)
-	//  12: queue (1B), pad[3]
-	//  16: reserved[64]
-	subOffSenderClient = 0
-	subOffSenderPort   = 1
-	subOffDestClient   = 2
-	subOffDestPort     = 3
-	subSize            = 80
-
-	// snd_seq_event layout (28 bytes):
-	//   0: type (1B), flags (1B), tag (1B), queue (1B)
-	//   4: timestamp union (8B)
-	//  12: src.client (1B), src.port (1B), dst.client (1B), dst.port (1B)
-	//  16: data union (12B)
-	seqEvOffType  = 0
-	seqEvOffFlags = 1
-	seqEvOffData  = 16
-	seqEventSize  = 28
-
-	seqFlagVarLen = uint8(1 << 2) // variable-length event
-
-	// ALSA sequencer event types
-	seqEvNoteOn     = uint8(6)
-	seqEvNoteOff    = uint8(7)
-	seqEvKeyPress   = uint8(8)   // poly aftertouch
-	seqEvController = uint8(10)  // CC, pitch bend (all control events)
-	seqEvPgmChange  = uint8(11)
-	seqEvChanPress  = uint8(12)  // channel aftertouch
-	seqEvPitchBend  = uint8(13)
-	seqEvSensing    = uint8(40)  // active sensing
-	seqEvSysEx      = uint8(130) // variable length
-
-	// Push 3 ALSA seq address defaults (kernel client 16 = first sound card).
-	// Shift if external MIDI devices are connected at boot — use port selector.
-	push3ClientDefault = byte(16)
-	push3PortDefault   = byte(0) // "Ableton Push 3 Live Port"
-)
+// ALSA seq kernel ABI constants (ioctl numbers, struct offsets, event
+// types) live in core/alsaseq — see that package for the source of truth.
 
 // ── Mutable subscription target + cancellation ────────────────────────────
 
@@ -131,9 +48,9 @@ const (
 // Protected by midiTargetMu.
 var (
 	midiTargetMu     sync.Mutex
-	midiTargetClient = push3ClientDefault
-	midiTargetPort   = push3PortDefault
-	midiSeqFd        = -1  // -1 = not connected
+	midiTargetClient = alsaseq.Push3ClientDefault
+	midiTargetPort   = alsaseq.Push3PortDefault
+	midiSeqFd        = -1   // -1 = not connected
 	midiAutoDetect   = true // false once user manually selects a port
 )
 
@@ -145,10 +62,8 @@ var (
 // direct-addressed events.
 
 var (
-	midiOutMu     sync.Mutex
-	midiOutFd     = -1
-	midiOutClient = byte(0)
-	midiOutPort   = byte(0)
+	midiOutMu sync.Mutex
+	midiOut   *alsaseq.Client // nil if not initialized
 )
 
 // ── MIDI forwarding ──────────────────────────────────────────────────────────
@@ -188,41 +103,22 @@ func waitForBootSettle() {
 }
 
 func initMidiOut() {
-	fd, err := syscall.Open(seqDev, syscall.O_RDWR|syscall.O_CLOEXEC, 0)
+	c, err := alsaseq.Open()
 	if err != nil {
-		log.Printf("midi_out: open %s: %v (LED control disabled)", seqDev, err)
+		log.Printf("midi_out: %v (LED control disabled)", err)
 		return
 	}
-
-	var clientID int32
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlClientID, uintptr(unsafe.Pointer(&clientID))); errno != 0 {
-		syscall.Close(fd)
-		log.Printf("midi_out: CLIENT_ID ioctl: %v (LED control disabled)", errno)
+	if _, err := c.CreatePort("Push Manager", alsaseq.CapRead|alsaseq.CapSubsRead, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
+		c.Close()
+		log.Printf("midi_out: %v (LED control disabled)", err)
 		return
 	}
-
-	portInfo := make([]byte, portInfoSize)
-	portInfo[portOffAddrClient] = byte(clientID)
-	copy(portInfo[portOffName:], "Push Manager\x00")
-	binary.LittleEndian.PutUint32(portInfo[portOffCapability:], capRead|capSubsRead)
-	binary.LittleEndian.PutUint32(portInfo[portOffType:], portTypeMidi|portTypeApp)
-
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlCreatePort, uintptr(unsafe.Pointer(&portInfo[0]))); errno != 0 {
-		syscall.Close(fd)
-		log.Printf("midi_out: CREATE_PORT ioctl: %v (LED control disabled)", errno)
-		return
-	}
-	ourPort := portInfo[portOffAddrPort]
 
 	midiOutMu.Lock()
-	midiOutFd = fd
-	midiOutClient = byte(clientID)
-	midiOutPort = ourPort
+	midiOut = c
 	midiOutMu.Unlock()
 
-	log.Printf("midi_out: ready (client %d port %d)", clientID, ourPort)
+	log.Printf("midi_out: ready (client %d port %d)", c.Addr().Client, c.Addr().Port)
 }
 
 // sendSeqCC sends a MIDI CC event directly to the Push 3 ALSA seq port.
@@ -239,84 +135,39 @@ func push3Dest() (client, port byte) {
 // channel is 0-indexed (0 = MIDI ch 1). cc and value are 0–127.
 func sendSeqCC(channel, cc byte, value int32) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-
 	dstClient, dstPort := push3Dest()
-
-	// snd_seq_ev_ctrl: channel(1B) + unused(3B) + param(uint32 LE) + value(int32 LE)
-	data := make([]byte, 12)
-	data[0] = channel
-	binary.LittleEndian.PutUint32(data[4:], uint32(cc))
-	binary.LittleEndian.PutUint32(data[8:], uint32(value))
-
-	return writeSeqEvent(fd, seqEvController, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendCC(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, cc, value)
 }
 
 // sendSeqNote sends a MIDI Note On event directly to the Push 3 ALSA seq port.
 // channel 0-indexed, note and velocity 0–127. velocity=0 acts as Note Off.
 func sendSeqNote(channel, note, velocity byte) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-
 	dstClient, dstPort := push3Dest()
-
-	// snd_seq_ev_note: channel(1B) + note(1B) + vel(1B) + off_vel(1B) + duration(uint32 LE)
-	data := make([]byte, 12)
-	data[0] = channel
-	data[1] = note
-	data[2] = velocity
-
-	return writeSeqEvent(fd, seqEvNoteOn, srcClient, srcPort, dstClient, dstPort, data)
+	return c.SendNote(alsaseq.Addr{Client: dstClient, Port: dstPort}, channel, note, velocity)
 }
 
 // sendSeqSysEx sends a variable-length SysEx event to the Push 3 ALSA seq port.
 // sysex must include the leading F0 and trailing F7.
 func sendSeqSysEx(sysex []byte) error {
 	midiOutMu.Lock()
-	fd := midiOutFd
-	srcClient := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return fmt.Errorf("midi_out not initialized")
 	}
-
 	dstClient, dstPort := push3Dest()
-
-	// Variable-length snd_seq_event: 28-byte header + inline SysEx bytes.
-	// flags |= seqFlagVarLen; data[0..3] = ext.len (uint32 LE); data follows.
-	ev := make([]byte, seqEventSize+len(sysex))
-	ev[seqEvOffType]  = seqEvSysEx
-	ev[seqEvOffFlags] = seqFlagVarLen
-	ev[2] = 0              // tag
-	ev[3] = seqQueueDirect // deliver immediately
-	// bytes 4–11: timestamp = 0 (ignored for QUEUE_DIRECT)
-	ev[12] = srcClient
-	ev[13] = srcPort
-	ev[14] = dstClient
-	ev[15] = dstPort
-	binary.LittleEndian.PutUint32(ev[seqEvOffData:], uint32(len(sysex))) // ext.len
-	copy(ev[seqEventSize:], sysex)
-
-	midiOutMu.Lock()
-	defer midiOutMu.Unlock()
-	if midiOutFd != fd {
-		return fmt.Errorf("midi_out fd invalidated")
-	}
-	_, err := syscall.Write(fd, ev)
-	return err
+	return c.SendSysEx(alsaseq.Addr{Client: dstClient, Port: dstPort}, sysex)
 }
 
 // ── LED Color Palette query ────────────────────────────────────────────────
@@ -403,29 +254,6 @@ drained:
 	return entries, nil
 }
 
-// writeSeqEvent constructs and writes a single 28-byte snd_seq_event to fd.
-func writeSeqEvent(fd int, evType, srcClient, srcPort, dstClient, dstPort byte, data []byte) error {
-	ev := make([]byte, seqEventSize)
-	ev[0] = evType
-	ev[1] = 0              // flags: tick timestamp, absolute
-	ev[2] = 0              // tag
-	ev[3] = seqQueueDirect // deliver immediately, no queue
-	// bytes 4–11: timestamp = 0 (ignored for QUEUE_DIRECT)
-	ev[12] = srcClient
-	ev[13] = srcPort
-	ev[14] = dstClient
-	ev[15] = dstPort
-	copy(ev[16:], data)
-
-	midiOutMu.Lock()
-	defer midiOutMu.Unlock()
-	if midiOutFd != fd {
-		return fmt.Errorf("midi_out fd invalidated")
-	}
-	_, err := syscall.Write(fd, ev)
-	return err
-}
-
 // forwardSeqEvent relays a fixed-length ALSA seq event to the configured forward port.
 // data is the 12-byte data union from the original event.
 func forwardSeqEvent(evType uint8, data []byte) {
@@ -438,14 +266,12 @@ func forwardSeqEvent(evType uint8, data []byte) {
 		return
 	}
 	midiOutMu.Lock()
-	fd := midiOutFd
-	src := midiOutClient
-	srcPort := midiOutPort
+	c := midiOut
 	midiOutMu.Unlock()
-	if fd < 0 {
+	if c == nil {
 		return
 	}
-	writeSeqEvent(fd, evType, src, srcPort, dstClient, dstPort, data) //nolint:errcheck
+	c.WriteEvent(evType, alsaseq.Addr{Client: dstClient, Port: dstPort}, data) //nolint:errcheck
 }
 
 // POST /api/midi/led — set a button/pad LED colour on Push 3.
@@ -550,7 +376,7 @@ func handleMidiLedConfig(w http.ResponseWriter, r *http.Request) {
 		ledConfigMu.Unlock()
 		jsonResponse(w, map[string]interface{}{
 			"configs":      out,
-			"named_colors": namedColors,
+			"named_colors": push3.NamedColors,
 		})
 
 	case http.MethodPost:
@@ -752,26 +578,21 @@ func midiAppend(ev midiEventJSON) {
 // (e.g. 20 when a USB MIDI device is connected at boot) is found automatically.
 func detectPush3Port() {
 	const push3PortName = "Ableton Push 3 Live Port"
-	ports, err := enumMidiPorts(false)
-	if err != nil {
+	p, ok := alsaseq.FindByName(push3PortName, alsaseq.CapRead)
+	if !ok {
+		log.Printf("midi: Push 3 Live Port not found in /proc/asound/seq/clients — using %d:%d",
+			midiTargetClient, midiTargetPort)
 		return
 	}
-	for _, p := range ports {
-		if p.Name == push3PortName {
-			c, port := byte(p.Client), byte(p.Port)
-			midiTargetMu.Lock()
-			if c != midiTargetClient || port != midiTargetPort {
-				log.Printf("midi: auto-detected Push 3 at %d:%d (was %d:%d)",
-					c, port, midiTargetClient, midiTargetPort)
-				midiTargetClient = c
-				midiTargetPort = port
-			}
-			midiTargetMu.Unlock()
-			return
-		}
+	c, port := p.Addr.Client, p.Addr.Port
+	midiTargetMu.Lock()
+	if c != midiTargetClient || port != midiTargetPort {
+		log.Printf("midi: auto-detected Push 3 at %d:%d (was %d:%d)",
+			c, port, midiTargetClient, midiTargetPort)
+		midiTargetClient = c
+		midiTargetPort = port
 	}
-	log.Printf("midi: Push 3 Live Port not found in /proc/asound/seq/clients — using %d:%d",
-		midiTargetClient, midiTargetPort)
+	midiTargetMu.Unlock()
 }
 
 func startMidiReader() {
@@ -788,6 +609,27 @@ func startMidiReader() {
 	}()
 }
 
+// midiSeqHandler adapts push-manager's MIDI processing to alsaseq.Handler.
+type midiSeqHandler struct{}
+
+func (midiSeqHandler) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
+	processFixedEvent(evType, data)
+}
+
+func (midiSeqHandler) VarLen(evType uint8, src alsaseq.Addr, payload []byte) {
+	if evType != alsaseq.EvSysEx {
+		return
+	}
+	// Route Ableton palette responses to query waiter before emitting.
+	if isPaletteResponse(payload) {
+		select {
+		case paletteRespCh <- append([]byte(nil), payload...):
+		default:
+		}
+	}
+	emitMidi(payload)
+}
+
 func readAlsaSeq() error {
 	// Auto-detect Push 3 client by name unless the user has manually subscribed.
 	midiTargetMu.Lock()
@@ -801,15 +643,16 @@ func readAlsaSeq() error {
 	// the subscription-change handler will close this fd and trigger a restart).
 	midiTargetMu.Lock()
 	targetClient := midiTargetClient
-	targetPort   := midiTargetPort
+	targetPort := midiTargetPort
 	midiTargetMu.Unlock()
 
-	fd, err := syscall.Open(seqDev, syscall.O_RDWR|syscall.O_CLOEXEC, 0)
+	c, err := alsaseq.Open()
 	if err != nil {
-		return fmt.Errorf("open %s: %w", seqDev, err)
+		return err
 	}
 
 	// Register fd so handleMidiSubscribe can close it to interrupt a blocked Read.
+	fd := c.FD()
 	midiTargetMu.Lock()
 	midiSeqFd = fd
 	midiTargetMu.Unlock()
@@ -824,102 +667,38 @@ func readAlsaSeq() error {
 		}
 		midiTargetMu.Unlock()
 		if wasOurs {
-			syscall.Close(fd)
+			c.Close()
 		}
 	}()
 
-	// Get our assigned ALSA seq client ID
-	var clientID int32
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlClientID, uintptr(unsafe.Pointer(&clientID))); errno != 0 {
-		return fmt.Errorf("CLIENT_ID ioctl: %w", errno)
+	if _, err := c.CreatePort("Push Manager In", alsaseq.CapWrite|alsaseq.CapSubsWrite, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
+		return err
 	}
 
-	// Create a receive port
-	portInfo := make([]byte, portInfoSize)
-	portInfo[portOffAddrClient] = byte(clientID) // kernel checks addr.client == our ID → EPERM if 0
-	copy(portInfo[portOffName:], "Push Manager In\x00")
-	binary.LittleEndian.PutUint32(portInfo[portOffCapability:], capWrite|capSubsWrite)
-	binary.LittleEndian.PutUint32(portInfo[portOffType:], portTypeMidi|portTypeApp)
-
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlCreatePort, uintptr(unsafe.Pointer(&portInfo[0]))); errno != 0 {
-		return fmt.Errorf("CREATE_PORT ioctl: %w", errno)
-	}
-	ourPort := portInfo[portOffAddrPort]
-
-	// Subscribe to target → our port
-	sub := make([]byte, subSize)
-	sub[subOffSenderClient] = targetClient
-	sub[subOffSenderPort]   = targetPort
-	sub[subOffDestClient]   = byte(clientID)
-	sub[subOffDestPort]     = ourPort
-
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd),
-		ioctlSubscribePort, uintptr(unsafe.Pointer(&sub[0]))); errno != 0 {
-		return fmt.Errorf("SUBSCRIBE_PORT ioctl (target %d:%d): %w", targetClient, targetPort, errno)
+	target := alsaseq.Addr{Client: targetClient, Port: targetPort}
+	if err := c.Subscribe(target); err != nil {
+		return fmt.Errorf("SUBSCRIBE_PORT ioctl (target %d:%d): %w", targetClient, targetPort, err)
 	}
 
 	log.Printf("midi: subscribed to ALSA seq %d:%d → client %d port %d",
-		targetClient, targetPort, clientID, ourPort)
+		targetClient, targetPort, c.Addr().Client, c.Addr().Port)
 
 	midiRingMu.Lock()
 	midiOnline = true
 	midiRingMu.Unlock()
 
-	// Read and process events
-	buf := make([]byte, 8192)
-	for {
-		n, err := syscall.Read(fd, buf)
-		if err != nil {
-			return fmt.Errorf("read seq: %w", err)
-		}
-		processSeqBuf(buf[:n])
-	}
-}
-
-// processSeqBuf decodes one or more snd_seq_event records from buf.
-func processSeqBuf(buf []byte) {
-	for off := 0; off+seqEventSize <= len(buf); {
-		evType := buf[off+seqEvOffType]
-		evFlags := buf[off+seqEvOffFlags]
-		data := buf[off+seqEvOffData : off+seqEventSize]
-
-		if evFlags&seqFlagVarLen != 0 {
-			// Variable-length: ext.len (uint32 LE) at data[0], bytes follow header
-			varLen := int(binary.LittleEndian.Uint32(data[0:]))
-			end := off + seqEventSize + varLen
-			if end > len(buf) {
-				break // incomplete; shouldn't happen with proper seq reads
-			}
-			if evType == seqEvSysEx {
-				raw := buf[off+seqEventSize : end]
-				// Route Ableton palette responses to query waiter before emitting.
-				if isPaletteResponse(raw) {
-					select {
-					case paletteRespCh <- append([]byte(nil), raw...):
-					default:
-					}
-				}
-				emitMidi(raw)
-			}
-			off = end
-		} else {
-			processFixedEvent(evType, data)
-			off += seqEventSize
-		}
-	}
+	return c.ReadLoop(midiSeqHandler{})
 }
 
 // processFixedEvent converts an ALSA seq event to raw MIDI bytes and emits it.
-// data = 12-byte data union starting at seqEvOffData.
+// data = 12-byte data union starting at alsaseq.EventOffData.
 //
 // Fixed-length event data layouts:
 //   Note (snd_seq_ev_note):    data[0]=ch, data[1]=note, data[2]=vel, data[3]=off_vel
 //   Control (snd_seq_ev_ctrl): data[0]=ch, data[1..3]=unused, data[4..7]=param, data[8..11]=value
 func processFixedEvent(evType uint8, data []byte) {
 	switch evType {
-	case seqEvNoteOn:
+	case alsaseq.EvNoteOn:
 		ch, note, vel := data[0], data[1], data[2]
 		if vel == 0 {
 			emitMidi([]byte{0x80 | ch, note, vel})
@@ -927,12 +706,12 @@ func processFixedEvent(evType uint8, data []byte) {
 			emitMidi([]byte{0x90 | ch, note, vel})
 		}
 		applyRemap("note", ch, note, vel)
-	case seqEvNoteOff:
+	case alsaseq.EvNoteOff:
 		emitMidi([]byte{0x80 | data[0], data[1], data[2]})
 		applyRemap("note", data[0], data[1], 0)
-	case seqEvKeyPress:
+	case alsaseq.EvKeyPress:
 		emitMidi([]byte{0xA0 | data[0], data[1], data[2]})
-	case seqEvController:
+	case alsaseq.EvController:
 		ch := data[0]
 		param := binary.LittleEndian.Uint32(data[4:])
 		value := binary.LittleEndian.Uint32(data[8:])
@@ -982,18 +761,18 @@ func processFixedEvent(evType uint8, data []byte) {
 				}
 			}
 		}
-	case seqEvPgmChange:
+	case alsaseq.EvPgmChange:
 		ch := data[0]
 		param := binary.LittleEndian.Uint32(data[4:])
 		emitMidi([]byte{0xC0 | ch, byte(param & 0x7F)})
-	case seqEvChanPress:
+	case alsaseq.EvChanPress:
 		ch := data[0]
 		value := int32(binary.LittleEndian.Uint32(data[8:]))
 		if value < 0 {
 			value = 0
 		}
 		emitMidi([]byte{0xD0 | ch, byte(value & 0x7F)})
-	case seqEvPitchBend:
+	case alsaseq.EvPitchBend:
 		ch := data[0]
 		// ALSA stores pitch bend as signed -8192..+8191; reconstruct 14-bit
 		v := int32(binary.LittleEndian.Uint32(data[8:])) + 8192
@@ -1003,10 +782,10 @@ func processFixedEvent(evType uint8, data []byte) {
 			v = 16383
 		}
 		emitMidi([]byte{0xE0 | ch, byte(v & 0x7F), byte((v >> 7) & 0x7F)})
-	case seqEvSensing:
+	case alsaseq.EvSensing:
 		emitMidi([]byte{0xFE})
 	}
-	if evType != seqEvSensing {
+	if evType != alsaseq.EvSensing {
 		forwardSeqEvent(evType, data)
 	}
 }
@@ -1253,144 +1032,9 @@ type LEDConfig struct {
 	AnimColor  uint8  `json:"anim_color,omitempty"`  // target palette index for animation
 }
 
-// namedColors maps convenience names to Push 3 palette velocity/CC indices.
-//
-// SOURCE OF TRUTH: Push2/colors.pyc COLOR_TABLE (from Ableton's own Python code).
-// Each entry: (rgb_value, velocity_index). Extracted via XPython3Exe on Push 3 hardware.
-//
-// TWO USES (same value sent to hardware, different meaning):
-//   Pad Note On  : velocity = palette index → color (RGB from COLOR_TABLE)
-//   CC button    : value = brightness (0-127, white hardware LEDs ignore color)
-//
-// COLOR_TABLE structure (velocity → RGB):
-//   0          = off (#000000)
-//   2–52 even  = 26 primary Live colors (PUSH_INDEX_TO_COLOR_INDEX display order)
-//   54–78 even = muted/dark variants
-//   80–89      = pastel range
-//   90–93      = neutral grays
-//   94–121     = very dark shades
-//   122        = #21051B (very dark — only useful as CC button brightness alias)
-//   123        = #595959 mid-gray pad
-//   124        = #FFFFFF white pad
-//   125        = #CCCCCC light gray pad
-//   126        = #141414 / #0000FF (very dark or pure blue — shared slot)
-//   127        = #00FF00 / #FF0000 (pure green or red — shared slot)
-//
-// Odd velocities 1–79 are hardware half-brightness interpolations; no COLOR_TABLE entry.
-// WHITE_MIDI_VALUE = 122 (Ableton's CC brightness value for "lit white button").
-//
-// See docs/push3-led-colors.md for the full 128-entry table.
-var namedColors = map[string]uint8{
-	// ── Universal ─────────────────────────────────────────────────────────────
-	"off": 0, // #000000
-
-	// ── CC button brightness aliases (white LED hardware, value = brightness) ─
-	"dim":       1,   // very dim button
-	"half":      63,  // half brightness
-	"white_btn": 122, // WHITE_MIDI_VALUE — standard lit-white button (Ableton internal)
-	"full":      127, // full brightness
-
-	// ── Pad palette: 26 primary colors (from PUSH_INDEX_TO_COLOR_INDEX) ───────
-	// Even velocities 2–52; display order: alternating tonal pairs left-to-right.
-	"red":         2,  // #FF4032  vivid warm red
-	"red_dark":    4,  // #800400  very dark red
-	"orange":      6,  // #C93C00  dark orange-red
-	"red_brown":   8,  // #AC1F00  dark brownish-red
-	"brown":       10, // #8C5018  warm brown
-	"brown_dark":  12, // #491804  very dark brown
-	"yellow":      14, // #FADC3B  vivid yellow
-	"amber":       16, // #FFC516  warm amber/orange-yellow
-	"lime":        18, // #B6FF0E  vivid yellow-green
-	"green_vivid": 20, // #79FF18  vivid bright green
-	"green":       22, // #34C216  medium green
-	"olive":       24, // #4F8A04  dark olive green
-	"green_vv":    26, // #62FF55  very vivid lime green
-	"teal_dark":   28, // #297D53  dark teal-green
-	"teal":        30, // #269E72  medium teal
-	"sky":         32, // #31ADFF  sky blue
-	"blue":        34, // #3663FC  vivid blue
-	"blue_dark":   36, // #1A34FF  dark blue
-	"navy":        38, // #1C0CE6  navy
-	"navy_dark":   40, // #153999  dark navy
-	"indigo":      42, // #3937FF  vivid indigo/purple-blue
-	"purple":      44, // #5722FF  vivid purple
-	"violet":      46, // #972BFF  violet/purple-magenta
-	"magenta_dk":  48, // #852178  dark magenta/plum
-	"crimson":     50, // #FF1032  crimson/vivid red-pink
-	"pink_hot":    52, // #FF2BD4  vivid hot pink
-
-	// ── Pad palette: muted/dark range (vel 54–78 even) ───────────────────────
-	"maroon":     54, // #A63421
-	"sienna":     56, // #995628
-	"gold_dark":  58, // #876700
-	"khaki":      60, // #90821F
-	"green_dk":   62, // #4A8700
-	"forest":     64, // #007F12
-	"cobalt":     66, // #1853B2
-	"purple_mid": 68, // #624BAD
-	"plum":       70, // #733A67
-
-	// ── Pad palette: pastel/light range (vel 72–89) ───────────────────────────
-	"pink":        72, // #F8BCAF  light salmon/pink
-	"peach":       74, // #FF9B76
-	"gold_light":  76, // #FFBF5F
-	"tan":         78, // #D9AF71
-	"yellow_lt":   80, // #FFF480  pastel yellow
-	"sage":        81, // #BCCC88
-	"mint":        82, // #7CDD9F
-	"cyan_lt":     83, // #80F3FF  light cyan
-	"blue_lt":     84, // #68A1D3  muted blue
-	"periwinkle":  85, // #858FC2
-	"lavender":    86, // #CDBBE4
-	"sage_dk":     87, // #859D8C
-	"steel":       88, // #84909B  steel blue-gray
-	"mauve":       89, // #88859D
-
-	// ── Pad palette: neutral muted grays (vel 90–93) ─────────────────────────
-	"gray_blue":  90, // #6C6A75
-	"gray_mauve": 91, // #746A74
-	"gray_green": 92, // #74756A
-	"gray_warm":  93, // #756A6A
-
-	// ── Pad palette: very dark shades (vel 94–121) ────────────────────────────
-	"dk_wine":    94,  // #210806
-	"dk_red":     95,  // #280000
-	"dk_orange":  96,  // #5D1700
-	"dk_maroon":  97,  // #470C00
-	"dk_brown":   98,  // #3B2B14
-	"dk_sienna":  99,  // #250E05
-	"dk_gold":    100, // #645817
-	"dk_olive":   101, // #201C07
-	"dk_amber":   102, // #211902
-	"dk_lime":    103, // #172101
-	"dk_forest":  104, // #0F2103
-	"dk_green":   105, // #061902
-	"dk_teal_g":  106, // #1F3701
-	"dk_emerald": 107, // #276622
-	"dk_pine":    108, // #143E29
-	"dk_teal":    109, // #004D36
-	"dk_ocean":   110, // #134566
-	"dk_cobalt":  111, // #152764
-	"dk_navy":    112, // #070C20
-	"dk_indigo":  113, // #030621
-	"dk_void":    114, // #03011D
-	"dk_navy2":   115, // #040B1E
-	"dk_purple":  116, // #070721
-	"dk_violet":  117, // #220D66
-	"dk_magenta": 118, // #3C1166
-	"dk_plum":    119, // #350D30
-	"dk_crimson": 120, // #660614
-	"dk_pink":    121, // #661154
-
-	// ── Pad palette: spec colors (vel 122–127) ────────────────────────────────
-	// NOTE: vel 122 for PADS = #21051B (very dark); WHITE_MIDI_VALUE=122 is for CC buttons only.
-	"gray_dk2":    122, // #21051B  very dark (pad); CC white-brightness alias = white_btn above
-	"gray_mid":    123, // #595959  medium gray
-	"white":       124, // #FFFFFF  white
-	"lgray":       125, // #CCCCCC  light gray
-	"dgray":       126, // #141414  very dark gray (pad); also encodes #0000FF pure blue in Live
-	"green_spec":  127, // #00FF00  pure green (pad); also encodes #FF0000 pure red in Live
-}
+// namedColors (core/push3.NamedColors) maps convenience names to Push 3
+// palette velocity/CC indices — see core/push3/colors.go for the source of
+// truth and docs/push3-led-colors.md for the full 128-entry table.
 
 var (
 	ledConfigMu sync.Mutex // guards ledConfigs
@@ -1500,7 +1144,7 @@ func resolveLEDColor(v interface{}) (uint8, bool) {
 		}
 		return uint8(c), true
 	case string:
-		if idx, ok := namedColors[strings.ToLower(c)]; ok {
+		if idx, ok := push3.ColorByName(c); ok {
 			return idx, true
 		}
 		n, err := strconv.ParseUint(c, 10, 8)
@@ -1892,91 +1536,31 @@ func handleMidiChords(w http.ResponseWriter, r *http.Request) {
 //	Client  16 : "Ableton Push 3 Live Port" [Kernel]
 //	  Port   0 : "Ableton Push 3 Live Port" (RWe)
 func enumMidiPorts(wantWritable bool) ([]MidiPort, error) {
-	f, err := os.Open("/proc/asound/seq/clients")
+	requireCaps := alsaseq.CapRead
+	if wantWritable {
+		requireCaps = alsaseq.CapWrite
+	}
+	raw, err := alsaseq.EnumPorts(requireCaps)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
 	midiTargetMu.Lock()
-	activeClient := int(midiTargetClient)
-	activePort   := int(midiTargetPort)
+	activeClient := midiTargetClient
+	activePort := midiTargetPort
 	midiTargetMu.Unlock()
 
-	var ports []MidiPort
-	curClient := -1
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-
-		// Client line: "Client  16 : "Ableton Push 3 Live Port" [Kernel]"
-		if strings.HasPrefix(trimmed, "Client ") && !strings.HasPrefix(trimmed, "Client info") {
-			rest := strings.TrimPrefix(trimmed, "Client ")
-			rest = strings.TrimSpace(rest)
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			id, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			curClient = id
-			continue
-		}
-
-		// Port line: "  Port   0 : "Ableton Push 3 Live Port" (RWe)"
-		if strings.HasPrefix(trimmed, "Port ") && curClient >= 0 {
-			rest := strings.TrimPrefix(trimmed, "Port ")
-			rest = strings.TrimSpace(rest)
-			colonIdx := strings.Index(rest, ":")
-			if colonIdx < 0 {
-				continue
-			}
-			portID, err2 := strconv.Atoi(strings.TrimSpace(rest[:colonIdx]))
-			if err2 != nil {
-				continue
-			}
-			after := rest[colonIdx+1:]
-			// capability string is in the last set of parens
-			parenOpen  := strings.LastIndex(after, "(")
-			parenClose := strings.LastIndex(after, ")")
-			if parenOpen < 0 || parenClose <= parenOpen {
-				continue
-			}
-			caps := after[parenOpen+1 : parenClose]
-			readable := strings.Contains(caps, "R")
-			writable := strings.Contains(caps, "W")
-			if wantWritable {
-				if !writable {
-					continue // not writable (can't receive output)
-				}
-			} else if !readable {
-				continue // not readable (can't be subscribed for input)
-			}
-			// port name is in first set of quotes
-			q1 := strings.Index(after, `"`)
-			if q1 < 0 {
-				continue
-			}
-			q2 := strings.Index(after[q1+1:], `"`)
-			if q2 < 0 {
-				continue
-			}
-			portName := after[q1+1 : q1+1+q2]
-
-			ports = append(ports, MidiPort{
-				Client:   curClient,
-				Port:     portID,
-				Name:     portName,
-				Active:   curClient == activeClient && portID == activePort,
-				Writable: writable,
-			})
-		}
+	ports := make([]MidiPort, 0, len(raw))
+	for _, p := range raw {
+		ports = append(ports, MidiPort{
+			Client:   int(p.Addr.Client),
+			Port:     int(p.Addr.Port),
+			Name:     p.PortName,
+			Active:   p.Addr.Client == activeClient && p.Addr.Port == activePort,
+			Writable: p.Caps&alsaseq.CapWrite != 0,
+		})
 	}
-	return ports, scanner.Err()
+	return ports, nil
 }
 
 // GET /api/midi/ports — enumerate ALSA sequencer ports.
@@ -2062,37 +1646,52 @@ const (
 )
 
 var (
-	midiFiltData []byte // mmap'd slice, len=16
-	midiFiltOnce sync.Once
+	midiFiltMu          sync.Mutex
+	midiFiltData        []byte // mmap'd slice, len=16; nil if unavailable
+	midiFiltLastAttempt time.Time
 )
 
+// ensureMidiFilt returns the mapped midiflt shm, (re)connecting if needed.
+// Rate-limited to once per 5s on failure — NOT a sync.Once, deliberately:
+// push-manager can start before push-display's directory exists (install.sh
+// has no dependency ordering between hacks, see CLAUDE.md's Risks), and a
+// one-shot cache would make that failure permanent for the process's
+// lifetime. Same retry pattern as core/display.Shm.Ensure.
 func ensureMidiFilt() []byte {
-	midiFiltOnce.Do(func() {
-		f, err := os.OpenFile(midiFiltFile, os.O_RDWR|os.O_CREATE, 0666)
-		if err != nil {
-			log.Printf("midi_filt: open %s: %v", midiFiltFile, err)
-			return
-		}
-		defer f.Close()
-		if err := f.Truncate(midiFiltSize); err != nil {
-			log.Printf("midi_filt: truncate: %v", err)
-			return
-		}
-		data, err := syscall.Mmap(int(f.Fd()), 0, midiFiltSize,
-			syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
-		if err != nil {
-			log.Printf("midi_filt: mmap: %v", err)
-			return
-		}
-		// Write magic if not set
-		existing := binary.LittleEndian.Uint32(data[0:4])
-		if existing != midiFiltMagic {
-			binary.LittleEndian.PutUint32(data[0:4], midiFiltMagic)
-			data[4] = 0 // enabled=0
-		}
-		midiFiltData = data
-		log.Printf("midi_filt: mapped %s (enabled=%d)", midiFiltFile, data[4])
-	})
+	midiFiltMu.Lock()
+	defer midiFiltMu.Unlock()
+	if midiFiltData != nil {
+		return midiFiltData
+	}
+	if time.Since(midiFiltLastAttempt) < 5*time.Second {
+		return nil
+	}
+	midiFiltLastAttempt = time.Now()
+
+	f, err := os.OpenFile(midiFiltFile, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		log.Printf("midi_filt: open %s: %v", midiFiltFile, err)
+		return nil
+	}
+	defer f.Close()
+	if err := f.Truncate(midiFiltSize); err != nil {
+		log.Printf("midi_filt: truncate: %v", err)
+		return nil
+	}
+	data, err := syscall.Mmap(int(f.Fd()), 0, midiFiltSize,
+		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	if err != nil {
+		log.Printf("midi_filt: mmap: %v", err)
+		return nil
+	}
+	// Write magic if not set
+	existing := binary.LittleEndian.Uint32(data[0:4])
+	if existing != midiFiltMagic {
+		binary.LittleEndian.PutUint32(data[0:4], midiFiltMagic)
+		data[4] = 0 // enabled=0
+	}
+	midiFiltData = data
+	log.Printf("midi_filt: mapped %s (enabled=%d)", midiFiltFile, data[4])
 	return midiFiltData
 }
 

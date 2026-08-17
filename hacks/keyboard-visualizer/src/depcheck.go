@@ -10,15 +10,12 @@ package main
 // log lines — this gives one unambiguous diagnosis on startup and on change).
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"time"
-)
 
-type displayStatus struct {
-	Connected bool `json:"connected"`
-}
+	"github.com/federico-pepe/ableton-push-hack/core/pmclient"
+)
 
 type depState int
 
@@ -34,11 +31,11 @@ const (
 // check) so the cause of "takeover does nothing" is immediately obvious in
 // the log.
 func runDependencyWatcher(pushManagerURL string) {
-	client := &http.Client{Timeout: 2 * time.Second}
+	client := &pmclient.Client{Base: pushManagerURL, HTTP: &http.Client{Timeout: 2 * time.Second}}
 	last := depUnknown
 
 	check := func() {
-		state := checkDependency(client, pushManagerURL)
+		state := checkDependency(client)
 		if state == last {
 			return
 		}
@@ -65,15 +62,9 @@ func runDependencyWatcher(pushManagerURL string) {
 	}
 }
 
-func checkDependency(client *http.Client, pushManagerURL string) depState {
-	resp, err := client.Get(pushManagerURL + "/api/display/status")
+func checkDependency(client *pmclient.Client) depState {
+	status, err := client.DisplayStatus()
 	if err != nil {
-		return depPushManagerUnreachable
-	}
-	defer resp.Body.Close()
-
-	var status displayStatus
-	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
 		return depPushManagerUnreachable
 	}
 	if !status.Connected {

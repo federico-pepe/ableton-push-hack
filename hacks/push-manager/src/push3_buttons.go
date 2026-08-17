@@ -1,178 +1,137 @@
 package main
 
-// push3_buttons.go — Push 3 MIDI button / encoder map
+// push3_buttons.go — re-exports of core/push3's Push 3 button/encoder map.
 //
-// All messages on MIDI channel 1 (0-indexed: channel 0).
-// CC buttons: value 127 = pressed, 0 = released.
-// Encoder rotation: CC value 127 = clockwise, 1 = counter-clockwise (relative delta).
-// Encoder/wheel touch: Note On vel 127 = contact, vel 0 / Note Off = release.
-//
-// See docs/push3-button-map.md for the full annotated map.
+// The map itself now lives in core/push3 (single source of truth shared with
+// future hacks); push-manager keeps these names in package main as thin
+// aliases so its ~180 existing call sites across midi.go/ui_shadow.go/
+// remap.go don't need touching. See docs/push3-button-map.md for the full
+// annotated map.
+
+import "github.com/federico-pepe/ableton-push-hack/core/push3"
 
 const (
-	// ── Screen buttons ────────────────────────────────────────────────────────
-	// Top row (above display), left → right
-	CCScreenTop1 = 102
-	CCScreenTop2 = 103
-	CCScreenTop3 = 104
-	CCScreenTop4 = 105
-	CCScreenTop5 = 106
-	CCScreenTop6 = 107
-	CCScreenTop7 = 108
-	CCScreenTop8 = 109
+	CCScreenTop1 = push3.CCScreenTop1
+	CCScreenTop2 = push3.CCScreenTop2
+	CCScreenTop3 = push3.CCScreenTop3
+	CCScreenTop4 = push3.CCScreenTop4
+	CCScreenTop5 = push3.CCScreenTop5
+	CCScreenTop6 = push3.CCScreenTop6
+	CCScreenTop7 = push3.CCScreenTop7
+	CCScreenTop8 = push3.CCScreenTop8
 
-	// Bottom row (below display), left → right
-	CCScreenBot1 = 20
-	CCScreenBot2 = 21
-	CCScreenBot3 = 22
-	CCScreenBot4 = 23
-	CCScreenBot5 = 24
-	CCScreenBot6 = 25
-	CCScreenBot7 = 26
-	CCScreenBot8 = 27
+	CCScreenBot1 = push3.CCScreenBot1
+	CCScreenBot2 = push3.CCScreenBot2
+	CCScreenBot3 = push3.CCScreenBot3
+	CCScreenBot4 = push3.CCScreenBot4
+	CCScreenBot5 = push3.CCScreenBot5
+	CCScreenBot6 = push3.CCScreenBot6
+	CCScreenBot7 = push3.CCScreenBot7
+	CCScreenBot8 = push3.CCScreenBot8
 
-	// ── Encoders (above top screen buttons) ───────────────────────────────────
-	// Rotation (relative delta: 127=CW, 1=CCW)
-	CCEncoder1 = 71
-	CCEncoder2 = 72
-	CCEncoder3 = 73
-	CCEncoder4 = 74
-	CCEncoder5 = 75
-	CCEncoder6 = 76
-	CCEncoder7 = 77
-	CCEncoder8 = 78
-	CCVolume   = 79
-	CCTempo    = 14
+	CCEncoder1 = push3.CCEncoder1
+	CCEncoder2 = push3.CCEncoder2
+	CCEncoder3 = push3.CCEncoder3
+	CCEncoder4 = push3.CCEncoder4
+	CCEncoder5 = push3.CCEncoder5
+	CCEncoder6 = push3.CCEncoder6
+	CCEncoder7 = push3.CCEncoder7
+	CCEncoder8 = push3.CCEncoder8
+	CCVolume   = push3.CCVolume
+	CCTempo    = push3.CCTempo
 
-	// Touch (Note On vel 127 = contact, vel 0 = release)
-	NoteEncoder1Touch = 1
-	NoteEncoder2Touch = 2
-	NoteEncoder3Touch = 3
-	NoteEncoder4Touch = 4
-	NoteEncoder5Touch = 5
-	NoteEncoder6Touch = 6
-	NoteEncoder7Touch = 7
-	NoteEncoder8Touch = 8
-	NoteVolumeTouch   = 9
-	NoteTempoTouch    = 10
+	NoteEncoder1Touch = push3.NoteEncoder1Touch
+	NoteEncoder2Touch = push3.NoteEncoder2Touch
+	NoteEncoder3Touch = push3.NoteEncoder3Touch
+	NoteEncoder4Touch = push3.NoteEncoder4Touch
+	NoteEncoder5Touch = push3.NoteEncoder5Touch
+	NoteEncoder6Touch = push3.NoteEncoder6Touch
+	NoteEncoder7Touch = push3.NoteEncoder7Touch
+	NoteEncoder8Touch = push3.NoteEncoder8Touch
+	NoteVolumeTouch   = push3.NoteVolumeTouch
+	NoteTempoTouch    = push3.NoteTempoTouch
 
-	// ── Jog wheel (main) ──────────────────────────────────────────────────────
-	CCJogWheel       = 70  // 127=CW, 1=CCW
-	NoteJogTouch     = 11  // Note On vel 127 on contact
-	CCJogPress       = 94  // 127 = pressed
-	CCJogClickLeft   = 93  // 127 = clicked left
-	CCJogClickRight  = 95  // 127 = clicked right
+	CCJogWheel      = push3.CCJogWheel
+	NoteJogTouch    = push3.NoteJogTouch
+	CCJogPress      = push3.CCJogPress
+	CCJogClickLeft  = push3.CCJogClickLeft
+	CCJogClickRight = push3.CCJogClickRight
 
-	// ── D-Pad ─────────────────────────────────────────────────────────────────
-	CCDPadUp     = 46
-	CCDPadRight  = 45
-	CCDPadDown   = 47
-	CCDPadLeft   = 44
-	CCDPadCenter = 91
-	NoteDPadCenterTouch = 13
+	CCDPadUp            = push3.CCDPadUp
+	CCDPadRight         = push3.CCDPadRight
+	CCDPadDown          = push3.CCDPadDown
+	CCDPadLeft          = push3.CCDPadLeft
+	CCDPadCenter        = push3.CCDPadCenter
+	NoteDPadCenterTouch = push3.NoteDPadCenterTouch
 
-	// ── Top-right cluster ─────────────────────────────────────────────────────
-	CCSet      = 80
-	CCSettings = 30
-	CCHelp     = 81
-	CCUserMode = 59
+	CCSet      = push3.CCSet
+	CCSettings = push3.CCSettings
+	CCHelp     = push3.CCHelp
+	CCUserMode = push3.CCUserMode
 
-	// ── View buttons (right side) ─────────────────────────────────────────────
-	CCDeviceView  = 110
-	CCMixerView   = 112
-	CCClipView    = 113
-	CCSessionView = 34
+	CCDeviceView  = push3.CCDeviceView
+	CCMixerView   = push3.CCMixerView
+	CCClipView    = push3.CCClipView
+	CCSessionView = push3.CCSessionView
 
-	// ── Modifiers ─────────────────────────────────────────────────────────────
-	CCShift  = 49
-	CCSelect = 48
+	CCShift  = push3.CCShift
+	CCSelect = push3.CCSelect
 
-	// ── Edit ──────────────────────────────────────────────────────────────────
-	CCUndo = 119
-	CCSave = 82
-	CCAdd  = 32
-	CCSwap = 33
+	CCUndo = push3.CCUndo
+	CCSave = push3.CCSave
+	CCAdd  = push3.CCAdd
+	CCSwap = push3.CCSwap
 
-	// ── Track ─────────────────────────────────────────────────────────────────
-	CCLock         = 83
-	CCStopClips    = 29
-	CCMute         = 60
-	CCSolo         = 61
-	CCSelectMain   = 28
+	CCLock       = push3.CCLock
+	CCStopClips  = push3.CCStopClips
+	CCMute       = push3.CCMute
+	CCSolo       = push3.CCSolo
+	CCSelectMain = push3.CCSelectMain
 
-	// ── Transport / global ────────────────────────────────────────────────────
-	CCTapTempo    = 3
-	CCMetronome   = 9
-	CCQuantize    = 116
-	CCFixedLength = 90
-	CCAutomate    = 89
-	CCNew         = 92
-	CCCapture     = 65
-	CCRecord      = 86
-	CCPlay        = 85
+	CCTapTempo    = push3.CCTapTempo
+	CCMetronome   = push3.CCMetronome
+	CCQuantize    = push3.CCQuantize
+	CCFixedLength = push3.CCFixedLength
+	CCAutomate    = push3.CCAutomate
+	CCNew         = push3.CCNew
+	CCCapture     = push3.CCCapture
+	CCRecord      = push3.CCRecord
+	CCPlay        = push3.CCPlay
 
-	// ── Scene / step resolution (left column, bottom → top) ──────────────────
-	CCScene14   = 36 // 1/4
-	CCScene14t  = 37 // 1/4t
-	CCScene18   = 38 // 1/8
-	CCScene18t  = 39 // 1/8t
-	CCScene116  = 40 // 1/16
-	CCScene116t = 41 // 1/16t
-	CCScene132  = 42 // 1/32
-	CCScene132t = 43 // 1/32t
+	CCScene14   = push3.CCScene14
+	CCScene14t  = push3.CCScene14t
+	CCScene18   = push3.CCScene18
+	CCScene18t  = push3.CCScene18t
+	CCScene116  = push3.CCScene116
+	CCScene116t = push3.CCScene116t
+	CCScene132  = push3.CCScene132
+	CCScene132t = push3.CCScene132t
 
-	// ── Mode buttons ──────────────────────────────────────────────────────────
-	CCRepeat  = 56
-	CCAccent  = 57
-	CCScale   = 58
-	CCLayout  = 31
-	CCNote    = 50
-	CCSession = 51
+	CCRepeat  = push3.CCRepeat
+	CCAccent  = push3.CCAccent
+	CCScale   = push3.CCScale
+	CCLayout  = push3.CCLayout
+	CCNote    = push3.CCNote
+	CCSession = push3.CCSession
 
-	// ── Loop / clip actions ───────────────────────────────────────────────────
-	CCDoubleLoop = 117
-	CCDuplicate  = 88
-	CCConvert    = 35
-	CCDelete     = 118
+	CCDoubleLoop = push3.CCDoubleLoop
+	CCDuplicate  = push3.CCDuplicate
+	CCConvert    = push3.CCConvert
+	CCDelete     = push3.CCDelete
 
-	// ── Navigation ────────────────────────────────────────────────────────────
-	CCOctaveUp   = 55
-	CCOctaveDown = 54
-	CCPageLeft   = 62
-	CCPageRight  = 63
+	CCOctaveUp   = push3.CCOctaveUp
+	CCOctaveDown = push3.CCOctaveDown
+	CCPageLeft   = push3.CCPageLeft
+	CCPageRight  = push3.CCPageRight
 
-	// ── Pad grid (8×8) ────────────────────────────────────────────────────────
-	// Note On/Off, channel 0. Bottom-left = 36, top-right = 99.
-	// Row bottom→top, column left→right: note = 36 + row*8 + col
-	PadNoteMin = 36
-	PadNoteMax = 99
+	PadNoteMin = push3.PadNoteMin
+	PadNoteMax = push3.PadNoteMax
 )
 
-// PadNote returns the MIDI note number for pad at (col, row), both 0-indexed
-// from bottom-left. col 0–7 (left→right), row 0–7 (bottom→top).
-func PadNote(col, row int) byte {
-	return byte(PadNoteMin + row*8 + col)
-}
-
-// IsPadNote reports whether note is a grid pad note.
-func IsPadNote(note byte) bool {
-	return note >= PadNoteMin && note <= PadNoteMax
-}
-
-// PadCoord returns (col, row) for a pad note, both 0-indexed from bottom-left.
-func PadCoord(note byte) (col, row int) {
-	n := int(note) - PadNoteMin
-	return n % 8, n / 8
-}
-
-// CCScreenTopN returns the CC for the n-th top screen button (n = 0–7).
-func CCScreenTopN(n int) byte { return byte(CCScreenTop1 + n) }
-
-// CCScreenBotN returns the CC for the n-th bottom screen button (n = 0–7).
-func CCScreenBotN(n int) byte { return byte(CCScreenBot1 + n) }
-
-// CCEncoderN returns the CC for the n-th encoder rotation (n = 0–7).
-func CCEncoderN(n int) byte { return byte(CCEncoder1 + n) }
-
-// NoteEncoderTouchN returns the touch note for the n-th encoder (n = 0–7).
-func NoteEncoderTouchN(n int) byte { return byte(NoteEncoder1Touch + n) }
+func PadNote(col, row int) byte          { return push3.PadNote(col, row) }
+func IsPadNote(note byte) bool           { return push3.IsPadNote(note) }
+func PadCoord(note byte) (col, row int)  { return push3.PadCoord(note) }
+func CCScreenTopN(n int) byte            { return push3.CCScreenTopN(n) }
+func CCScreenBotN(n int) byte            { return push3.CCScreenBotN(n) }
+func CCEncoderN(n int) byte              { return push3.CCEncoderN(n) }
+func NoteEncoderTouchN(n int) byte       { return push3.NoteEncoderTouchN(n) }

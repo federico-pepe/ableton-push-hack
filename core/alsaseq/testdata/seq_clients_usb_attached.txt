@@ -1,0 +1,19 @@
+Client info
+  cur  clients : 5
+
+Client   0 : "System" [Kernel]
+  Port    0 : "Timer" (Rw--)
+  Port    1 : "Announce" (Rw--)
+
+Client  14 : "Midi Through" [Kernel]
+  Port    0 : "Midi Through Port-0" (RWeX)
+
+Client  16 : "USB Midi Device" [Kernel]
+  Port    0 : "USB Midi Device MIDI 1" (RWeX)
+
+Client  20 : "Ableton Push 3 Live Port" [Kernel]
+  Port    0 : "Ableton Push 3 Live Port" (RWeX)
+
+Client 128 : "Ableton Live" [User]
+  Port    0 : "Announce" (Rw--)
+  Port    2 : "Ableton Live" (RWeX)
