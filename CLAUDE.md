@@ -187,7 +187,7 @@ Runs independent of MIDI intercept — never reads pad Note On/Off from Push's r
 - **MIDI routing:** ALSA seq, not libusb. Subscribe to "Ableton Push 3 Live Port" (usually client 16:0, auto-detected by name). `CREATE_PORT` ioctl requires `portInfo[addr.client] = ownClientID` or kernel returns EPERM. MIDI blocking via hook intercepting `snd_seq_event_input` (sets type→NONE when `midiflt->enabled`).
 - **USB drives:** auto-mount to `/run/media/<label>-<device>`; `usb-storage` is kernel built-in
 - **Button map:** `docs/push3-button-map.md`. All buttons CC ch0, 127=press/0=release. Pad grid Notes 36–99.
-- **LED colors:** `docs/push3-led-colors.md`. 128-entry palette; same indices for pads (Note velocity) and buttons (CC value).
+- **LED colors:** `docs/push3-led-colors.md`. 128-entry palette; same indices for pads (Note velocity) and buttons (CC value). `core/push3/colors.go`'s `NamedColors` was **wrong for every entry until 2026-08-18** — it claimed a Push-2-derived even/odd split that isn't true for Push 3 (every one of the 128 raw velocities is a real, distinct colour). Fixed by rebuilding it from this doc's SysEx-queried table; see that file's own header comment for the full story. Trust this doc over any claim `colors.go` makes about its own source.
 
 ## Drawing text — ASCII only
 
