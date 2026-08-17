@@ -46,7 +46,17 @@ func TestIsEncoderCC(t *testing.T) {
 	if !IsEncoderCC(14) {
 		t.Error("IsEncoderCC(14) = false, want true (tempo wheel)")
 	}
-	for _, cc := range []uint8{0, 13, 15, 70, 80, 127} {
+	// CC 70 (jog wheel) is a relative encoder. This assertion was previously
+	// inverted — it required IsEncoderCC(70) == false, which made jog turns
+	// decode as an endless stream of button presses, since both 1 and 127 are
+	// non-zero. Measured 2026-08-16: CC 70 sends {1, 127}, exactly like the
+	// other encoders, and this repo's own map doc already said so.
+	if !IsEncoderCC(70) {
+		t.Error("IsEncoderCC(70) = false, want true (jog wheel)")
+	}
+	// CC 15 and CC 111 are the tempo/volume encoder PUSH-BUTTONS (0/127), not
+	// rotation, so they must not be treated as encoders.
+	for _, cc := range []uint8{0, 13, 15, 80, 111, 127} {
 		if IsEncoderCC(cc) {
 			t.Errorf("IsEncoderCC(%d) = true, want false", cc)
 		}

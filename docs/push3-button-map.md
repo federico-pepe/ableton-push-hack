@@ -1,6 +1,9 @@
 # Push 3 — Button / Encoder MIDI Map
 
-Empirically verified on Push 3 hardware via MIDI Monitor.  
+Empirically verified on Push 3 hardware. Re-verified in full on **tethered**
+Push 3 on 2026-08-16 by the sibling `push-tethered-app` project: 87/87 CCs and
+13/13 touch notes confirmed, zero unknowns. Corrections from that sweep are
+marked inline.  
 All messages are **channel 1** (0-indexed: channel 0).  
 Channel in MIDI byte = `0x90` (Note On), `0x80` (Note Off), `0xB0` (CC).
 
@@ -15,32 +18,64 @@ Channel in MIDI byte = `0x90` (Note On), `0x80` (Note Off), `0xB0` (CC).
 
 ## Encoders
 
-| Encoder | Touch (Note On/Off) | Rotate (CC) |
-|---------|---------------------|-------------|
-| Encoder 1 | Note 1 | CC 71 |
-| Encoder 2 | Note 2 | CC 72 |
-| Encoder 3 | Note 3 | CC 73 |
-| Encoder 4 | Note 4 | CC 74 |
-| Encoder 5 | Note 5 | CC 75 |
-| Encoder 6 | Note 6 | CC 76 |
-| Encoder 7 | Note 7 | CC 77 |
-| Encoder 8 | Note 8 | CC 78 |
-| Volume wheel | Note 9 | CC 79 |
-| Tempo wheel | Note 10 | CC 14 |
+| Encoder | Touch (Note On/Off) | Rotate (CC) | Press (CC) |
+|---------|---------------------|-------------|------------|
+| Encoder 1 | Note 0 | CC 71 | — |
+| Encoder 2 | Note 1 | CC 72 | — |
+| Encoder 3 | Note 2 | CC 73 | — |
+| Encoder 4 | Note 3 | CC 74 | — |
+| Encoder 5 | Note 4 | CC 75 | — |
+| Encoder 6 | Note 5 | CC 76 | — |
+| Encoder 7 | Note 6 | CC 77 | — |
+| Encoder 8 | Note 7 | CC 78 | — |
+| Volume wheel | Note 8 | CC 79 | **CC 111** |
+| *(note 9)* | *unused on Push 3* | — | — |
+| Tempo wheel | Note 10 | CC 14 | **CC 15** |
 
-> Touch: velocity 127 on contact, 0 on release (Note Off).  
-> Rotation is **relative** (delta), same encoding as the jog wheel: CW=127, CCW=1.
+> Touch: velocity 127 on contact, 0 on release (Note Off).
+> Rotation is **relative** (delta), same encoding as the jog wheel:
+> **CW = 1, CCW = 127.** Decode with `push3.DecodeRel`.
+
+**Corrected 2026-08-16.** The touch notes above were previously listed as 1–10
+(encoders 1–8 = notes 1–8, volume = 9). They are off by one: measured by
+touching each sensor in isolation, on both a tethered Push 3 and a Push 2, which
+agree. **Note 9 is unused on Push 3** — it is the Swing encoder on Push 2, whose
+touch notes run contiguously 0–10. Push 3 dropped that encoder and left the gap,
+which is what made the old contiguous numbering look plausible.
+
+The rotation direction was also stated backwards ("CW=127, CCW=1").
+`DecodeRel`'s implementation was always correct; only the prose was wrong.
+
+**Encoders accelerate.** A fast turn sends larger deltas — ±11 observed — so
+never treat one message as one click. Always use `DecodeRel`'s signed value.
+
+**CC 15 and CC 111 are the tempo and volume encoders' push-buttons** (0/127),
+not rotation. They were identified by the touch sensor bracketing the press:
+note 10 on → CC 15 press/release → note 10 off, and likewise note 8 around
+CC 111.
 
 ## Jog wheel (main)
 
 | Gesture | Type | Number | Value |
 |---------|------|--------|-------|
-| Rotate CW | CC | 70 | 127 |
-| Rotate CCW | CC | 70 | 1 |
+| Rotate CW | CC | 70 | **1** |
+| Rotate CCW | CC | 70 | **127** |
 | Touch | Note On | 11 | 127 |
 | Press | CC | 94 | 127 / 0 |
 | Click left | CC | 93 | 127 / 0 |
 | Click right | CC | 95 | 127 / 0 |
+
+> Direction corrected 2026-08-16 — measured CC 70 sending `{1, 127}`, matching
+> every other relative encoder. `push3.IsEncoderCC` now includes CC 70; it
+> previously excluded it, which made jog turns decode as an endless stream of
+> button presses (both 1 and 127 are non-zero).
+
+## Touch strip
+
+| Gesture | Type | Number |
+|---------|------|--------|
+| Touch | Note On | **12** |
+| Position | Pitch bend, channel 1 | 0–16383 |
 
 ## Top-right cluster
 
@@ -180,5 +215,13 @@ Velocity = pressure (1–127). Aftertouch = poly pressure (0xA0).
 
 - All values confirmed on Push 3 firmware `Push3@2.4.5b8`
 - CC value 127 = button pressed, 0 = released (for all buttons above unless noted).
-- Jog wheel rotation is **relative** (delta): CW=127, CCW=1. All encoders use the same encoding.
-- Push 2 spec CC numbers mostly match Push 3 but are not identical — use this map, not the Push 2 doc.
+- Jog wheel rotation is **relative** (delta): **CW=1, CCW=127**. All encoders use
+  the same encoding, and all of them accelerate — decode with `DecodeRel`.
+- Push 2 spec CC numbers mostly match Push 3 but are not identical — use this map,
+  not the Push 2 doc. Measured differences: Push 2 uses CC 87 for New (Push 3: 92),
+  CC 52/53 for Master/Stop Clip, has a Browse button at CC 111 and a Swing encoder
+  at CC 15 — the two CCs Push 3 uses for the tempo and volume encoder presses.
+- **Aftertouch, tethered:** this doc records poly pressure (`0xA0`). On a
+  *tethered* Push 3 with MPE active, per-note pressure was observed as channel
+  pressure (`0xD0`) on each note's member channel instead. Not investigated on
+  the standalone device — treat the tethered behaviour as unconfirmed here.

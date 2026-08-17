@@ -1,9 +1,20 @@
 package push3
 
-// IsEncoderCC reports whether a CC number is a Push 3 relative encoder
-// (encoders 1–8 = CC 71–78, volume wheel = CC 79, tempo wheel = CC 14).
+// IsEncoderCC reports whether a CC number carries a relative encoder delta:
+// encoders 1–8 = CC 71–78, volume wheel = CC 79, tempo wheel = CC 14,
+// jog wheel = CC 70.
+//
+// The jog wheel was added 2026-08-16 after measuring CC 70 sending {1, 127} on
+// tethered hardware — the same relative encoding as every other encoder, and
+// what this repo's own docs/push3-button-map.md already described. It was
+// previously excluded (and explicitly asserted false in the tests), which made
+// jog turns decode as button presses: both 1 and 127 are non-zero, so a caller
+// splitting on "encoder or button?" saw an endless stream of presses.
+//
+// Note CC 15 and CC 111 are NOT encoders — they are the tempo and volume
+// encoders' push-buttons, sending 0/127.
 func IsEncoderCC(cc uint8) bool {
-	return (cc >= 71 && cc <= 79) || cc == 14
+	return (cc >= 71 && cc <= 79) || cc == 14 || cc == 70
 }
 
 // DecodeRel converts a Push relative-encoder CC value to a signed delta.

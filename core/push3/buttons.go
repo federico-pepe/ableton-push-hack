@@ -4,10 +4,19 @@ package push3
 //
 // All messages on MIDI channel 1 (0-indexed: channel 0).
 // CC buttons: value 127 = pressed, 0 = released.
-// Encoder rotation: CC value 127 = clockwise, 1 = counter-clockwise (relative delta).
+// Encoder rotation: relative two's-complement — CC value 1 = one click
+// CLOCKWISE, 127 = one click counter-clockwise. Decode with DecodeRel.
 // Encoder/wheel touch: Note On vel 127 = contact, vel 0 / Note Off = release.
 //
+// Encoders ACCELERATE: a fast turn sends larger deltas (±11 observed), so never
+// treat one message as one click — always use DecodeRel's signed value.
+//
 // See docs/push3-button-map.md for the full annotated map.
+//
+// Verified on tethered Push 3 hardware 2026-08-16 (87/87 CCs, 13/13 touch
+// notes). Earlier revisions of this file and the map doc stated the encoder
+// direction backwards ("CW=127, CCW=1"); DecodeRel's implementation was always
+// correct and the prose was wrong.
 
 const (
 	// ── Screen buttons ────────────────────────────────────────────────────────
@@ -44,17 +53,30 @@ const (
 	CCVolume   = 79
 	CCTempo    = 14
 
+	// Encoder push-buttons (CC, 127 = pressed, 0 = released)
+	CCTempoPress  = 15  // pressing the tempo encoder in
+	CCVolumePress = 111 // pressing the volume encoder in
+
 	// Touch (Note On vel 127 = contact, vel 0 = release)
-	NoteEncoder1Touch = 1
-	NoteEncoder2Touch = 2
-	NoteEncoder3Touch = 3
-	NoteEncoder4Touch = 4
-	NoteEncoder5Touch = 5
-	NoteEncoder6Touch = 6
-	NoteEncoder7Touch = 7
-	NoteEncoder8Touch = 8
-	NoteVolumeTouch   = 9
-	NoteTempoTouch    = 10
+	//
+	// CORRECTED 2026-08-16 — these were previously off by one (encoders listed
+	// as 1-8, volume as 9). Measured by touching each sensor in isolation, on
+	// BOTH a tethered Push 3 and a Push 2, which agree.
+	//
+	// Note 9 is UNUSED on Push 3. It is the Swing encoder on Push 2, whose touch
+	// notes run contiguously 0-10. Push 3 dropped that encoder and left the gap
+	// — which is what made the old contiguous 1-10 numbering look plausible.
+	NoteEncoder1Touch = 0
+	NoteEncoder2Touch = 1
+	NoteEncoder3Touch = 2
+	NoteEncoder4Touch = 3
+	NoteEncoder5Touch = 4
+	NoteEncoder6Touch = 5
+	NoteEncoder7Touch = 6
+	NoteEncoder8Touch = 7
+	NoteVolumeTouch   = 8
+	// note 9: unused on Push 3 (Swing encoder touch on Push 2)
+	NoteTempoTouch = 10
 
 	// ── Jog wheel (main) ──────────────────────────────────────────────────────
 	CCJogWheel       = 70  // 127=CW, 1=CCW
@@ -70,6 +92,10 @@ const (
 	CCDPadLeft   = 44
 	CCDPadCenter = 91
 	NoteDPadCenterTouch = 13
+
+	// ── Touch strip ───────────────────────────────────────────────────────────
+	// Touch is a Note On; position arrives as pitch bend on channel 1.
+	NoteTouchStrip = 12
 
 	// ── Top-right cluster ─────────────────────────────────────────────────────
 	CCSet      = 80
