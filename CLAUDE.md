@@ -64,7 +64,7 @@ Nested Go module (`github.com/federico-pepe/ableton-push-hack/core`, own `go.mod
 | Package | Contents |
 |---|---|
 | `core/push3` | Zero-import Push 3 facts: full button/encoder MIDI map (`buttons.go`), 128-entry named LED palette + `ColorByName` (`colors.go`), display geometry `VisW/VisH/Stride/FrameBytes/TotalBytes` (`geometry.go`), encoder helpers `IsEncoderCC/DecodeRel/ScaleVal/ClampInt` (`encoder.go`, tested in `encoder_test.go`). push-manager's `push3_buttons.go` re-exports the button/encoder consts as package-`main` aliases (`const CCShift = push3.CCShift`, etc.) so its ~180 existing call sites across `midi.go`/`ui_shadow.go` didn't need touching — `core/push3` is still the single source of truth. |
-| `core/gfx`, `core/gfx/text` | Stdlib-only image primitives (`FillRect`, `DrawIcon`) in `gfx`; the only `golang.org/x/image` consumer (`DrawText`/`TextWidth`/`Truncate`, basicfont) split into `gfx/text` so automation and keyboard-visualizer's zero-external-dependency binaries stay that way — verified via `go list -deps`. |
+| `core/gfx`, `core/gfx/text` | Stdlib-only image primitives (`FillRect`, `DrawIcon`) in `gfx`; the only `golang.org/x/image` consumer (`DrawText`/`TextWidth`/`Truncate`, basicfont) split into `gfx/text` so automation and keyboard-visualizer's zero-external-dependency binaries stay that way — verified via `go list -deps`. **Everything drawn through `gfx/text` must be ASCII** — see the rule below. |
 | `core/gfx/widgets` | Shared Shadow-UI-style drawing components built on `gfx`/`gfx/text`: `Theme` (named color palette), `SoftButton`/`DrawBotStrip` (semantic button state instead of string-matching label text), `ListRow`/`ListView`/`RenderList` (scrollable list + breadcrumb + scrollbar, generalizing push-manager's `FilePanel`/`BrowserPanel`), `KVRow`/`DrawKVRows` (label:value rows, generalizing `StatsPanel`/`MidiPanel`), plus ahead-of-need primitives (`DrawBorder`/`DrawMeter`/`DrawArc`, `Knob`). Operates only on plain `image.NRGBA` — no shm, no hack-specific state — so any hack drawing on Push's screen can share it (keyboard-visualizer is a candidate second adopter for `Theme`, not yet done). See `discovery/shadow-ui-component-framework.md`. All 4 push-manager panels migrated (list/row rendering + `SoftBotStrip`); `Panel` interface's `BotStrip()` is gone, replaced by `SoftBotStrip()`. |
 | `core/display` | `codec.go`: `ToBGR565`/`FromBGR565` pixel codecs (tested in `codec_test.go` — duplicate-frame invariant, stride padding, round-trip). `shm.go`: `Shm` struct wrapping the push_hook.so shared-memory mmap (`Ensure/Connected/Mode/SetMode/ReadFrame/WritePixels/CompareAndSetMode/FrameSeq`) — **`os.O_RDWR` with no `O_CREATE`**, push_hook.c is the sole creator, push-manager the sole writer (see "Display-owning hacks" below). Single consumer (push-manager); other hacks reach the display via `core/pmclient` instead. |
 | `core/httpx` | `WithLogging`, `WithCORS(allowMethods, next)` (allowMethods is the one thing that ever diverged per-hack, pinned by `middleware_test.go`), `JSON`, `Error`, `NewServer` (30s read / 5min write / 120s idle timeout triple), `ServeEmbedded` (automation's and keyboard-visualizer's identical single-file `handleUI`; push-manager's three-file UI keeps its own handler). |
@@ -188,6 +188,29 @@ Runs independent of MIDI intercept — never reads pad Note On/Off from Push's r
 - **USB drives:** auto-mount to `/run/media/<label>-<device>`; `usb-storage` is kernel built-in
 - **Button map:** `docs/push3-button-map.md`. All buttons CC ch0, 127=press/0=release. Pad grid Notes 36–99.
 - **LED colors:** `docs/push3-led-colors.md`. 128-entry palette; same indices for pads (Note velocity) and buttons (CC value).
+
+## Drawing text — ASCII only
+
+`core/gfx/text` renders with `basicfont.Face7x13`, which has **no glyph beyond
+ASCII**: an em-dash, an ellipsis, an accent or a smart quote all draw as a
+missing-glyph box on the panel. Comments and docs are free to use whatever;
+**strings that reach the screen are not**.
+
+This is easy to get wrong because it is invisible everywhere except the hardware
+— nothing errors, nothing logs, the frame rate stays healthy.
+
+- `text.Truncate` is the enforcement point and marks a cut with `"..."`. It
+  appended `U+2026` until **2026-08-17**, which meant every truncated filename
+  and breadcrumb in push-manager's browser (`ui_shadow.go:926/939/1619`, cut at
+  100–110 runes) drew a box on the panel. `core/gfx/text/text_test.go` now
+  asserts every output byte is printable ASCII.
+- The same fix removed a latent panic: `maxRunes <= 0` evaluated
+  `runes[:maxRunes-1]`.
+- Truncated strings are now 2 characters shorter than before, since the marker is
+  3 runes rather than 1. Accepted deliberately.
+- `text.Width` counts **bytes** while `Truncate` counts **runes**. They agree on
+  ASCII, which is the only thing that renders — but a multibyte string measures
+  wider than it draws. Known inconsistency, not yet resolved.
 
 ## Display-owning hacks
 
