@@ -29,14 +29,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 const (
 	File      = "/data/push-hack/hacks/push-display/framebuf"
 	magic     = uint32(0x50555348)
-	totalSize = 16 + push3.TotalBytes
+	totalSize = 16 + TotalBytes
 
 	// Mode values — mirror push_hook.c.
 	ModePassthrough = uint32(0)
@@ -156,8 +154,8 @@ func (s *Shm) ReadFrame() (px []byte, mode uint32, ok bool) {
 	if s.buf == nil {
 		return nil, ModePassthrough, false
 	}
-	px = make([]byte, push3.FrameBytes)
-	copy(px, s.buf[offPixels:offPixels+push3.FrameBytes])
+	px = make([]byte, FrameBytes)
+	copy(px, s.buf[offPixels:offPixels+FrameBytes])
 	mode = binary.LittleEndian.Uint32(s.buf[offMode:])
 	return px, mode, true
 }
@@ -190,10 +188,10 @@ func (s *Shm) CompareAndSetMode(from, to uint32) bool {
 }
 
 // WritePixels writes a full (both-halves-duplicated) BGR565 frame into shm
-// and increments frame_seq. pixels must be push3.TotalBytes long.
+// and increments frame_seq. pixels must be TotalBytes long.
 func (s *Shm) WritePixels(pixels []byte) error {
-	if len(pixels) != push3.TotalBytes {
-		return fmt.Errorf("expected %d bytes, got %d", push3.TotalBytes, len(pixels))
+	if len(pixels) != TotalBytes {
+		return fmt.Errorf("expected %d bytes, got %d", TotalBytes, len(pixels))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

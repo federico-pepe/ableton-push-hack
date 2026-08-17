@@ -41,7 +41,7 @@ const (
 	CCScreenBot8 = 27
 
 	// ── Encoders (above top screen buttons) ───────────────────────────────────
-	// Rotation (relative delta: 127=CW, 1=CCW)
+	// Rotation (relative delta: 1=CW, 127=CCW)
 	CCEncoder1 = 71
 	CCEncoder2 = 72
 	CCEncoder3 = 73
@@ -79,7 +79,7 @@ const (
 	NoteTempoTouch = 10
 
 	// ── Jog wheel (main) ──────────────────────────────────────────────────────
-	CCJogWheel       = 70  // 127=CW, 1=CCW
+	CCJogWheel       = 70  // 1=CW, 127=CCW
 	NoteJogTouch     = 11  // Note On vel 127 on contact
 	CCJogPress       = 94  // 127 = pressed
 	CCJogClickLeft   = 93  // 127 = clicked left

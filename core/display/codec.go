@@ -8,8 +8,6 @@ package display
 import (
 	"image"
 	"image/color"
-
-	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // ToBGR565 converts img into the push_hook.c framebuf pixel format: BGR565
@@ -19,38 +17,38 @@ func ToBGR565(img image.Image) []byte {
 	b := img.Bounds()
 	srcW := b.Max.X - b.Min.X
 	srcH := b.Max.Y - b.Min.Y
-	pixels := make([]byte, push3.TotalBytes)
+	pixels := make([]byte, TotalBytes)
 
-	for y := 0; y < push3.VisH; y++ {
-		for x := 0; x < push3.VisW; x++ {
-			sx := b.Min.X + x*srcW/push3.VisW
-			sy := b.Min.Y + y*srcH/push3.VisH
+	for y := 0; y < VisH; y++ {
+		for x := 0; x < VisW; x++ {
+			sx := b.Min.X + x*srcW/VisW
+			sy := b.Min.Y + y*srcH/VisH
 			r16, g16, b16, _ := img.At(sx, sy).RGBA() // 0–65535
 			b5 := uint16(b16 >> 11)
 			g6 := uint16(g16 >> 10)
 			r5 := uint16(r16 >> 11)
 			v := (b5 << 11) | (g6 << 5) | r5
-			off := (y*push3.Stride + x) * 2
+			off := (y*Stride + x) * 2
 			lo, hi := byte(v), byte(v>>8)
 			pixels[off] = lo
 			pixels[off+1] = hi
 			// duplicate into second frame (Push 3 sends frame twice)
-			pixels[push3.FrameBytes+off] = lo
-			pixels[push3.FrameBytes+off+1] = hi
+			pixels[FrameBytes+off] = lo
+			pixels[FrameBytes+off+1] = hi
 		}
 	}
 	return pixels
 }
 
 // FromBGR565 is the reverse of ToBGR565: it decodes one framebuf frame
-// (push3.FrameBytes bytes, 1024-pixel stride) into a 960×160 NRGBA image,
+// (FrameBytes bytes, 1024-pixel stride) into a 960×160 NRGBA image,
 // skipping the 64-pixel-per-row stride padding. Input is raw BGR565
 // little-endian, no XOR.
 func FromBGR565(px []byte) *image.NRGBA {
-	img := image.NewNRGBA(image.Rect(0, 0, push3.VisW, push3.VisH))
-	for y := 0; y < push3.VisH; y++ {
-		for x := 0; x < push3.VisW; x++ {
-			off := (y*push3.Stride + x) * 2
+	img := image.NewNRGBA(image.Rect(0, 0, VisW, VisH))
+	for y := 0; y < VisH; y++ {
+		for x := 0; x < VisW; x++ {
+			off := (y*Stride + x) * 2
 			v := uint16(px[off]) | uint16(px[off+1])<<8
 			b5 := (v >> 11) & 0x1f
 			g6 := (v >> 5) & 0x3f
