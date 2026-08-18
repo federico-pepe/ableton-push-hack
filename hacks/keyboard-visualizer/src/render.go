@@ -170,12 +170,12 @@ func checkHeldChanged() (held [128]bool, changed bool) {
 	return held, changed
 }
 
-// runRenderLoop polls held-note state at 10fps. On every change it
+// runRenderLoop polls held-note state at ~30fps. On every change it
 // broadcasts to the web view's SSE clients (always, regardless of on-device
 // takeover state) and, only while takeover is on (toggled via the Shift+Note
 // chord), also pushes an updated frame to Push's own screen.
 func runRenderLoop(pushManagerURL string) {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(33 * time.Millisecond)
 	defer ticker.Stop()
 	for range ticker.C {
 		held, changed := checkHeldChanged()

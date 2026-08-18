@@ -395,7 +395,7 @@ func shadowUIHandleCC(cc, val uint8) {
 }
 
 func (s *ShadowUI) renderLoop() {
-	ticker := time.NewTicker(100 * time.Millisecond) // 10 fps
+	ticker := time.NewTicker(33 * time.Millisecond) // ~30 fps
 	defer ticker.Stop()
 	for {
 		select {
