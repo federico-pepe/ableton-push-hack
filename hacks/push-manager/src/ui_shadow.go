@@ -143,14 +143,6 @@ func drawIcon(img *image.NRGBA, icon *image.NRGBA, x, y int) {
 // (which arrives as CCJogWheel val=127 CW / val=1 CCW, not a normal press).
 type jogHandler interface{ handleJog(uint8) }
 
-// extraBots is implemented by panels that use more than the 4 primary
-// under-screen soft-buttons. Slices are indexed 0-based from button 5
-// (CCScreenBot5); a nil/empty slice or a 0 LED clears the button.
-type extraBots interface {
-	extraBotStrip() []string // labels for buttons 5..8
-	extraBotLEDs() []uint8   // matching LED palette indices (0 = off)
-}
-
 // browsePanelIdx is the index of the BrowserPanel within shadowUI.panels.
 const browsePanelIdx = 3
 
@@ -158,15 +150,17 @@ type Panel interface {
 	Render(img *image.NRGBA)
 	HandleCC(cc, val uint8)
 	Label() string
-	// SoftBotStrip returns up to 4 soft-buttons for bottom buttons (CC20-23)
-	// and a navigation hint shown on the right side of the bottom strip.
-	// State drives styling (see widgets.SoftButtonState) instead of the
-	// label text itself — see discovery/shadow-ui-component-framework.md.
-	SoftBotStrip() ([4]widgets.SoftButton, string)
-	// BotLEDColors returns the LED color (0–127) for each of the 4 bottom buttons.
-	// 0 = off; non-zero = lit at that palette index. Called on panel activation
-	// and whenever state changes (e.g. clipboard filled, USB cursor moved).
-	BotLEDColors() [4]uint8
+	// SoftBotStrip returns up to 8 soft-buttons for the under-screen bottom
+	// buttons (CC20-27) and a navigation hint shown on the right side of the
+	// bottom strip. State drives styling (see widgets.SoftButtonState)
+	// instead of the label text itself — see
+	// discovery/shadow-ui-component-framework.md.
+	SoftBotStrip() ([8]widgets.SoftButton, string)
+	// BotLEDColors returns the LED color (0–127) for each of the 8 bottom
+	// buttons. 0 = off; non-zero = lit at that palette index. Called on
+	// panel activation and whenever state changes (e.g. clipboard filled,
+	// USB cursor moved).
+	BotLEDColors() [8]uint8
 }
 
 // ── ShadowUI ──────────────────────────────────────────────────────────────────
@@ -244,26 +238,13 @@ func shadowUnregisterLEDs() {
 	}
 }
 
-// updateBotLEDs sends the correct LED values for the 4 bottom buttons based on
-// the active panel's current state. Call in a goroutine to avoid blocking MIDI.
+// updateBotLEDs sends the correct LED values for all 8 bottom buttons based
+// on the active panel's current state. Call in a goroutine to avoid blocking
+// MIDI.
 func updateBotLEDs(panel Panel) {
 	colors := panel.BotLEDColors()
-	botCCs := [4]uint8{CCScreenBot1, CCScreenBot2, CCScreenBot3, CCScreenBot4}
-	for i, cc := range botCCs {
-		sendSeqCC(0, cc, int32(colors[i])) //nolint:errcheck
-	}
-	// Extended soft-buttons (5..8): lit by panels that implement extraBots,
-	// else always cleared so a stale LED never lingers after a panel switch.
-	var ext []uint8
-	if eb, ok := panel.(extraBots); ok {
-		ext = eb.extraBotLEDs()
-	}
-	for i := 0; i < 4; i++ {
-		c := uint8(0)
-		if i < len(ext) {
-			c = ext[i]
-		}
-		sendSeqCC(0, CCScreenBotN(4+i), int32(c)) //nolint:errcheck
+	for i := 0; i < 8; i++ {
+		sendSeqCC(0, CCScreenBotN(i), int32(colors[i])) //nolint:errcheck
 	}
 }
 
@@ -443,9 +424,6 @@ func (s *ShadowUI) renderFrame() {
 	drawPanelTabs(img, shadowUI.panels, panelIdx)
 	buttons, hint := panel.SoftBotStrip()
 	widgets.DrawBotStrip(img, widgets.Default, suiContentBot, suiW, suiColW, suiBotH, buttons, hint)
-	if eb, ok := panel.(extraBots); ok {
-		drawExtraBots(img, eb.extraBotStrip())
-	}
 
 	// Panel content (clipped to content area)
 	panel.Render(img)
@@ -489,22 +467,6 @@ func drawPanelTabs(img *image.NRGBA, panels []Panel, activeIdx int) {
 	}
 }
 
-// drawExtraBots draws labels for under-screen buttons 5..8 (columns 4..7),
-// on top of the bottom strip already filled by drawBotStrip.
-func drawExtraBots(img *image.NRGBA, labels []string) {
-	y := suiContentBot
-	for i, label := range labels {
-		if label == "" {
-			continue
-		}
-		x := (4 + i) * suiColW
-		if x+suiColW > suiW {
-			break
-		}
-		lx := x + (suiColW-textWidth(label))/2
-		drawText(img, lx, y+suiBotH-4, label, suiWhite)
-	}
-}
 
 // truncate truncates s to at most maxRunes runes, appending "…" if cut.
 func truncate(s string, maxRunes int) string {
@@ -725,7 +687,7 @@ func (fp *FilePanel) setStatus(msg string) {
 }
 
 // SoftBotStrip returns context-sensitive bottom buttons and nav hint.
-func (fp *FilePanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
+func (fp *FilePanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	fp.mu.Lock()
 	clipboard := fp.clipboard
 	deleteConfirm := fp.deleteConfirm
@@ -736,7 +698,7 @@ func (fp *FilePanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	}
 	fp.mu.Unlock()
 
-	var buttons [4]widgets.SoftButton
+	var buttons [8]widgets.SoftButton
 	buttons[0] = widgets.SoftButton{Label: "COPY"}
 	if clipboard != "" {
 		buttons[1] = widgets.SoftButton{Label: "PASTE"}
@@ -752,10 +714,10 @@ func (fp *FilePanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 	return buttons, ""
 }
 
-// BotLEDColors returns LED colors for the 4 bottom buttons reflecting current state.
+// BotLEDColors returns LED colors for the 8 bottom buttons reflecting current state.
 // Bot1 (COPY) always lit; Bot2 (PASTE) lit when clipboard non-empty;
 // Bot3 (DELETE) always lit; Bot4 (EJECT) lit only when USB drive is under cursor.
-func (fp *FilePanel) BotLEDColors() [4]uint8 {
+func (fp *FilePanel) BotLEDColors() [8]uint8 {
 	fp.mu.Lock()
 	clipboard := fp.clipboard
 	isAtRoots := len(fp.stack) == 0
@@ -767,7 +729,7 @@ func (fp *FilePanel) BotLEDColors() [4]uint8 {
 
 	const white = uint8(122) // WHITE_MIDI_VALUE
 	const red = uint8(1)     // palette index 1 = red
-	var colors [4]uint8
+	var colors [8]uint8
 	colors[0] = white // COPY — always available
 	if clipboard != "" {
 		colors[1] = white // PASTE — only when clipboard has something
@@ -955,10 +917,10 @@ type StatsPanel struct {
 func newStatsPanel() *StatsPanel { return &StatsPanel{} }
 func (sp *StatsPanel) Label() string { return "STATS" }
 func (sp *StatsPanel) HandleCC(cc, val uint8) {} // no navigation
-func (sp *StatsPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
-	return [4]widgets.SoftButton{}, ""
+func (sp *StatsPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
+	return [8]widgets.SoftButton{}, ""
 }
-func (sp *StatsPanel) BotLEDColors() [4]uint8 { return [4]uint8{} } // no actions on Stats
+func (sp *StatsPanel) BotLEDColors() [8]uint8 { return [8]uint8{} } // no actions on Stats
 
 func (sp *StatsPanel) getStats() SystemStats {
 	sp.mu.Lock()
@@ -1108,10 +1070,9 @@ func (mp *MidiPanel) toggleForward() {
 	go updateBotLEDs(mp)
 }
 
-func (mp *MidiPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
+func (mp *MidiPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	if mp.monitor {
-		// CHPRES (button 5) is drawn via extraBots; MIDI tab re-press exits.
-		return [4]widgets.SoftButton{{Label: "SENS"}, {Label: "SYSEX"}, {Label: "CC"}, {Label: "NOTE"}}, ""
+		return [8]widgets.SoftButton{{Label: "SENS"}, {Label: "SYSEX"}, {Label: "CC"}, {Label: "NOTE"}, {Label: "CHPRES"}}, ""
 	}
 	interceptOn := midiInterceptEnabled()
 	midiForwardMu.RLock()
@@ -1124,7 +1085,7 @@ func (mp *MidiPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 		}
 		return widgets.SoftButton{Label: offLabel, State: widgets.SoftOff}
 	}
-	return [4]widgets.SoftButton{
+	return [8]widgets.SoftButton{
 		stateButton("INTRCPT ON", "INTRCPT OFF", interceptOn),
 		stateButton("FWRD ON", "FWRD OFF", forwardOn),
 		{Label: "MONITOR"},
@@ -1136,8 +1097,8 @@ func (mp *MidiPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
 //   - main view: Bot1/Bot2 green(11) if intercept/forward on, red(1) if off;
 //     Bot3 white to show MONITOR is actionable.
 //   - monitor view: each button green(11) if that filter category is shown,
-//     red(1) if hidden.
-func (mp *MidiPanel) BotLEDColors() [4]uint8 {
+//     red(1) if hidden, including Bot5 (CHPRES).
+func (mp *MidiPanel) BotLEDColors() [8]uint8 {
 	const green = uint8(11)
 	const red = uint8(1)
 	shownLED := func(hidden bool) uint8 {
@@ -1147,11 +1108,12 @@ func (mp *MidiPanel) BotLEDColors() [4]uint8 {
 		return green
 	}
 	if mp.monitor {
-		return [4]uint8{
+		return [8]uint8{
 			shownLED(mp.hideSens),
 			shownLED(mp.hideSysex),
 			shownLED(mp.hideCC),
 			shownLED(mp.hideNote),
+			shownLED(mp.hideChanPres),
 		}
 	}
 	interceptOn := midiInterceptEnabled()
@@ -1159,7 +1121,7 @@ func (mp *MidiPanel) BotLEDColors() [4]uint8 {
 	forwardOn := midiForwardEnabled
 	midiForwardMu.RUnlock()
 
-	var colors [4]uint8
+	var colors [8]uint8
 	if interceptOn {
 		colors[0] = green
 	} else {
@@ -1190,25 +1152,6 @@ func (mp *MidiPanel) midiEventHidden(dec string) bool {
 		return true
 	}
 	return false
-}
-
-// extraBotStrip / extraBotLEDs expose a 5th soft-button (CHPRES) that toggles
-// the Channel Pressure filter, only while the monitor sub-view is active.
-func (mp *MidiPanel) extraBotStrip() []string {
-	if !mp.monitor {
-		return nil
-	}
-	return []string{"CHPRES"}
-}
-
-func (mp *MidiPanel) extraBotLEDs() []uint8 {
-	if !mp.monitor {
-		return nil
-	}
-	if mp.hideChanPres {
-		return []uint8{1} // red = hidden
-	}
-	return []uint8{11} // green = shown
 }
 
 func (mp *MidiPanel) renderMonitor(img *image.NRGBA) {
@@ -1538,24 +1481,24 @@ func (bp *BrowserPanel) filterLabel() string {
 	return filterCycle[bp.filterIdx].Label
 }
 
-func (bp *BrowserPanel) SoftBotStrip() ([4]widgets.SoftButton, string) {
+func (bp *BrowserPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 	if bp.search {
-		return [4]widgets.SoftButton{{}, {Label: "DONE"}, {}, {}}, "L/R move - CTR pick"
+		return [8]widgets.SoftButton{{}, {Label: "DONE"}, {}, {}}, "L/R move - CTR pick"
 	}
 	hint := fmt.Sprintf("%s - %d", bp.filterLabel(), len(bp.entries))
-	return [4]widgets.SoftButton{{Label: "LOAD"}, {Label: "SEARCH"}, {Label: "FILTER"}, {Label: "REFRESH"}}, hint
+	return [8]widgets.SoftButton{{Label: "LOAD"}, {Label: "SEARCH"}, {Label: "FILTER"}, {Label: "REFRESH"}}, hint
 }
 
-func (bp *BrowserPanel) BotLEDColors() [4]uint8 {
+func (bp *BrowserPanel) BotLEDColors() [8]uint8 {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 	if bp.search {
 		// Keyboard mode: only DONE (Bot2) lit, green.
-		return [4]uint8{0, suiBotGreen, 0, 0}
+		return [8]uint8{0, suiBotGreen, 0, 0}
 	}
-	return [4]uint8{suiBotWhite, suiBotWhite, suiBotWhite, suiBotWhite}
+	return [8]uint8{suiBotWhite, suiBotWhite, suiBotWhite, suiBotWhite}
 }
 
 // iconNameForPreset maps a preset/sample to a Push Browser PNG (under suiIconBase).

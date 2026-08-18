@@ -25,11 +25,11 @@ type SoftButton struct {
 	State SoftButtonState
 }
 
-// DrawBotStrip renders up to 4 soft-buttons in a row plus an optional hint
+// DrawBotStrip renders up to 8 soft-buttons in a row plus an optional hint
 // to the right, styled by State rather than by matching label text. w is
 // the strip's total pixel width, colW each button's column width, h the
 // strip height, drawn with its bottom edge at y+h.
-func DrawBotStrip(img *image.NRGBA, t Theme, y, w, colW, h int, buttons [4]SoftButton, hint string) {
+func DrawBotStrip(img *image.NRGBA, t Theme, y, w, colW, h int, buttons [8]SoftButton, hint string) {
 	gfx.FillRect(img, 0, y, w, h, t.DarkGray)
 
 	for i, b := range buttons {

@@ -84,7 +84,7 @@ func TestDrawScrollbarDrawsThumbWhenOverflowing(t *testing.T) {
 
 func TestDrawBotStripSoftConfirmFillsAccentBackground(t *testing.T) {
 	img := newCanvas(960, 160)
-	buttons := [4]SoftButton{
+	buttons := [8]SoftButton{
 		{Label: "CONFIRM?", State: SoftConfirm},
 	}
 	DrawBotStrip(img, Default, 142, 960, 120, 18, buttons, "")
@@ -98,7 +98,7 @@ func TestDrawBotStripSoftConfirmFillsAccentBackground(t *testing.T) {
 
 func TestDrawBotStripNeutralKeepsDarkGrayBackground(t *testing.T) {
 	img := newCanvas(960, 160)
-	buttons := [4]SoftButton{{Label: "OK", State: SoftNeutral}}
+	buttons := [8]SoftButton{{Label: "OK", State: SoftNeutral}}
 	DrawBotStrip(img, Default, 142, 960, 120, 18, buttons, "")
 	if img.NRGBAAt(10, 143) != Default.DarkGray {
 		t.Errorf("SoftNeutral background = %+v, want DarkGray %+v", img.NRGBAAt(10, 143), Default.DarkGray)
