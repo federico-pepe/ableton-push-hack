@@ -209,3 +209,30 @@ func TestDrawBotStripNoGroupNoUnderline(t *testing.T) {
 		t.Errorf("ungrouped button drew something at (4,0) = %+v, want DarkGray strip bg", got)
 	}
 }
+
+func TestDrawMeterVFillsFromBottom(t *testing.T) {
+	img := newCanvas(20, 100)
+	fg := color.NRGBA{0, 255, 0, 255}
+	bg := color.NRGBA{20, 20, 20, 255}
+	DrawMeterV(img, 0, 0, 20, 100, 0.25, fg, bg)
+	if got := img.NRGBAAt(5, 5); got != bg {
+		t.Errorf("top of meter (empty part) = %+v, want bg", got)
+	}
+	if got := img.NRGBAAt(5, 95); got != fg {
+		t.Errorf("bottom of meter (filled part) = %+v, want fg", got)
+	}
+}
+
+func TestDrawMeterVFracClamped(t *testing.T) {
+	img := newCanvas(20, 100)
+	fg := color.NRGBA{0, 255, 0, 255}
+	bg := color.NRGBA{20, 20, 20, 255}
+	DrawMeterV(img, 0, 0, 20, 100, -1, fg, bg)
+	if got := img.NRGBAAt(5, 99); got != bg {
+		t.Errorf("frac<0 should draw nothing filled; pixel = %+v, want bg", got)
+	}
+	DrawMeterV(img, 0, 0, 20, 100, 5, fg, bg)
+	if got := img.NRGBAAt(5, 0); got != fg {
+		t.Errorf("frac>1 should clamp to full bar; pixel at top = %+v, want fg", got)
+	}
+}

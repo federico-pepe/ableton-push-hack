@@ -47,6 +47,22 @@ func DrawMeter(img *image.NRGBA, x, y, w, h int, frac float64, fg, bg color.NRGB
 	}
 }
 
+// DrawMeterV is DrawMeter's vertical sibling: bg for the full rect, fg
+// filling from the bottom up to frac, clamped to [0,1] — the usual reading
+// for a level/volume meter, where empty means silent.
+func DrawMeterV(img *image.NRGBA, x, y, w, h int, frac float64, fg, bg color.NRGBA) {
+	if frac < 0 {
+		frac = 0
+	} else if frac > 1 {
+		frac = 1
+	}
+	gfx.FillRect(img, x, y, w, h, bg)
+	fillH := int(float64(h) * frac)
+	if fillH > 0 {
+		gfx.FillRect(img, x, y+h-fillH, w, fillH, fg)
+	}
+}
+
 // DrawHeader draws a full-width filled bar with left-aligned text — the
 // pattern BrowserPanel.renderKeyboard's search header uses inline today.
 func DrawHeader(img *image.NRGBA, t Theme, y, w, h int, s string) {
