@@ -319,3 +319,19 @@ func TestDrawPadGridCallsColorAtOncePerCell(t *testing.T) {
 		t.Errorf("colorAt called %d times, want 6 (3x2)", calls)
 	}
 }
+
+func TestDrawStatusBarNormal(t *testing.T) {
+	img := newCanvas(960, 160)
+	DrawStatusBar(img, Default, 142, 960, 18, "ok", false)
+	if img.NRGBAAt(10, 143) != Default.StatusBg {
+		t.Errorf("normal status bar bg = %+v, want StatusBg %+v", img.NRGBAAt(10, 143), Default.StatusBg)
+	}
+}
+
+func TestDrawStatusBarError(t *testing.T) {
+	img := newCanvas(960, 160)
+	DrawStatusBar(img, Default, 142, 960, 18, "bad", true)
+	if img.NRGBAAt(10, 143) != Default.OffColor {
+		t.Errorf("error status bar bg = %+v, want OffColor %+v", img.NRGBAAt(10, 143), Default.OffColor)
+	}
+}

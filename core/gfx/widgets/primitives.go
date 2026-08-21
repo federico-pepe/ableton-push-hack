@@ -71,6 +71,21 @@ func DrawHeader(img *image.NRGBA, t Theme, y, w, h int, s string) {
 	text.Draw(img, 4, y+h-3, s, t.White)
 }
 
+// DrawStatusBar draws a full-width filled bar with left-aligned text, for a
+// module's bottom-of-screen status/error line — StatusBg/StatusCol
+// normally, OffColor background with white text when isError, matching the
+// "an error takes over the strip so it stays noticeable" convention
+// push-tethered-app's monitor/thru/seq/remap modules each independently
+// hand-rolled before this existed.
+func DrawStatusBar(img *image.NRGBA, t Theme, y, w, h int, s string, isError bool) {
+	bg, col := t.StatusBg, t.StatusCol
+	if isError {
+		bg, col = t.OffColor, t.White
+	}
+	gfx.FillRect(img, 0, y, w, h, bg)
+	text.Draw(img, 8, y+h-5, s, col)
+}
+
 // DrawArc draws an arc of radius r centered at (cx,cy), sweeping from angle
 // 0 (12 o'clock) clockwise through frac*360 degrees, frac clamped to [0,1].
 // Single-pixel-wide, no antialiasing — BGR565's resolution doesn't warrant
