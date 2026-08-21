@@ -16,6 +16,34 @@ up with the physical control under it. Optional top/bottom bars are carved
 off first (`layout.Bars`/`layout.Content`); everything else composes
 against the remaining content rect.
 
+## Typography (2026-08-21)
+
+`core/gfx/text.Draw`/`Width` — `basicfont.Face7x13`, a fixed 7x13 bitmap
+face — stays the **default**: cheap, deterministic, crisp at any zoom, and
+it's what makes ASCII-only trivially enforceable (the font has no other
+glyphs). Two additive, opt-in extensions, both answering IDEAS.md's font
+questions with real code rather than just a recommendation:
+
+- **Size**: `text.DrawScaled`/`WidthScaled` — integer nearest-neighbor
+  upscaling of Face7x13 itself (each source pixel becomes an NxN block,
+  no blur). Wired into the module ABI as `TextParams.Scale`
+  (`Frame.TextScaled`). Cheap, no new dependency, but only integer
+  multiples of the one bitmap size.
+- **Different fonts / weights**: `text.NewFace`/`DrawWith`/`WidthWith` —
+  antialiased outline fonts at an arbitrary point size, using
+  `golang.org/x/image`'s already-vendored gofont TTFs
+  (regular/bold/italic/bold-italic) via `font/opentype`. No new
+  dependency, no font file to ship. Wired into the module ABI as its own
+  `"styledtext"` op (`Frame.StyledText`) rather than folded into
+  `TextParams` — different enough rendering cost and shape (arbitrary
+  size vs. integer multiples of one bitmap) to keep separate.
+
+Since an outline face *can* render glyphs Face7x13 can't, `DrawWith`/
+`WidthWith` sanitize to ASCII themselves rather than relying on font
+coverage — the same guarantee Face7x13 gave for free, made explicit
+instead. `NewFace` caches by (weight, size); building an `opentype.Face`
+is too expensive to do every frame.
+
 ## Palette
 
 `widgets.Theme`, starting point is `widgets.Default` (push-manager's
