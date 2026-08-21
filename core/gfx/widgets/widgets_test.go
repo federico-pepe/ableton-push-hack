@@ -236,3 +236,55 @@ func TestDrawMeterVFracClamped(t *testing.T) {
 		t.Errorf("frac>1 should clamp to full bar; pixel at top = %+v, want fg", got)
 	}
 }
+
+func TestDrawKnobDrawsSweepAndTrack(t *testing.T) {
+	img := newCanvas(200, 200)
+	// frac=0.25 sweeps only the 12->3 o'clock quarter, leaving 6 o'clock
+	// showing the DarkGray track underneath, not the Select sweep.
+	DrawKnob(img, Default, 100, 100, 50, Knob{Label: "CUTOFF", Value: 25, Min: 0, Max: 100})
+	if img.NRGBAAt(100, 150) != Default.DarkGray {
+		t.Error("track should be visible at 6 o'clock where the sweep hasn't reached")
+	}
+	if img.NRGBAAt(150, 100) != Default.Select {
+		t.Error("sweep should reach 3 o'clock at frac=0.25")
+	}
+}
+
+func TestDrawKnobZeroRangeDoesNotPanic(t *testing.T) {
+	img := newCanvas(200, 200)
+	DrawKnob(img, Default, 100, 100, 50, Knob{Value: 5, Min: 5, Max: 5})
+}
+
+func TestDrawKnobFullPointerAtMinPointsUp(t *testing.T) {
+	img := newCanvas(200, 200)
+	DrawKnobFull(img, Default, 100, 100, 50, Knob{Value: 0, Min: 0, Max: 100})
+	if img.NRGBAAt(100, 55) != Default.Select {
+		t.Error("pointer at value=min should point toward 12 o'clock")
+	}
+}
+
+func TestDrawFaderHandleTracksFrac(t *testing.T) {
+	img := newCanvas(30, 100)
+	DrawFader(img, Default, 5, 10, 20, 80, Knob{Value: 100, Min: 0, Max: 100})
+	if img.NRGBAAt(15, 10) != Default.White {
+		t.Error("full-value fader should draw its handle at the top")
+	}
+}
+
+func TestDrawEnvelopeConnectsPoints(t *testing.T) {
+	img := newCanvas(100, 50)
+	DrawEnvelope(img, 0, 0, 100, 50, []float64{0, 1, 0}, color.NRGBA{255, 255, 255, 255})
+	if img.NRGBAAt(50, 0) != (color.NRGBA{255, 255, 255, 255}) {
+		t.Error("midpoint at value=1 should draw at the top of the rect")
+	}
+}
+
+func TestDrawEnvelopeTooFewPointsIsNoOp(t *testing.T) {
+	img := newCanvas(100, 50)
+	DrawEnvelope(img, 0, 0, 100, 50, []float64{0.5}, color.NRGBA{255, 255, 255, 255})
+	for _, p := range img.Pix {
+		if p != 0 {
+			t.Fatal("fewer than 2 points should draw nothing")
+		}
+	}
+}
