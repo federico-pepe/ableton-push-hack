@@ -1,8 +1,13 @@
 package text
 
 import (
+	"bytes"
+	"image"
+	"image/color"
 	"strings"
 	"testing"
+
+	"golang.org/x/image/font/basicfont"
 )
 
 // TestTruncateResultIsASCII is the regression guard that matters.
@@ -132,5 +137,59 @@ func TestWidth(t *testing.T) {
 	cut := Truncate(s, 12)
 	if Width(cut) != 12*7 {
 		t.Errorf("Width(Truncate(_, 12)) = %d, want %d", Width(cut), 12*7)
+	}
+}
+
+func TestDrawScaledAtOneIsIdenticalToDraw(t *testing.T) {
+	const s = "Ab1"
+	img1 := image.NewNRGBA(image.Rect(0, 0, Width(s)+4, 16))
+	img2 := image.NewNRGBA(image.Rect(0, 0, Width(s)+4, 16))
+	col := color.NRGBA{255, 255, 255, 255}
+	Draw(img1, 0, 12, s, col)
+	DrawScaled(img2, 0, 12, 1, s, col)
+	if !bytes.Equal(img1.Pix, img2.Pix) {
+		t.Error("DrawScaled at scale=1 should be pixel-identical to Draw")
+	}
+}
+
+// TestDrawScaledMatchesPixelDoubledOutput proves DrawScaled(scale=2) is
+// exact nearest-neighbor pixel-doubling of the 1x render, not some blurred
+// resize — the whole reason integer upscaling was picked over pulling in a
+// scalable font.
+func TestDrawScaledMatchesPixelDoubledOutput(t *testing.T) {
+	const s = "Ab1"
+	m := basicfont.Face7x13.Metrics()
+	ascent, descent := m.Ascent.Ceil(), m.Descent.Ceil()
+	w, h := Width(s), ascent+descent
+
+	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
+	col := color.NRGBA{255, 255, 255, 255}
+	Draw(img1, 0, ascent, s, col)
+
+	img2 := image.NewNRGBA(image.Rect(0, 0, w*2, h*2))
+	DrawScaled(img2, 0, ascent*2, 2, s, col)
+
+	for py := 0; py < h; py++ {
+		for px := 0; px < w; px++ {
+			want := img1.NRGBAAt(px, py)
+			for dy := 0; dy < 2; dy++ {
+				for dx := 0; dx < 2; dx++ {
+					got := img2.NRGBAAt(px*2+dx, py*2+dy)
+					if got != want {
+						t.Fatalf("pixel (%d,%d) of 2x block for source (%d,%d) = %+v, want %+v",
+							px*2+dx, py*2+dy, px, py, got, want)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestWidthScaled(t *testing.T) {
+	if got := WidthScaled("abc", 1); got != Width("abc") {
+		t.Errorf("WidthScaled(_, 1) = %d, want Width() = %d", got, Width("abc"))
+	}
+	if got := WidthScaled("abc", 3); got != Width("abc")*3 {
+		t.Errorf("WidthScaled(_, 3) = %d, want %d", got, Width("abc")*3)
 	}
 }
