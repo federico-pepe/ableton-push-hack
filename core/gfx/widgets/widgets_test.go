@@ -288,3 +288,34 @@ func TestDrawEnvelopeTooFewPointsIsNoOp(t *testing.T) {
 		}
 	}
 }
+
+func TestDrawPadGridRow0IsBottom(t *testing.T) {
+	img := newCanvas(100, 100)
+	on := color.NRGBA{0, 255, 0, 255}
+	off := color.NRGBA{0, 0, 0, 255}
+	DrawPadGrid(img, 0, 0, 10, 4, 4, func(col, row int) color.NRGBA {
+		if col == 0 && row == 0 {
+			return on
+		}
+		return off
+	})
+	// row 0 col 0 should draw at the bottom-left of the grid (y=30), not top.
+	if img.NRGBAAt(1, 31) != on {
+		t.Error("row 0 should be drawn at the bottom of the grid")
+	}
+	if img.NRGBAAt(1, 1) != off {
+		t.Error("row 0's cell should not appear at the top of the grid")
+	}
+}
+
+func TestDrawPadGridCallsColorAtOncePerCell(t *testing.T) {
+	img := newCanvas(100, 100)
+	calls := 0
+	DrawPadGrid(img, 0, 0, 10, 3, 2, func(col, row int) color.NRGBA {
+		calls++
+		return color.NRGBA{}
+	})
+	if calls != 6 {
+		t.Errorf("colorAt called %d times, want 6 (3x2)", calls)
+	}
+}

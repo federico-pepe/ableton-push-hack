@@ -98,6 +98,24 @@ func DrawArc(img *image.NRGBA, cx, cy, r int, frac float64, col color.NRGBA) {
 	}
 }
 
+// DrawPadGrid draws a cols x rows grid of cell-2-sized squares, cell pixels
+// apart, with row 0 at the bottom — Push's pad numbering is bottom-up, so
+// this is the shared math push-tethered-app's monitor and seq modules each
+// independently reimplemented (see their Draw for the pre-extraction
+// version) before drifting was a risk worth removing, the same reasoning
+// discovery/shadow-ui-component-framework.md gives for unifying
+// FilePanel/BrowserPanel's list rendering. colorAt is called once per
+// cell — callers decide what a cell means (a held pad, a pattern step) and
+// only hand back a color.
+func DrawPadGrid(img *image.NRGBA, x, y, cell, cols, rows int, colorAt func(col, row int) color.NRGBA) {
+	for row := 0; row < rows; row++ {
+		cy := y + (rows-1-row)*cell
+		for col := 0; col < cols; col++ {
+			gfx.FillRect(img, x+col*cell, cy, cell-2, cell-2, colorAt(col, row))
+		}
+	}
+}
+
 // Knob is a labeled value readout in the [Min,Max] range, drawn by DrawKnob
 // or DrawKnobFull.
 type Knob struct {
