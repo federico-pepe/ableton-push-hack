@@ -29,6 +29,33 @@ confirmation/active, red (`OffColor`/`Accent`) for cancel/destructive.
 can have a top bar with no scrolling list under it. `DrawBreadcrumbBar`
 itself predates this: see `discovery/shadow-ui-component-framework.md`.
 
+## Horizontal-scroll list (2026-08-21)
+
+`widgets.HListView`/`DrawListCols`/`DrawScrollbarH`/`RenderListH`, kept as
+separate functions mirroring `DrawListRows`/`DrawScrollbar`/`RenderList`
+rather than a generalized orientation flag — same reasoning as
+`DrawHLine`/`DrawVLine` staying separate. Wired into the module ABI as the
+`"hlist"` Frame op, alongside the existing vertical `"list"`.
+
+## Soft-button groups (2026-08-21)
+
+`SoftButton.Group` (int, 0 = none) clusters an arbitrary subset of the 8
+slots — not necessarily contiguous — with a thin underline in one of 4
+cycling colors, drawn by `DrawBotStrip`. This is the *only* shared/visual
+part: soft-buttons have no physical per-button LED, their state feedback
+is the on-screen label color itself, so there is no `Host` LED API to add
+for "lighting" a group.
+
+Selection state (which button(s) in a group are on) lives entirely in the
+calling module, via push-tethered-app's `module.ButtonGroup` — a plain
+`Toggle`/`IsSelected` tracker, not part of the ABI. It supports both
+semantics a module might want, picked per group:
+- **Exclusive** (radio): `Toggle` always leaves exactly one index
+  selected; re-pressing the selected button is a no-op rather than
+  clearing the group to nothing.
+- **Independent**: each index toggles on/off on its own — mute/solo,
+  multi-select filters, etc.
+
 ## Whole-frame pagination (2026-08-21)
 
 When a module has more controls or content than fit in one pass over the
