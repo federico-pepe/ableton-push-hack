@@ -189,3 +189,23 @@ func TestDrawScrollbarHDrawsThumbWhenOverflowing(t *testing.T) {
 		t.Fatal("overflowing list should draw a scrollbar gutter")
 	}
 }
+
+func TestDrawBotStripDrawsGroupUnderline(t *testing.T) {
+	img := newCanvas(960, 160)
+	var buttons [8]SoftButton
+	buttons[0] = SoftButton{Label: "A", Group: 1}
+	DrawBotStrip(img, Default, 0, 960, 120, 20, buttons, "")
+	if got := img.NRGBAAt(4, 0); got != groupColors[0] {
+		t.Errorf("group underline at (4,0) = %+v, want %+v", got, groupColors[0])
+	}
+}
+
+func TestDrawBotStripNoGroupNoUnderline(t *testing.T) {
+	img := newCanvas(960, 160)
+	var buttons [8]SoftButton
+	buttons[0] = SoftButton{Label: "A"}
+	DrawBotStrip(img, Default, 0, 960, 120, 20, buttons, "")
+	if got := img.NRGBAAt(4, 0); got != Default.DarkGray {
+		t.Errorf("ungrouped button drew something at (4,0) = %+v, want DarkGray strip bg", got)
+	}
+}

@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"image"
+	"image/color"
 
 	"github.com/federico-pepe/ableton-push-hack/core/gfx"
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/text"
@@ -20,9 +21,29 @@ const (
 )
 
 // SoftButton is one under-screen button label + its semantic state.
+//
+// Group clusters buttons that belong together — e.g. four quantize values
+// where only one is ever selected, or independent mute/solo toggles. 0
+// means ungrouped. Membership is state a module tracks itself (see
+// push-tethered-app's module.ButtonGroup); this field only drives the
+// visual cue DrawBotStrip draws so grouped buttons read as one control at
+// a glance. Group numbers need not be contiguous indices — any subset of
+// the 8 slots can share a Group.
 type SoftButton struct {
 	Label string
 	State SoftButtonState
+	Group int
+}
+
+// groupColors cycles by (Group-1)%len(groupColors) so an arbitrary number
+// of groups still gets a distinct-enough cue. Deliberately not part of
+// Theme yet — revisit if a hack ever needs more than 4 concurrent groups
+// or wants to override them.
+var groupColors = [4]color.NRGBA{
+	{0, 140, 255, 255},  // blue
+	{255, 140, 0, 255},  // orange
+	{170, 90, 255, 255}, // violet
+	{255, 210, 0, 255},  // yellow
 }
 
 // DrawBotStrip renders up to 8 soft-buttons in a row plus an optional hint
@@ -52,6 +73,11 @@ func DrawBotStrip(img *image.NRGBA, t Theme, y, w, colW, h int, buttons [8]SoftB
 		}
 		lx := x + (colW-text.Width(b.Label))/2
 		text.Draw(img, lx, y+h-4, b.Label, col)
+
+		if b.Group != 0 {
+			gc := groupColors[(b.Group-1)%len(groupColors)]
+			gfx.FillRect(img, x+2, y, colW-4, 2, gc)
+		}
 	}
 
 	if hint != "" {
