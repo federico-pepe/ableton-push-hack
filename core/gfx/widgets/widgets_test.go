@@ -142,3 +142,50 @@ func TestDrawArcFullCircleReachesTopAndBottom(t *testing.T) {
 		t.Error("full arc should reach the 12 o'clock point")
 	}
 }
+
+func TestDrawListColsVisColsCount(t *testing.T) {
+	img := newCanvas(960, 160)
+	cols := make([]ListRow, 10)
+	for i := range cols {
+		cols[i] = ListRow{Text: "x"}
+	}
+	// colW=120 over maxX=960 -> 8 columns fit.
+	visCols := DrawListCols(img, Default, 0, 40, 120, 960, cols, 0, 0)
+	if visCols != 8 {
+		t.Errorf("visCols = %d, want 8", visCols)
+	}
+}
+
+func TestDrawListColsFewerColsThanFit(t *testing.T) {
+	img := newCanvas(960, 160)
+	cols := []ListRow{{Text: "a"}, {Text: "b"}}
+	visCols := DrawListCols(img, Default, 0, 40, 120, 960, cols, 0, 0)
+	if visCols != 8 {
+		t.Errorf("visCols = %d, want 8 (the space that fits, not len(cols))", visCols)
+	}
+}
+
+func TestDrawScrollbarHNoOpWhenEverythingFits(t *testing.T) {
+	img := newCanvas(960, 160)
+	DrawScrollbarH(img, Default, 0, 960, 160, 4, 8, 0)
+	for x := 0; x < 960; x++ {
+		if img.NRGBAAt(x, 159) != (color.NRGBA{}) {
+			t.Fatal("total<=visCols should draw nothing")
+		}
+	}
+}
+
+func TestDrawScrollbarHDrawsThumbWhenOverflowing(t *testing.T) {
+	img := newCanvas(960, 160)
+	DrawScrollbarH(img, Default, 0, 960, 160, 16, 8, 0)
+	found := false
+	for x := 0; x < 960; x++ {
+		if img.NRGBAAt(x, 159) != (color.NRGBA{}) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("overflowing list should draw a scrollbar gutter")
+	}
+}

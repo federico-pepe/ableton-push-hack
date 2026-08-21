@@ -102,6 +102,90 @@ func DrawScrollbar(img *image.NRGBA, t Theme, listY, listBot, w, total, visRows,
 	gfx.FillRect(img, w-4, barY, 4, barH, t.Gray)
 }
 
+// HListView is the horizontal-scroll counterpart to ListView: a row of
+// columns instead of a column of rows. Reuses ListRow for cell content
+// (Text/Icon/Bg/TextCol apply the same way to a column as a row) rather
+// than introducing a parallel type for the same four fields.
+type HListView struct {
+	Cols       []ListRow
+	Cursor     int
+	Scroll     int
+	Breadcrumb string
+	Status     string
+	EmptyText  string
+}
+
+// DrawListCols is DrawListRows' horizontal sibling: cursor/scroll walk
+// columns left-to-right instead of rows top-to-bottom. Kept as a separate
+// function rather than a generalized DrawListRows(vertical bool, ...) —
+// same reasoning as DrawHLine/DrawVLine being separate — so the existing,
+// already-tested vertical path is untouched.
+//
+// listY/h place the single row of cells; colW is each cell's width; maxX is
+// the rightmost x a cell may start at. Returns visCols, the number of
+// columns that fit, for DrawScrollbarH's use.
+func DrawListCols(img *image.NRGBA, t Theme, listY, h, colW, maxX int, cols []ListRow, cursor, scroll int) (visCols int) {
+	visCols = maxX / colW
+	for i := 0; i < visCols; i++ {
+		idx := scroll + i
+		if idx >= len(cols) {
+			break
+		}
+		c := cols[idx]
+		x := i * colW
+
+		bg, textCol := c.Bg, c.TextCol
+		if idx == cursor {
+			bg, textCol = t.Select, t.White
+		}
+		gfx.FillRect(img, x, listY, colW-2, h-6, bg)
+
+		textX := x + 4
+		if c.Icon != nil {
+			iconY := listY + (h-6-c.Icon.Bounds().Dy())/2
+			gfx.DrawIcon(img, c.Icon, x+2, iconY)
+			textX = x + 2 + c.Icon.Bounds().Dx() + 3
+		}
+		text.Draw(img, textX, listY+h-6-3, c.Text, textCol)
+	}
+	return visCols
+}
+
+// DrawScrollbarH is DrawScrollbar's horizontal sibling: a thumb sized to
+// visCols/total, positioned by scroll/total, in a 4px-tall gutter along the
+// bottom edge. No-op if total <= visCols.
+func DrawScrollbarH(img *image.NRGBA, t Theme, listX, listRight, bottomY, total, visCols, scroll int) {
+	if total <= visCols {
+		return
+	}
+	avail := listRight - listX
+	barW := avail * visCols / total
+	if barW < 4 {
+		barW = 4
+	}
+	barX := listX + avail*scroll/total
+	gfx.FillRect(img, listX, bottomY-4, avail, 4, t.DarkGray)
+	gfx.FillRect(img, barX, bottomY-4, barW, 4, t.Gray)
+}
+
+// RenderListH combines DrawBreadcrumbBar + DrawListCols + DrawScrollbarH,
+// the horizontal-scroll analog of RenderList. y/w place the breadcrumb bar;
+// h is the row height; colW each column's width; maxX the rightmost extent
+// (usually the panel width).
+func RenderListH(img *image.NRGBA, t Theme, v HListView, y, w, h, colW, maxX int) {
+	listY := DrawBreadcrumbBar(img, t, y, w, v.Breadcrumb, v.Status)
+
+	if len(v.Cols) == 0 {
+		if v.EmptyText != "" {
+			text.Draw(img, 8, listY+20, v.EmptyText, t.Gray)
+		}
+		return
+	}
+
+	visCols := DrawListCols(img, t, listY, h, colW, maxX, v.Cols, v.Cursor, v.Scroll)
+	DrawScrollbarH(img, t, 0, maxX, listY+h, len(v.Cols), visCols, v.Scroll)
+}
+
 // RenderList combines DrawBreadcrumbBar + DrawListRows + DrawScrollbar —
 // the common case. y is where the breadcrumb bar starts; w/maxY are the
 // panel's content width/bottom (e.g. push-manager's suiW/suiContentBot).
