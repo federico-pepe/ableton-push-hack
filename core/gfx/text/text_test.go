@@ -193,3 +193,71 @@ func TestWidthScaled(t *testing.T) {
 		t.Errorf("WidthScaled(_, 3) = %d, want %d", got, Width("abc")*3)
 	}
 }
+
+func TestNewFaceCachesByWeightAndSize(t *testing.T) {
+	f1, err := NewFace(Bold, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f2, err := NewFace(Bold, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f1 != f2 {
+		t.Error("NewFace(Bold, 12) called twice should return the cached instance")
+	}
+	f3, err := NewFace(Regular, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f1 == f3 {
+		t.Error("different weights should not share a cached face")
+	}
+}
+
+func TestDrawWithRendersSomething(t *testing.T) {
+	face, err := NewFace(Regular, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := image.NewNRGBA(image.Rect(0, 0, 100, 30))
+	DrawWith(img, 2, 20, "Hi", color.NRGBA{255, 255, 255, 255}, face)
+	found := false
+	for _, p := range img.Pix {
+		if p != 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("DrawWith drew nothing")
+	}
+}
+
+func TestDrawWithSanitizesNonASCII(t *testing.T) {
+	face, err := NewFace(Regular, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img1 := image.NewNRGBA(image.Rect(0, 0, 100, 30))
+	img2 := image.NewNRGBA(image.Rect(0, 0, 100, 30))
+	col := color.NRGBA{255, 255, 255, 255}
+	DrawWith(img1, 2, 20, "a—b", col, face) // em-dash
+	DrawWith(img2, 2, 20, "a?b", col, face)
+	if !bytes.Equal(img1.Pix, img2.Pix) {
+		t.Error("non-ASCII input to DrawWith should render identically to its '?' substitution")
+	}
+}
+
+func TestWidthWithMatchesSanitizedString(t *testing.T) {
+	face, err := NewFace(Regular, 14)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if WidthWith("a—b", face) != WidthWith("a?b", face) {
+		t.Error("WidthWith should measure the sanitized string, not the raw one")
+	}
+	if WidthWith("", face) != 0 {
+		t.Errorf("WidthWith(\"\") = %d, want 0", WidthWith("", face))
+	}
+}

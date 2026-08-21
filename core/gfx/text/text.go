@@ -83,6 +83,54 @@ func WidthScaled(s string, scale int) int {
 // multibyte characters will measure wider here than it renders.
 func Width(s string) int { return len(s) * 7 }
 
+// DrawWith draws s using an arbitrary font.Face (e.g. from NewFace) instead
+// of the package default Face7x13. Sanitizes to ASCII itself: Face7x13's
+// ASCII guarantee came from having no other glyphs, which an antialiased
+// outline face does not give for free.
+func DrawWith(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, face font.Face) {
+	d := &font.Drawer{
+		Dst:  img,
+		Src:  &image.Uniform{col},
+		Face: face,
+		Dot:  fixed.P(x, baseline),
+	}
+	d.DrawString(sanitizeASCII(s))
+}
+
+// WidthWith returns the pixel width of s rendered with face.
+func WidthWith(s string, face font.Face) int {
+	return font.MeasureString(face, sanitizeASCII(s)).Ceil()
+}
+
+// sanitizeASCII replaces any rune outside printable ASCII with a single '?',
+// mirroring asciiOnly's rule set in push-tethered-app's internal/renderframe
+// (one '?' per replaced *character*, not per byte — a multi-byte rune must
+// not turn into several '?'s). Kept as its own small copy rather than
+// shared code: this package cannot import push-tethered-app's module ABI
+// (the dependency runs the other way), and duplicating ~15 lines is cheaper
+// than inventing a shared home for it.
+func sanitizeASCII(s string) string {
+	needs := false
+	for _, r := range s {
+		if r > 0x7E || r < 0x20 {
+			needs = true
+			break
+		}
+	}
+	if !needs {
+		return s
+	}
+	var b []byte
+	for _, r := range s {
+		if r >= 0x20 && r <= 0x7E {
+			b = append(b, byte(r))
+		} else {
+			b = append(b, '?')
+		}
+	}
+	return string(b)
+}
+
 // cutMarker ends a truncated string.
 //
 // ASCII, deliberately. basicfont.Face7x13 has no glyph beyond ASCII and draws a
