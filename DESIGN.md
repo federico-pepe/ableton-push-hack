@@ -56,6 +56,39 @@ semantics a module might want, picked per group:
 - **Independent**: each index toggles on/off on its own — mute/solo,
   multi-select filters, etc.
 
+## Widget set (2026-08-21)
+
+Basics only for now — visual polish is a deliberately later pass, per
+plan; the point of this round was having each control exist at all.
+
+- `DrawMeterV` — vertical sibling of `DrawMeter`, fills bottom-up.
+- `DrawKnob` — radial-progress reading: full-circle track + a sweep to
+  the value fraction, value centered inside, label below. Composes the
+  `Knob` type discovery/shadow-ui-component-framework.md added ahead of
+  need with the existing `DrawArc`.
+- `DrawKnobFull` — traditional rotary-knob reading: full circle outline
+  + a single pointer line at the value's angle. Distinct primitive from
+  `DrawKnob`, not a mode flag on it — a progress sweep and a rotation
+  pointer are different enough readings to keep as separate functions.
+- `DrawFader` — vertical linear control: `DrawMeterV`'s fill + a handle
+  line + the value readout.
+- `DrawEnvelope` — connects a `[]float64` of normalized points with
+  straight segments; the basic shape an envelope/curve editor needs.
+- `DrawPadGrid` — `cols x rows` grid of cells, row 0 at the bottom
+  (Push's pad numbering is bottom-up). Extracted from `modules/monitor`
+  and `modules/seq` in push-tethered-app, which had each independently
+  reimplemented the identical cell-sizing/row-flip math — same drift
+  risk the shadow-ui doc already removed for list rendering.
+
+Every control above always draws its own numeric value where relevant —
+IDEAS.md's "a control's value should always be displayed somewhere" is
+enforced by the renderer, not left to the caller.
+
+All shared through the module ABI as ops (`meterv`, `knob`, `knobfull`,
+`fader`, `envelope`, `padgrid`) with typed `Frame` constructors — see
+`internal/renderframe` and `internal/module/frame.go` in
+push-tethered-app.
+
 ## Whole-frame pagination (2026-08-21)
 
 When a module has more controls or content than fit in one pass over the
