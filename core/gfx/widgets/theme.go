@@ -8,7 +8,11 @@
 // one visual language instead of each hand-rolling its own.
 package widgets
 
-import "image/color"
+import (
+	"image/color"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
+)
 
 // Theme is a named color palette for widget rendering.
 type Theme struct {
@@ -19,22 +23,40 @@ type Theme struct {
 	StatusBg, StatusCol          color.NRGBA
 }
 
+// paletteColor looks up a push3.Palette entry by name. Panics on an unknown
+// name — this only ever runs at package init against names hand-checked
+// against colors.go, so a typo needs to fail loud, not draw wrong.
+func paletteColor(name string) color.NRGBA {
+	idx, ok := push3.ColorByName(name)
+	if !ok {
+		panic("widgets: unknown push3 palette color " + name)
+	}
+	return push3.ColorForIndex(idx).RGB
+}
+
 // Default is push-manager's existing Shadow UI palette, named and shared.
 // It's a starting point, not a hardcoded singleton — a hack that wants its
 // own look constructs its own Theme value and passes it to the Draw*
 // functions instead.
+//
+// Every color is drawn from push3.Palette (the same table LED writes use),
+// picked as the closest RGB match to this theme's original hand-picked
+// values — the screen is full-color and isn't bound to the pad palette the
+// way LEDs are, but restricting to one shared table keeps every color a
+// module or widget ever draws traceable to a named, real Push color rather
+// than an arbitrary literal.
 var Default = Theme{
-	Black:     color.NRGBA{0, 0, 0, 255},
-	White:     color.NRGBA{255, 255, 255, 255},
-	Gray:      color.NRGBA{120, 120, 120, 255},
-	DarkGray:  color.NRGBA{30, 30, 30, 255},
-	Select:    color.NRGBA{0, 90, 200, 255},
-	DirColor:  color.NRGBA{180, 210, 255, 255},
-	Accent:    color.NRGBA{200, 40, 40, 255}, // red — delete confirm highlight
-	OnColor:   color.NRGBA{80, 220, 80, 255},  // green — active/enabled state
-	OffColor:  color.NRGBA{255, 80, 80, 255},  // red — disabled/idle state
-	CrumbBg:   color.NRGBA{20, 20, 20, 255},
-	CrumbCol:  color.NRGBA{200, 200, 200, 255},
-	StatusBg:  color.NRGBA{0, 60, 30, 255},  // dark green tint for status messages
-	StatusCol: color.NRGBA{100, 255, 150, 255},
+	Black:     paletteColor("off"),
+	White:     paletteColor("white"),
+	Gray:      paletteColor("gray_green"),
+	DarkGray:  paletteColor("dgray"),
+	Select:    paletteColor("cobalt"),
+	DirColor:  paletteColor("lavender"),
+	Accent:    paletteColor("maroon"),   // red-ish — delete confirm highlight
+	OnColor:   paletteColor("green_vv"), // green — active/enabled state
+	OffColor:  paletteColor("red"),      // red — disabled/idle state
+	CrumbBg:   paletteColor("dgray"),
+	CrumbCol:  paletteColor("lgray"),
+	StatusBg:  paletteColor("dk_pine"), // dark green tint for status messages
+	StatusCol: paletteColor("mint"),
 }

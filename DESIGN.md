@@ -84,6 +84,65 @@ original Shadow UI palette). Not enforced — a hack or module can build its
 own `Theme`. Loose guideline, not a rule: green (`OnColor`) for
 confirmation/active, red (`OffColor`/`Accent`) for cancel/destructive.
 
+**2026-08-22: `widgets.Default` and `widgets.groupColors` no longer hold
+raw RGB literals.** Both now build every entry via `push3.ColorByName`/
+`ColorForIndex` (`theme.go`'s `paletteColor` helper, `softbutton.go`'s
+`groupColors` init), picking the closest `push3.Palette` entry to each
+original hand-picked value — e.g. `Select`'s old `{0,90,200}` became
+`cobalt` (`{24,83,178}`), `Accent`'s old `{200,40,40}` became `maroon`
+(`{166,52,33}`). Requested directly: colors on screen should be traceable
+to a real, named Push color, the same table LED writes already use, not an
+arbitrary literal a screen's full color range happens to allow. `push3`
+has no dependency back on `widgets`/`gfx` (only on `core/display`), so this
+added an import with no cycle risk. This is a convention for *this*
+package's own defaults, not an enforced type — a hack's custom `Theme`
+can still use any `color.NRGBA` it wants; the ask was specifically about
+`widgets.Default`/`groupColors` and the module-facing color fields (see
+push-tethered-app's `internal/renderframe.defaultColor`, which now
+defaults any module's unset color field to white rather than invisible
+transparent black).
+
+## Anti-aliased primitives (2026-08-22)
+
+`DrawArc` and the package-private `drawLine` (`primitives.go`) draw
+anti-aliased by default now, not the original step-along-the-shape,
+round-to-nearest-pixel approach that made every circle and diagonal line
+in the package read visibly stair-stepped — a direct ask after the knob
+stroke-width change below shipped and still looked jagged.
+
+- `blendPixel(img, x, y, col, alpha)`: alpha-blends a color into an
+  existing pixel (straight, non-premultiplied `image.NRGBA`), output alpha
+  always 255 — the display has no alpha channel of its own to preserve.
+- `drawArcWidth(img, cx, cy, r, frac, width, col)`: for every pixel within
+  `width` of the ring, coverage = `width/2 + 0.5 - |dist(pixel,center) -
+  r|`, clamped — a signed-distance-to-radius test, not angular stepping.
+  The sweep's cut edge (for `frac < 1`) gets the same ~1px feather via
+  arc-length so a partial arc's end isn't harder-edged than its round
+  sides.
+- `drawLineWidth(img, x1, y1, x2, y2, width, col)`: same idea against
+  distance to the nearest point on the segment (clamped projection `t` in
+  `[0,1]`), not distance to a rounded step point.
+- `DrawArc`/`drawLine` are now thin `width=1` wrappers around these two.
+  **This is a default, not a knob-only mode** — `DrawEnvelope` picks up
+  anti-aliasing for free since it already calls `drawLine` per segment,
+  and any hack calling `widgets.DrawArc` directly gets it too, with no
+  signature change.
+- `DrawKnob`/`DrawKnobFull` call the same two functions with
+  `knobStroke = 2` instead of relying on a separate stroke helper — there
+  used to be one (`drawArcStroke`/`drawLineStroke`, added earlier the same
+  day to thicken the knob by drawing the arc twice at different radii /
+  the line twice at a 1px diagonal offset), but once `drawArcWidth`/
+  `drawLineWidth` existed as the general anti-aliased primitive, the
+  separate crude-offset version had no reason to keep existing —
+  `DrawKnob`/`DrawKnobFull` just pass a wider `width` to the same code
+  path everything else uses.
+
+Cost: `drawArcWidth` iterates a `(2r+width)²` bounding box per call
+(trig per pixel) rather than `O(r)` angular steps: fine at the sizes and
+frame rates here (10fps, knob radii in the tens of pixels, a handful of
+calls per frame), revisit only if a much larger radius or many
+simultaneous arcs shows up.
+
 **Hardware LED palette, resolved to RGBA (2026-08-22):** `push3.Palette`/
 `ColorForIndex(idx uint8) PaletteEntry` (`core/push3/colors.go`) resolves a
 raw 0-127 hardware palette index to its name and `color.NRGBA`, rounding

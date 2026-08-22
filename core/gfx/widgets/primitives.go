@@ -86,31 +86,68 @@ func DrawStatusBar(img *image.NRGBA, t Theme, y, w, h int, s string, isError boo
 	text.Draw(img, 8, y+h-5, s, col)
 }
 
-// DrawArc draws an arc of radius r centered at (cx,cy), sweeping from angle
-// 0 (12 o'clock) clockwise through frac*360 degrees, frac clamped to [0,1].
-// Single-pixel-wide, no antialiasing — BGR565's resolution doesn't warrant
-// it at 10fps. Step count scales with radius so there are no gaps.
-func DrawArc(img *image.NRGBA, cx, cy, r int, frac float64, col color.NRGBA) {
-	if frac <= 0 {
+// blendPixel alpha-blends col over the pixel at (x,y), alpha in [0,1] — the
+// coverage-based anti-aliasing drawArcWidth/drawLineWidth use so a circle
+// or line reads smooth instead of stair-stepped. Output alpha is always
+// opaque — the display has no alpha channel of its own.
+func blendPixel(img *image.NRGBA, x, y int, col color.NRGBA, alpha float64) {
+	if alpha <= 0 || x < 0 || y < 0 || x >= img.Bounds().Dx() || y >= img.Bounds().Dy() {
+		return
+	}
+	if alpha > 1 {
+		alpha = 1
+	}
+	bg := img.NRGBAAt(x, y)
+	mix := func(s, d uint8) uint8 { return uint8(float64(s)*alpha + float64(d)*(1-alpha)) }
+	img.SetNRGBA(x, y, color.NRGBA{R: mix(col.R, bg.R), G: mix(col.G, bg.G), B: mix(col.B, bg.B), A: 255})
+}
+
+// drawArcWidth draws a width-pixel-wide, anti-aliased ring of radius r
+// centered at (cx,cy), swept clockwise from 12 o'clock through frac*360
+// degrees. Signed-distance-to-radius coverage per pixel, rather than
+// stepping through angles and rounding to the nearest pixel — that's what
+// used to give every arc in this package a stair-stepped edge.
+func drawArcWidth(img *image.NRGBA, cx, cy, r int, frac, width float64, col color.NRGBA) {
+	if frac <= 0 || r <= 0 {
 		return
 	}
 	if frac > 1 {
 		frac = 1
 	}
-	steps := r * 8
-	if steps < 16 {
-		steps = 16
-	}
 	maxAngle := frac * 2 * math.Pi
-	for i := 0; i <= steps; i++ {
-		angle := maxAngle * float64(i) / float64(steps)
-		x := cx + int(math.Round(float64(r)*math.Sin(angle)))
-		y := cy - int(math.Round(float64(r)*math.Cos(angle)))
-		if x < 0 || y < 0 || x >= img.Bounds().Dx() || y >= img.Bounds().Dy() {
-			continue
+	bound := r + int(math.Ceil(width)) + 1
+	for dy := -bound; dy <= bound; dy++ {
+		for dx := -bound; dx <= bound; dx++ {
+			dist := math.Hypot(float64(dx), float64(dy))
+			radial := width/2 + 0.5 - math.Abs(dist-float64(r))
+			if radial <= 0 {
+				continue
+			}
+			angle := math.Atan2(float64(dx), -float64(dy))
+			if angle < 0 {
+				angle += 2 * math.Pi
+			}
+			if angle > maxAngle {
+				// Feather the sweep's cut edge by about a pixel of arc
+				// length too, so a partial arc's end doesn't look any
+				// harder-edged than its circular sides.
+				featherAngle := 1 / math.Max(dist, 1)
+				over := (angle - maxAngle) / featherAngle
+				if over >= 1 {
+					continue
+				}
+				radial *= 1 - over
+			}
+			blendPixel(img, cx+dx, cy+dy, col, radial)
 		}
-		img.Set(x, y, col)
 	}
+}
+
+// DrawArc draws an anti-aliased 1px-wide arc of radius r centered at
+// (cx,cy), sweeping from angle 0 (12 o'clock) clockwise through frac*360
+// degrees, frac clamped to [0,1].
+func DrawArc(img *image.NRGBA, cx, cy, r int, frac float64, col color.NRGBA) {
+	drawArcWidth(img, cx, cy, r, frac, 1, col)
 }
 
 // DrawPadGrid draws a cols x rows grid of cell-2-sized squares, cell pixels
@@ -154,27 +191,45 @@ func (k Knob) frac() float64 {
 	return f
 }
 
-// drawLine draws a 1px-wide line between two arbitrary points — DrawHLine
-// and DrawVLine only cover the axis-aligned case, which a knob's pointer
-// and an envelope's segments are not. Same non-antialiased, step-per-pixel
-// style as DrawArc: BGR565's resolution doesn't warrant more at 10fps.
-func drawLine(img *image.NRGBA, x1, y1, x2, y2 int, col color.NRGBA) {
-	dx, dy := x2-x1, y2-y1
-	steps := int(math.Max(math.Abs(float64(dx)), math.Abs(float64(dy))))
-	if steps == 0 {
-		img.Set(x1, y1, col)
-		return
-	}
-	for i := 0; i <= steps; i++ {
-		t := float64(i) / float64(steps)
-		x := x1 + int(math.Round(float64(dx)*t))
-		y := y1 + int(math.Round(float64(dy)*t))
-		if x < 0 || y < 0 || x >= img.Bounds().Dx() || y >= img.Bounds().Dy() {
-			continue
+// drawLineWidth draws a width-pixel-wide, anti-aliased line between two
+// arbitrary points — distance-to-segment coverage per pixel, rather than
+// stepping along the line and rounding to the nearest pixel, which is what
+// used to give every line in this package a stair-stepped edge.
+func drawLineWidth(img *image.NRGBA, x1, y1, x2, y2 int, width float64, col color.NRGBA) {
+	fx1, fy1, fx2, fy2 := float64(x1), float64(y1), float64(x2), float64(y2)
+	ex, ey := fx2-fx1, fy2-fy1
+	lenSq := ex*ex + ey*ey
+
+	pad := int(math.Ceil(width)) + 1
+	minX, maxX := min(x1, x2)-pad, max(x1, x2)+pad
+	minY, maxY := min(y1, y2)-pad, max(y1, y2)+pad
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+			px, py := float64(x), float64(y)
+			t := 0.0
+			if lenSq > 0 {
+				t = ((px-fx1)*ex + (py-fy1)*ey) / lenSq
+				t = max(0, min(1, t))
+			}
+			nx, ny := fx1+t*ex, fy1+t*ey
+			dist := math.Hypot(px-nx, py-ny)
+			alpha := width/2 + 0.5 - dist
+			blendPixel(img, x, y, col, alpha)
 		}
-		img.Set(x, y, col)
 	}
 }
+
+// drawLine draws an anti-aliased 1px-wide line between two arbitrary
+// points — DrawHLine and DrawVLine only cover the axis-aligned case, which
+// a knob's pointer and an envelope's segments are not.
+func drawLine(img *image.NRGBA, x1, y1, x2, y2 int, col color.NRGBA) {
+	drawLineWidth(img, x1, y1, x2, y2, 1, col)
+}
+
+// knobStroke is how many pixels wide a knob's arc/pointer draws by
+// default — slightly thicker than DrawArc/drawLine's shared 1px default so
+// a knob reads clearly at a glance.
+const knobStroke = 2
 
 // DrawKnob composes DrawArc with Knob into a radial progress indicator: an
 // arc swept to k's value fraction, its numeric value centered inside, and
@@ -183,8 +238,8 @@ func drawLine(img *image.NRGBA, x1, y1, x2, y2 int, col color.NRGBA) {
 // shadow-ui-component-framework.md's Knob type was added ahead of need to
 // eventually close.
 func DrawKnob(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
-	DrawArc(img, cx, cy, r, 1, t.DarkGray) // full-circle track, so an empty knob still reads as a control
-	DrawArc(img, cx, cy, r, k.frac(), t.Select)
+	drawArcWidth(img, cx, cy, r, 1, knobStroke, t.DarkGray) // full-circle track, so an empty knob still reads as a control
+	drawArcWidth(img, cx, cy, r, k.frac(), knobStroke, t.Select)
 
 	val := fmt.Sprintf("%.0f", k.Value)
 	text.Draw(img, cx-text.Width(val)/2, cy+4, val, t.White)
@@ -198,14 +253,14 @@ func DrawKnob(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 // rotation angle — the traditional hardware-rotary-knob look, as distinct
 // from DrawKnob's radial-progress look.
 func DrawKnobFull(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
-	DrawArc(img, cx, cy, r, 1, t.DarkGray)
+	drawArcWidth(img, cx, cy, r, 1, knobStroke, t.DarkGray)
 
 	angle := k.frac() * 2 * math.Pi
 	x1 := cx + int(math.Round(float64(r)*0.25*math.Sin(angle)))
 	y1 := cy - int(math.Round(float64(r)*0.25*math.Cos(angle)))
 	x2 := cx + int(math.Round(float64(r)*0.9*math.Sin(angle)))
 	y2 := cy - int(math.Round(float64(r)*0.9*math.Cos(angle)))
-	drawLine(img, x1, y1, x2, y2, t.Select)
+	drawLineWidth(img, x1, y1, x2, y2, knobStroke, t.Select)
 
 	val := fmt.Sprintf("%.0f", k.Value)
 	text.Draw(img, cx-text.Width(val)/2, cy+r+12, val, t.White)
@@ -230,9 +285,8 @@ func DrawFader(img *image.NRGBA, t Theme, x, y, w, h int, k Knob) {
 }
 
 // DrawEnvelope connects points (each normalized to [0,1], 0=bottom) with
-// straight segments over a w x h rect at (x,y) — the basic shape an
-// envelope/curve editor needs; drawLine per segment, same non-antialiased
-// style as the rest of this package.
+// straight, anti-aliased segments over a w x h rect at (x,y) — the basic
+// shape an envelope/curve editor needs; drawLine per segment.
 func DrawEnvelope(img *image.NRGBA, x, y, w, h int, points []float64, col color.NRGBA) {
 	if len(points) < 2 {
 		return

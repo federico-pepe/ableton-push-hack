@@ -6,6 +6,7 @@ import (
 
 	"github.com/federico-pepe/ableton-push-hack/core/gfx"
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/text"
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // SoftButtonState is the semantic state of a soft-button label, replacing
@@ -38,13 +39,20 @@ type SoftButton struct {
 // groupColors cycles by (Group-1)%len(groupColors) so an arbitrary number
 // of groups still gets a distinct-enough cue. Deliberately not part of
 // Theme yet — revisit if a hack ever needs more than 4 concurrent groups
-// or wants to override them.
-var groupColors = [4]color.NRGBA{
-	{0, 140, 255, 255},  // blue
-	{255, 140, 0, 255},  // orange
-	{170, 90, 255, 255}, // violet
-	{255, 210, 0, 255},  // yellow
-}
+// or wants to override them. Colors come from push3.Palette, same rule as
+// Theme's Default — never a raw RGB literal.
+var groupColors = func() [4]color.NRGBA {
+	names := [4]string{"sky", "orange", "violet", "amber"}
+	var out [4]color.NRGBA
+	for i, n := range names {
+		idx, ok := push3.ColorByName(n)
+		if !ok {
+			panic("widgets: unknown push3 palette color " + n)
+		}
+		out[i] = push3.ColorForIndex(idx).RGB
+	}
+	return out
+}()
 
 // DrawBotStrip renders up to 8 soft-buttons in a row plus an optional hint
 // to the right, styled by State rather than by matching label text. w is
