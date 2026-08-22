@@ -1,26 +1,63 @@
-// Package text draws basicfont text onto an image.NRGBA. Split out of gfx
-// so hacks that never draw text (automation, keyboard-visualizer) don't link
-// golang.org/x/image/font/basicfont into their binaries.
+// Package text draws Tamzen (a 7x13 bitmap-style monospace font, embedded as
+// an outline) text onto an image.NRGBA. Split out of gfx so hacks that never
+// draw text (automation, keyboard-visualizer) don't link the font decoder
+// into their binaries.
 package text
 
 import (
+	_ "embed"
 	"image"
 	"image/color"
+	"strings"
+	"sync"
 
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
 
-// Draw draws string at pixel (x, baseline) using basicfont at 1x scale.
+//go:embed assets/Tamzen7x13r.ttf
+var tamzenRegular []byte
+
+var (
+	basicFaceOnce sync.Once
+	basicFace     font.Face
+)
+
+// face7x13 returns the default basic face (Tamzen7x13r rendered at its
+// native 13px cell), building and caching it on first use.
+func face7x13() font.Face {
+	basicFaceOnce.Do(func() {
+		pf, err := opentype.Parse(tamzenRegular)
+		if err != nil {
+			panic(err)
+		}
+		f, err := opentype.NewFace(pf, &opentype.FaceOptions{
+			Size:    13,
+			DPI:     72,
+			Hinting: font.HintingFull,
+		})
+		if err != nil {
+			panic(err)
+		}
+		basicFace = f
+	})
+	return basicFace
+}
+
+// Draw draws string at pixel (x, baseline) using the basic face at 1x scale.
+// Uppercases s — Tamzen at this size reads better all-caps than its
+// lowercase, which has no true descenders drawn in the cell. Sanitizes to
+// ASCII itself: unlike the old fixed bitmap face, Tamzen is an outline font
+// and its glyph coverage isn't a free ASCII guarantee.
 func Draw(img *image.NRGBA, x, baseline int, s string, col color.NRGBA) {
 	d := &font.Drawer{
 		Dst:  img,
 		Src:  &image.Uniform{col},
-		Face: basicfont.Face7x13,
+		Face: face7x13(),
 		Dot:  fixed.P(x, baseline),
 	}
-	d.DrawString(s)
+	d.DrawString(strings.ToUpper(sanitizeASCII(s)))
 }
 
 // DrawScaled draws string at pixel (x, baseline), each source pixel of the
@@ -37,7 +74,7 @@ func DrawScaled(img *image.NRGBA, x, baseline, scale int, s string, col color.NR
 	if w <= 0 {
 		return
 	}
-	m := basicfont.Face7x13.Metrics()
+	m := face7x13().Metrics()
 	ascent, descent := m.Ascent.Ceil(), m.Descent.Ceil()
 	h := ascent + descent
 	if h <= 0 {
@@ -46,8 +83,8 @@ func DrawScaled(img *image.NRGBA, x, baseline, scale int, s string, col color.NR
 
 	// Render once at 1x into a tightly-sized scratch image, then blit each
 	// non-transparent pixel out as a scale x scale block. Two passes rather
-	// than a scale-aware rasterizer: basicfont has no notion of scale, and
-	// this reuses Draw exactly instead of reimplementing glyph layout.
+	// than a scale-aware rasterizer: the basic face has no notion of scale,
+	// and this reuses Draw exactly instead of reimplementing glyph layout.
 	tmp := image.NewNRGBA(image.Rect(0, 0, w, h))
 	Draw(tmp, 0, ascent, s, col)
 
@@ -79,14 +116,13 @@ func WidthScaled(s string, scale int) int {
 // Width returns the pixel width of s at 1x scale.
 //
 // Note this counts bytes, while Truncate counts runes — they agree for ASCII,
-// which is all basicfont.Face7x13 can draw anyway, but a string carrying
-// multibyte characters will measure wider here than it renders.
+// which is all Draw ever renders (sanitized before drawing), but a string
+// carrying multibyte characters will measure wider here than it renders.
 func Width(s string) int { return len(s) * 7 }
 
 // DrawWith draws s using an arbitrary font.Face (e.g. from NewFace) instead
-// of the package default Face7x13. Sanitizes to ASCII itself: Face7x13's
-// ASCII guarantee came from having no other glyphs, which an antialiased
-// outline face does not give for free.
+// of the package default basic face. Sanitizes to ASCII itself, same as
+// Draw: an outline face's glyph coverage isn't a free ASCII guarantee.
 func DrawWith(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, face font.Face) {
 	d := &font.Drawer{
 		Dst:  img,

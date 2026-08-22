@@ -1,9 +1,17 @@
 package text
 
 // face.go — opt-in alternate faces, additive to the package's default
-// Face7x13. `golang.org/x/image` is already a dependency (for Face7x13
-// itself) and already vendors the four gofont TTFs used here, so this adds
-// no new dependency and no font file to ship.
+// Face7x13. The four styled variants are Helvetica Neue (Thin/Medium
+// standing in for Regular/Bold, both with their italics) — NOT embedded,
+// unlike the basic face: Helvetica Neue's .otf files are Apple/Monotype-
+// licensed, not freely redistributable, and both repos importing this
+// package are public on GitHub. Instead, source() loads them at runtime
+// from a local, gitignored directory (PUSHAPP_STYLED_FONT_DIR) that each
+// developer populates themselves, falling back to the vendored gofont
+// TTFs (the pre-2026-08-22 default) when that directory or file isn't
+// there — so a fresh clone and CI (neither of which has Helvetica Neue)
+// still build and render correctly, just with the generic font instead of
+// the product's own look.
 //
 // Face7x13 stays the default because it is a fixed 1-bit bitmap: cheap,
 // deterministic, and — the part that matters — the reason ASCII-only used
@@ -13,6 +21,8 @@ package text
 // relying on font coverage, the same guarantee Face7x13 gave for free.
 
 import (
+	"os"
+	"path/filepath"
 	"sync"
 
 	"golang.org/x/image/font"
@@ -23,7 +33,7 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
-// Weight selects a style among the four gofont variants.
+// Weight selects a style among the four styled variants.
 type Weight int
 
 const (
@@ -33,7 +43,25 @@ const (
 	BoldItalic
 )
 
-func (w Weight) source() []byte {
+// helveticaFile is the local filename (under PUSHAPP_STYLED_FONT_DIR) each
+// weight resolves to when a developer has supplied their own copy.
+func (w Weight) helveticaFile() string {
+	switch w {
+	case Bold:
+		return "HelveticaNeueMedium.otf"
+	case Italic:
+		return "HelveticaNeueThinItalic.otf"
+	case BoldItalic:
+		return "HelveticaNeueMediumItalic.otf"
+	default:
+		return "HelveticaNeueThin.otf"
+	}
+}
+
+// gofontFallback is what source() returns when no local Helvetica Neue
+// file is available — the same generic, always-vendored faces this
+// package used before the Helvetica Neue swap.
+func (w Weight) gofontFallback() []byte {
 	switch w {
 	case Bold:
 		return gobold.TTF
@@ -44,6 +72,15 @@ func (w Weight) source() []byte {
 	default:
 		return goregular.TTF
 	}
+}
+
+func (w Weight) source() []byte {
+	if dir := os.Getenv("PUSHAPP_STYLED_FONT_DIR"); dir != "" {
+		if b, err := os.ReadFile(filepath.Join(dir, w.helveticaFile())); err == nil {
+			return b
+		}
+	}
+	return w.gofontFallback()
 }
 
 type faceKey struct {
@@ -83,7 +120,7 @@ func NewFace(w Weight, size float64) (font.Face, error) {
 	f, err := opentype.NewFace(pf, &opentype.FaceOptions{
 		Size:    size,
 		DPI:     72,
-		Hinting: font.HintingFull,
+		Hinting: font.HintingNone,
 	})
 	if err != nil {
 		return nil, err

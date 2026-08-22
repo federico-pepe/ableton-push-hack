@@ -28,3 +28,9 @@ hacks/*/src/keyboard-visualizer
 
 # Local-only discovery / research notes (not shipped)
 /discovery/
+
+# Apple/Monotype-licensed font, loaded at runtime if present (see
+# core/gfx/text/face.go's PUSHAPP_STYLED_FONT_DIR) — not redistributable
+# in this public repo, so never track it even if a developer drops a copy
+# in the expected assets/ path.
+core/gfx/text/assets/*.otf

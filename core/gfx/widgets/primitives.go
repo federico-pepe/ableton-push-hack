@@ -68,7 +68,7 @@ func DrawMeterV(img *image.NRGBA, x, y, w, h int, frac float64, fg, bg color.NRG
 // pattern BrowserPanel.renderKeyboard's search header uses inline today.
 func DrawHeader(img *image.NRGBA, t Theme, y, w, h int, s string) {
 	gfx.FillRect(img, 0, y, w, h, t.CrumbBg)
-	text.Draw(img, 4, y+h-3, s, t.White)
+	text.Draw(img, 4, y+h-5, s, t.White)
 }
 
 // DrawStatusBar draws a full-width filled bar with left-aligned text, for a
