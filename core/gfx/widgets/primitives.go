@@ -102,19 +102,23 @@ func blendPixel(img *image.NRGBA, x, y int, col color.NRGBA, alpha float64) {
 	img.SetNRGBA(x, y, color.NRGBA{R: mix(col.R, bg.R), G: mix(col.G, bg.G), B: mix(col.B, bg.B), A: 255})
 }
 
-// drawArcWidth draws a width-pixel-wide, anti-aliased ring of radius r
-// centered at (cx,cy), swept clockwise from 12 o'clock through frac*360
-// degrees. Signed-distance-to-radius coverage per pixel, rather than
-// stepping through angles and rounding to the nearest pixel — that's what
-// used to give every arc in this package a stair-stepped edge.
-func drawArcWidth(img *image.NRGBA, cx, cy, r int, frac, width float64, col color.NRGBA) {
-	if frac <= 0 || r <= 0 {
+// drawArcSpanWidth draws a width-pixel-wide, anti-aliased ring of radius r
+// centered at (cx,cy), swept clockwise from startAngle (radians, 0 = 12
+// o'clock, matching DrawArc's convention) through sweepAngle radians.
+// Signed-distance-to-radius coverage per pixel, rather than stepping
+// through angles and rounding to the nearest pixel — that's what used to
+// give every arc in this package a stair-stepped edge.
+//
+// The far edge (startAngle+sweepAngle) gets a ~1px feather, same as the
+// near edge does implicitly by being the zero point angle is measured
+// from; sweepAngle > 2*Pi behaves like exactly 2*Pi (a closed ring).
+func drawArcSpanWidth(img *image.NRGBA, cx, cy, r int, startAngle, sweepAngle, width float64, col color.NRGBA) {
+	if sweepAngle <= 0 || r <= 0 {
 		return
 	}
-	if frac > 1 {
-		frac = 1
+	if sweepAngle > 2*math.Pi {
+		sweepAngle = 2 * math.Pi
 	}
-	maxAngle := frac * 2 * math.Pi
 	bound := r + int(math.Ceil(width)) + 1
 	for dy := -bound; dy <= bound; dy++ {
 		for dx := -bound; dx <= bound; dx++ {
@@ -123,16 +127,17 @@ func drawArcWidth(img *image.NRGBA, cx, cy, r int, frac, width float64, col colo
 			if radial <= 0 {
 				continue
 			}
-			angle := math.Atan2(float64(dx), -float64(dy))
+			angle := math.Atan2(float64(dx), -float64(dy)) - startAngle
+			angle = math.Mod(angle, 2*math.Pi)
 			if angle < 0 {
 				angle += 2 * math.Pi
 			}
-			if angle > maxAngle {
+			if angle > sweepAngle {
 				// Feather the sweep's cut edge by about a pixel of arc
 				// length too, so a partial arc's end doesn't look any
 				// harder-edged than its circular sides.
 				featherAngle := 1 / math.Max(dist, 1)
-				over := (angle - maxAngle) / featherAngle
+				over := (angle - sweepAngle) / featherAngle
 				if over >= 1 {
 					continue
 				}
@@ -141,6 +146,19 @@ func drawArcWidth(img *image.NRGBA, cx, cy, r int, frac, width float64, col colo
 			blendPixel(img, cx+dx, cy+dy, col, radial)
 		}
 	}
+}
+
+// drawArcWidth draws a width-pixel-wide, anti-aliased ring of radius r
+// centered at (cx,cy), swept clockwise from 12 o'clock through frac*360
+// degrees, frac clamped to [0,1].
+func drawArcWidth(img *image.NRGBA, cx, cy, r int, frac, width float64, col color.NRGBA) {
+	if frac <= 0 {
+		return
+	}
+	if frac > 1 {
+		frac = 1
+	}
+	drawArcSpanWidth(img, cx, cy, r, 0, frac*2*math.Pi, width, col)
 }
 
 // DrawArc draws an anti-aliased 1px-wide arc of radius r centered at
@@ -168,11 +186,33 @@ func DrawPadGrid(img *image.NRGBA, x, y, cell, cols, rows int, colorAt func(col,
 	}
 }
 
-// Knob is a labeled value readout in the [Min,Max] range, drawn by DrawKnob
-// or DrawKnobFull.
+// Knob is a labeled value readout in the [Min,Max] range, drawn by
+// DrawKnob, DrawKnobFull, DrawKnobArc, or DrawFader.
 type Knob struct {
 	Label           string
 	Value, Min, Max float64
+
+	// Color is the control's fill/pointer color — the sweep arc in
+	// DrawKnob, the pointer line in DrawKnobFull, the fill arc in
+	// DrawKnobArc, the filled bar in DrawFader. The zero value
+	// (color.NRGBA{}, i.e. left unset) falls back to the Theme's Select
+	// color, matching every one of these controls' look before this field
+	// existed — unlike internal/renderframe's other color-bearing op
+	// params, an unset Knob.Color does NOT default to white, since white
+	// is itself a valid, deliberate choice a module might make (e.g.
+	// push3.ColorForIndex(120)) and would otherwise be indistinguishable
+	// from "not set". Every color-bearing widget in this package follows
+	// this same contract — see the package doc.
+	Color color.NRGBA
+}
+
+// fillColor resolves k.Color against Theme's own default, per Color's own
+// doc: zero value falls back to t.Select, not white.
+func (k Knob) fillColor(t Theme) color.NRGBA {
+	if k.Color == (color.NRGBA{}) {
+		return t.Select
+	}
+	return k.Color
 }
 
 // frac normalizes k.Value into [0,1] against [k.Min,k.Max], clamped.
@@ -239,7 +279,7 @@ const knobStroke = 2
 // eventually close.
 func DrawKnob(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 	drawArcWidth(img, cx, cy, r, 1, knobStroke, t.DarkGray) // full-circle track, so an empty knob still reads as a control
-	drawArcWidth(img, cx, cy, r, k.frac(), knobStroke, t.Select)
+	drawArcWidth(img, cx, cy, r, k.frac(), knobStroke, k.fillColor(t))
 
 	val := fmt.Sprintf("%.0f", k.Value)
 	text.Draw(img, cx-text.Width(val)/2, cy+4, val, t.White)
@@ -260,7 +300,7 @@ func DrawKnobFull(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 	y1 := cy - int(math.Round(float64(r)*0.25*math.Cos(angle)))
 	x2 := cx + int(math.Round(float64(r)*0.9*math.Sin(angle)))
 	y2 := cy - int(math.Round(float64(r)*0.9*math.Cos(angle)))
-	drawLineWidth(img, x1, y1, x2, y2, knobStroke, t.Select)
+	drawLineWidth(img, x1, y1, x2, y2, knobStroke, k.fillColor(t))
 
 	val := fmt.Sprintf("%.0f", k.Value)
 	text.Draw(img, cx-text.Width(val)/2, cy+r+12, val, t.White)
@@ -269,11 +309,38 @@ func DrawKnobFull(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 	}
 }
 
+// knobArcStart is 7 o'clock — a gauge knob's minimum, on the clock-face
+// convention DrawKnobArc's own doc uses (12 o'clock = angle 0).
+// knobArcSweep is 300 degrees, clockwise from knobArcStart through 12
+// o'clock to 5 o'clock (the maximum) — a 60-degree gap, centered on 6
+// o'clock, is left undrawn at the bottom.
+const (
+	knobArcStart = 7.0 / 12.0 * 2 * math.Pi
+	knobArcSweep = 300.0 / 360.0 * 2 * math.Pi
+)
+
+// DrawKnobArc is DrawKnob's gauge reading: a 300-degree arc running
+// clockwise from 7 o'clock (the value's minimum, left of center) through
+// 12 o'clock to 5 o'clock (the maximum, right of center), leaving a
+// 60-degree gap open at the bottom — the traditional hardware-gauge look
+// (a car's speedometer, a mixing-desk gain knob), as distinct from
+// DrawKnob's full-circle progress ring.
+func DrawKnobArc(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
+	drawArcSpanWidth(img, cx, cy, r, knobArcStart, knobArcSweep, knobStroke, t.DarkGray)
+	drawArcSpanWidth(img, cx, cy, r, knobArcStart, k.frac()*knobArcSweep, knobStroke, k.fillColor(t))
+
+	val := fmt.Sprintf("%.0f", k.Value)
+	text.Draw(img, cx-text.Width(val)/2, cy+4, val, t.White)
+	if k.Label != "" {
+		text.Draw(img, cx-text.Width(k.Label)/2, cy+r+12, k.Label, t.Gray)
+	}
+}
+
 // DrawFader draws a vertical linear control: DrawMeterV's fill plus a
 // handle line at the fill boundary and the value readout above it.
 func DrawFader(img *image.NRGBA, t Theme, x, y, w, h int, k Knob) {
 	frac := k.frac()
-	DrawMeterV(img, x, y, w, h, frac, t.Select, t.DarkGray)
+	DrawMeterV(img, x, y, w, h, frac, k.fillColor(t), t.DarkGray)
 	handleY := y + h - int(float64(h)*frac)
 	gfx.FillRect(img, x-2, handleY-1, w+4, 2, t.White)
 

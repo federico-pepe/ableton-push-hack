@@ -34,6 +34,32 @@ type SoftButton struct {
 	Label string
 	State SoftButtonState
 	Group int
+
+	// Color overrides the label's color, whatever State would otherwise
+	// pick (White/OnColor/OffColor) — same contract as Knob.Color: the
+	// zero value (color.NRGBA{}, left unset) falls back to State's own
+	// default rather than white, since white is itself SoftNeutral's
+	// deliberate default and would be indistinguishable from "not set".
+	// SoftConfirm's Accent background is unaffected by Color — it stays
+	// fixed, the same way Knob's track/handle stay fixed regardless of
+	// Knob.Color.
+	Color color.NRGBA
+}
+
+// labelColor resolves b.Color against State's own default, per Color's
+// own doc: zero value falls back to State, not white.
+func (b SoftButton) labelColor(t Theme) color.NRGBA {
+	def := t.White
+	switch b.State {
+	case SoftOff:
+		def = t.OffColor
+	case SoftOn:
+		def = t.OnColor
+	}
+	if b.Color == (color.NRGBA{}) {
+		return def
+	}
+	return b.Color
 }
 
 // groupColors cycles by (Group-1)%len(groupColors) so an arbitrary number
@@ -66,15 +92,10 @@ func DrawBotStrip(img *image.NRGBA, t Theme, y, w, colW, h int, buttons [8]SoftB
 			continue
 		}
 		x := i * colW
-		col := t.White
+		col := b.labelColor(t)
 		bg := t.DarkGray
-		switch b.State {
-		case SoftConfirm:
+		if b.State == SoftConfirm {
 			bg = t.Accent
-		case SoftOff:
-			col = t.OffColor
-		case SoftOn:
-			col = t.OnColor
 		}
 		if bg != t.DarkGray {
 			gfx.FillRect(img, x, y, colW, h, bg)

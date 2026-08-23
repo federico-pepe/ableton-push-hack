@@ -102,6 +102,19 @@ push-tethered-app's `internal/renderframe.defaultColor`, which now
 defaults any module's unset color field to white rather than invisible
 transparent black).
 
+**`push3.Palette` now has a cross-language consumer.**
+`push-tethered-app/cmd/genpalette` imports this package directly (it's
+already a Go dependency there via the `core/` replace) and writes every
+raw 0-127 index, resolved through `push3.ColorForIndex`, out as JSON —
+`examples/modules/*/palette.json` — so a process module written in a
+language that cannot import `push3` (JS, Python) can still look a color
+up by name or by index instead of hand-copying RGB. Keep this in mind
+before restructuring `Palette`/`NamedColors`/`ColorForIndex`'s shape:
+`genpalette` reads them directly, and every `palette.json` copy needs
+regenerating (`go run ./cmd/genpalette` from push-tethered-app's root)
+after a change here, even though nothing in *this* repo's build depends
+on it.
+
 ## Anti-aliased primitives (2026-08-22)
 
 `DrawArc` and the package-private `drawLine` (`primitives.go`) draw
@@ -113,12 +126,18 @@ stroke-width change below shipped and still looked jagged.
 - `blendPixel(img, x, y, col, alpha)`: alpha-blends a color into an
   existing pixel (straight, non-premultiplied `image.NRGBA`), output alpha
   always 255 — the display has no alpha channel of its own to preserve.
-- `drawArcWidth(img, cx, cy, r, frac, width, col)`: for every pixel within
-  `width` of the ring, coverage = `width/2 + 0.5 - |dist(pixel,center) -
-  r|`, clamped — a signed-distance-to-radius test, not angular stepping.
-  The sweep's cut edge (for `frac < 1`) gets the same ~1px feather via
-  arc-length so a partial arc's end isn't harder-edged than its round
-  sides.
+- `drawArcSpanWidth(img, cx, cy, r, startAngle, sweepAngle, width, col)`:
+  the general form — same signed-distance-to-radius coverage test, but the
+  ring only covers `[startAngle, startAngle+sweepAngle)` (radians,
+  0 = 12 o'clock, matching `DrawArc`'s convention), angle measured
+  relative to `startAngle` and wrapped into `[0,2π)`. The far edge gets a
+  ~1px feather via arc-length, same as `drawArcWidth` below; the near edge
+  (`startAngle` itself) is a hard boundary — it's the zero point angle is
+  measured from, so there's no "before start" to feather against, the
+  same limitation `drawArcWidth`'s 12 o'clock start always had.
+- `drawArcWidth(img, cx, cy, r, frac, width, col)`: `drawArcSpanWidth`
+  with `startAngle=0`, `sweepAngle=frac*2π` — a full-circle-capable ring
+  starting at 12 o'clock, frac clamped to [0,1].
 - `drawLineWidth(img, x1, y1, x2, y2, width, col)`: same idea against
   distance to the nearest point on the segment (clamped projection `t` in
   `[0,1]`), not distance to a rounded step point.
@@ -127,21 +146,95 @@ stroke-width change below shipped and still looked jagged.
   anti-aliasing for free since it already calls `drawLine` per segment,
   and any hack calling `widgets.DrawArc` directly gets it too, with no
   signature change.
-- `DrawKnob`/`DrawKnobFull` call the same two functions with
-  `knobStroke = 2` instead of relying on a separate stroke helper — there
-  used to be one (`drawArcStroke`/`drawLineStroke`, added earlier the same
-  day to thicken the knob by drawing the arc twice at different radii /
-  the line twice at a 1px diagonal offset), but once `drawArcWidth`/
-  `drawLineWidth` existed as the general anti-aliased primitive, the
-  separate crude-offset version had no reason to keep existing —
-  `DrawKnob`/`DrawKnobFull` just pass a wider `width` to the same code
-  path everything else uses.
+- `DrawKnob`/`DrawKnobFull`/`DrawKnobArc` call `drawArcWidth`/
+  `drawLineWidth`/`drawArcSpanWidth` with `knobStroke = 2` instead of
+  relying on a separate stroke helper — there used to be one
+  (`drawArcStroke`/`drawLineStroke`, added earlier the same day to thicken
+  the knob by drawing the arc twice at different radii / the line twice at
+  a 1px diagonal offset), but once `drawArcWidth`/`drawLineWidth` existed
+  as the general anti-aliased primitive, the separate crude-offset version
+  had no reason to keep existing — the three `DrawKnob*` functions just
+  pass a wider `width` to the same code path everything else uses.
+
+## Gauge knob: DrawKnobArc (2026-08-22)
+
+Third `Knob`-composing function, alongside `DrawKnob` (radial-progress
+ring) and `DrawKnobFull` (rotary pointer): `DrawKnobArc` draws a
+300-degree arc from 7 o'clock (the value's minimum) clockwise through 12
+to 5 o'clock (the maximum), leaving a 60-degree gap open at the bottom —
+the traditional hardware-gauge look (a speedometer, a mixing-desk gain
+knob dial). Requested directly, with the gap's exact position described in
+clock-face terms.
+
+Implementation is two `drawArcSpanWidth` calls at `knobArcStart` (7
+o'clock = `7/12 * 2π`) and `knobArcSweep` (300° = `300/360 * 2π`): one for
+the full-sweep `DarkGray` track (always drawn, so an empty gauge still
+reads as a control, matching `DrawKnob`'s track), one for the `Select`
+progress fill at `k.frac()*knobArcSweep`. `drawArcSpanWidth` already
+existed as `drawArcWidth`'s general form (see "Anti-aliased primitives"
+above) — no new drawing primitive needed, just a new composition of the
+existing one, same relationship `DrawKnob`/`DrawKnobFull` already have to
+`drawArcWidth`/`drawLineWidth`.
+
+Wired into the module ABI as `Frame.KnobArc` / op kind `"knobarc"`
+(`push-tethered-app/internal/module/frame.go`,
+`internal/renderframe/render.go`), same `KnobParams` shape `knob`/
+`knobfull` already use — no ABI change beyond one more `RegisterOp` call
+and one more typed `Frame` method, per the "open op set" design this
+package's callers already rely on. `cmd/screensim -scene controls` shows
+all three knob compositions side by side.
 
 Cost: `drawArcWidth` iterates a `(2r+width)²` bounding box per call
 (trig per pixel) rather than `O(r)` angular steps: fine at the sizes and
 frame rates here (10fps, knob radii in the tens of pixels, a handful of
 calls per frame), revisit only if a much larger radius or many
 simultaneous arcs shows up.
+
+## Per-knob Color, and the package-wide color invariant (2026-08-22)
+
+`Knob` gained a `Color color.NRGBA` field — the fill/pointer color
+`DrawKnob`'s sweep arc, `DrawKnobFull`'s pointer line, `DrawKnobArc`'s
+fill arc, and `DrawFader`'s filled bar all draw with (`Knob` is
+`DrawFader`'s param type too), resolved by the new `Knob.fillColor(t
+Theme)` method each of the four call instead of using `t.Select`
+directly. Requested directly, after `DrawKnobArc` shipped, to let a
+module assign each knob its own color (e.g. from `push3.Palette`) rather
+than every knob on screen sharing one `Theme.Select`.
+
+Zero value (`color.NRGBA{}`, i.e. left unset) falls back to `t.Select` —
+**deliberately not white**, unlike every other color-bearing op param in
+`internal/renderframe` (`defaultColor`, added the same week: an unset
+`rect`/`text`/etc. color renders white). The two conventions look
+inconsistent side by side but solve different problems: those op params
+have no natural per-widget default to fall back to, so "unset" needed
+*some* visible color and white was picked; `Knob` already had a
+long-standing default look (`t.Select`) every existing caller relies on,
+and white is itself a color a module might deliberately choose for a
+knob (`push3.ColorForIndex(120)`) — defaulting unset to white would make
+that choice indistinguishable from not having set `Color` at all. The
+track (`DarkGray`) stays fixed regardless of `Color` — only the
+fill/pointer changes.
+
+**`DrawFader` was, until this same change, the one widget that fell short
+of this.** It already took a `Knob` param — `Color` sat right there,
+unused — but hardcoded `t.Select`/`t.White` in the function body instead
+of calling `k.fillColor(t)` like the three `DrawKnob*` functions now do.
+Caught while auditing the package against a broader ask: every
+color-bearing widget in `core/gfx/widgets`, existing or future, must
+support the full Push palette with a sensible fallback when unset — not
+opt-in per widget as each one happens to get a `Color` field. That's now
+stated directly as a package-level invariant in `theme.go`'s doc comment
+(`core/gfx/widgets`'s "Package widgets holds..." block), not just implied
+by precedent — read it before adding a new color-bearing widget.
+
+No ABI change beyond the field itself: `KnobParams`' `K Knob` already
+carried the whole struct across the wire, so a process module in any
+language gets `Color` for free by adding one more key
+(`push-tethered-app/examples/modules/knobs-js` does, giving all six of its
+knobs distinct palette colors — `sky`/`lime`/`violet`/`pink_hot`/`orange`/
+`amber`; `push-tethered-app/cmd/screensim`'s `controls` scene gives
+`KnobArc` and `Fader` a palette `Color` each, alongside two knobs left at
+the Theme default, to show both paths side by side).
 
 **Hardware LED palette, resolved to RGBA (2026-08-22):** `push3.Palette`/
 `ColorForIndex(idx uint8) PaletteEntry` (`core/push3/colors.go`) resolves a
@@ -186,6 +279,26 @@ semantics a module might want, picked per group:
   clearing the group to nothing.
 - **Independent**: each index toggles on/off on its own — mute/solo,
   multi-select filters, etc.
+
+**2026-08-22: `SoftButton` gained a `Color color.NRGBA` field**, same
+contract as `Knob.Color` — overrides the label color `State` would
+otherwise pick (`White`/`OnColor`/`OffColor`), zero value falls back to
+`State`'s own default rather than white (`SoftButton.labelColor(t Theme)`
+resolves it, same shape as `Knob.fillColor`). `SoftConfirm`'s `Accent`
+background is unaffected — it stays fixed regardless of `Color`, the same
+way `Knob`'s track/handle stay fixed regardless of `Knob.Color`. Closes
+the last gap in the package-wide color invariant (see "Per-knob Color, and
+the package-wide color invariant" above): every color-bearing widget in
+`core/gfx/widgets` now supports an arbitrary `push3.Palette` color with a
+sensible fallback — `SoftButton` was the one left on a closed enum
+(`State`) with no per-instance override. `cmd/screensim -scene
+button-groups` demonstrates it (`CUSTOM` button, `cyan_lt`).
+
+`groupColors` (the `Group` underline cue above) is intentionally
+untouched by this — it's a fixed 4-color cycle keyed by group number, not
+a per-button color choice, and stays that way; extending it to a `Color`
+override would conflict with its whole purpose (a consistent, at-a-glance
+cue for "these buttons are one group").
 
 ## Widget set (2026-08-21)
 

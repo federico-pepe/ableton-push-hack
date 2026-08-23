@@ -6,6 +6,42 @@
 // this exists so push-manager's Shadow UI and keyboard-visualizer's own
 // screen renderer (and any future hack that draws on Push's display) share
 // one visual language instead of each hand-rolling its own.
+//
+// # Color is a package-wide contract, not a per-widget choice
+//
+// Every widget in this package — existing or future — must support the
+// full Push color palette (core/push3.Palette/ColorForIndex) by default,
+// with a sensible fallback when no color is given, rather than a fixed
+// look a caller can't change. Concretely, that means:
+//
+//  1. Any color a widget draws with must be a plain color.NRGBA parameter
+//     (directly, like DrawArc/DrawMeter/DrawEnvelope's col/fg/bg, or via a
+//     field on a param struct, like Knob.Color) — never a hardcoded
+//     literal baked into the function. A caller must always be able to
+//     pass any push3.Palette entry.
+//  2. A color left at its zero value (color.NRGBA{}, i.e. not set) must
+//     still render something sensible, not nothing — but "sensible" is
+//     picked per widget, not one blanket rule:
+//     - Widgets with no natural per-instance default (DrawArc, DrawMeter,
+//       DrawEnvelope, and every op internal/renderframe.defaultColor
+//       covers) fall back to white — see that function's doc.
+//     - Knob and everything sharing its Color field (DrawKnob,
+//       DrawKnobFull, DrawKnobArc, DrawFader) fall back to Theme.Select
+//       instead, via Knob.fillColor — these had a real default look
+//       before Color existed, and white is itself a valid deliberate
+//       choice for one of them, so defaulting to white would make "chose
+//       white" and "didn't choose" indistinguishable. See Knob.Color's
+//       own doc for the reasoning.
+//     - SoftButton.Color falls back to its own State's default color
+//       (White/OnColor/OffColor) instead, via SoftButton.labelColor —
+//       same reasoning as Knob.Color, one level removed: State already
+//       picks a real default, so Color only needs to handle the
+//       "override it" case.
+//     A new color-bearing widget picks whichever of these shapes fits —
+//     but must pick one, not leave a color permanently fixed.
+//  3. Theme's own defaults (Default, groupColors) are themselves resolved
+//     through push3.Palette rather than hand-picked RGB literals — see
+//     Default's doc.
 package widgets
 
 import (
