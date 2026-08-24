@@ -204,6 +204,23 @@ type Knob struct {
 	// from "not set". Every color-bearing widget in this package follows
 	// this same contract — see the package doc.
 	Color color.NRGBA
+
+	// ValueScale enlarges the value readout (not Label, which always draws
+	// at 1x) via text.DrawScaled — integer nearest-neighbor, same font,
+	// just bigger. Zero or 1 means 1x, identical to every one of these
+	// controls' look before this field existed — same zero-value-is-the-
+	// old-default contract as Color above.
+	ValueScale int
+}
+
+// valueScale returns k.ValueScale, floored at 1 — text.DrawScaled's own
+// scale<=1 fallback already treats anything at or below 1x as identical to
+// Draw, so this just keeps the layout math below from special-casing 0.
+func (k Knob) valueScale() int {
+	if k.ValueScale <= 1 {
+		return 1
+	}
+	return k.ValueScale
 }
 
 // fillColor resolves k.Color against Theme's own default, per Color's own
@@ -282,7 +299,8 @@ func DrawKnob(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 	drawArcWidth(img, cx, cy, r, k.frac(), knobStroke, k.fillColor(t))
 
 	val := fmt.Sprintf("%.0f", k.Value)
-	text.Draw(img, cx-text.Width(val)/2, cy+4, val, t.White)
+	sc := k.valueScale()
+	text.DrawScaled(img, cx-text.WidthScaled(val, sc)/2, cy+4*sc, sc, val, t.White)
 	if k.Label != "" {
 		text.Draw(img, cx-text.Width(k.Label)/2, cy+r+12, k.Label, t.Gray)
 	}
@@ -303,9 +321,11 @@ func DrawKnobFull(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 	drawLineWidth(img, x1, y1, x2, y2, knobStroke, k.fillColor(t))
 
 	val := fmt.Sprintf("%.0f", k.Value)
-	text.Draw(img, cx-text.Width(val)/2, cy+r+12, val, t.White)
+	sc := k.valueScale()
+	valueY := cy + r + 12*sc
+	text.DrawScaled(img, cx-text.WidthScaled(val, sc)/2, valueY, sc, val, t.White)
 	if k.Label != "" {
-		text.Draw(img, cx-text.Width(k.Label)/2, cy+r+24, k.Label, t.Gray)
+		text.Draw(img, cx-text.Width(k.Label)/2, valueY+12, k.Label, t.Gray)
 	}
 }
 
@@ -330,7 +350,8 @@ func DrawKnobArc(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 	drawArcSpanWidth(img, cx, cy, r, knobArcStart, k.frac()*knobArcSweep, knobStroke, k.fillColor(t))
 
 	val := fmt.Sprintf("%.0f", k.Value)
-	text.Draw(img, cx-text.Width(val)/2, cy+4, val, t.White)
+	sc := k.valueScale()
+	text.DrawScaled(img, cx-text.WidthScaled(val, sc)/2, cy+4*sc, sc, val, t.White)
 	if k.Label != "" {
 		text.Draw(img, cx-text.Width(k.Label)/2, cy+r+12, k.Label, t.Gray)
 	}
@@ -345,7 +366,8 @@ func DrawFader(img *image.NRGBA, t Theme, x, y, w, h int, k Knob) {
 	gfx.FillRect(img, x-2, handleY-1, w+4, 2, t.White)
 
 	val := fmt.Sprintf("%.0f", k.Value)
-	text.Draw(img, x+(w-text.Width(val))/2, y-4, val, t.White)
+	sc := k.valueScale()
+	text.DrawScaled(img, x+(w-text.WidthScaled(val, sc))/2, y-4*sc, sc, val, t.White)
 	if k.Label != "" {
 		text.Draw(img, x+(w-text.Width(k.Label))/2, y+h+12, k.Label, t.Gray)
 	}
