@@ -211,6 +211,13 @@ type Knob struct {
 	// controls' look before this field existed — same zero-value-is-the-
 	// old-default contract as Color above.
 	ValueScale int
+
+	// Bipolar changes DrawKnobArc's fill to grow from the middle of
+	// [Min,Max] outward, instead of from Min — see DrawKnobArc's own doc.
+	// False (the zero value) is DrawKnobArc's original behavior; every
+	// other composition (DrawKnob, DrawKnobFull, DrawFader) ignores this
+	// field entirely.
+	Bipolar bool
 }
 
 // valueScale returns k.ValueScale, floored at 1 — text.DrawScaled's own
@@ -345,9 +352,28 @@ const (
 // 60-degree gap open at the bottom — the traditional hardware-gauge look
 // (a car's speedometer, a mixing-desk gain knob), as distinct from
 // DrawKnob's full-circle progress ring.
+//
+// k.Bipolar changes the fill from "grows from the minimum" to "grows from
+// the middle of [Min,Max], outward in whichever direction Value moved" —
+// nothing drawn at all when Value sits exactly at the middle. For a knob
+// whose Min/Max are symmetric around zero (a pan, a detune, a bipolar LFO
+// offset), that middle is both the arc's 12 o'clock and the value's own
+// resting/center state, so an untouched knob reads as empty rather than
+// half-full.
 func DrawKnobArc(img *image.NRGBA, t Theme, cx, cy, r int, k Knob) {
 	drawArcSpanWidth(img, cx, cy, r, knobArcStart, knobArcSweep, knobStroke, t.DarkGray)
-	drawArcSpanWidth(img, cx, cy, r, knobArcStart, k.frac()*knobArcSweep, knobStroke, k.fillColor(t))
+	if k.Bipolar {
+		const center = knobArcStart + knobArcSweep/2 // 12 o'clock, same angle DrawKnobArc's own doc names
+		switch f := k.frac(); {
+		case f > 0.5:
+			drawArcSpanWidth(img, cx, cy, r, center, (f-0.5)*knobArcSweep, knobStroke, k.fillColor(t))
+		case f < 0.5:
+			drawArcSpanWidth(img, cx, cy, r, knobArcStart+f*knobArcSweep, (0.5-f)*knobArcSweep, knobStroke, k.fillColor(t))
+		}
+		// f == 0.5 exactly: draw nothing — Value is at the middle of the range.
+	} else {
+		drawArcSpanWidth(img, cx, cy, r, knobArcStart, k.frac()*knobArcSweep, knobStroke, k.fillColor(t))
+	}
 
 	val := fmt.Sprintf("%.0f", k.Value)
 	sc := k.valueScale()
