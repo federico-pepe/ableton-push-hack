@@ -5,10 +5,39 @@ import (
 	"image"
 	"image/color"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/image/font/basicfont"
 )
+
+// TestConcurrentDrawNoRace is the regression guard for the faceMu fix.
+//
+// font.Face "is not safe for concurrent use by multiple goroutines" (its own
+// doc), but this package hands out shared Face singletons — basicFace here,
+// and NewFace's per-(weight,size) cache in face.go. A host that runs more
+// than one render loop at once calls into the same Face concurrently:
+// confirmed live 2026-08-24 in push-tethered-app's pushapp-ui with two
+// simultaneously connected Push units, each with its own render goroutine —
+// panicked with "index out of range" / "slice bounds out of range" inside
+// golang.org/x/image/font/sfnt and .../vector, not a per-device bug. Run
+// with -race: without faceMu this both races and panics within a handful of
+// iterations; confirmed reverting the fix reproduces both deterministically.
+func TestConcurrentDrawNoRace(t *testing.T) {
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			img := image.NewNRGBA(image.Rect(0, 0, 200, 40))
+			for i := 0; i < 200; i++ {
+				Draw(img, 2, 12, "PUSHAPP - MONITOR HEADER TEXT", color.NRGBA{R: 255, G: 255, B: 255, A: 255})
+				DrawScaled(img, 2, 30, 2, "SCALED TEXT", color.NRGBA{R: 200, G: 200, B: 200, A: 255})
+			}
+		}()
+	}
+	wg.Wait()
+}
 
 // TestTruncateResultIsASCII is the regression guard that matters.
 //

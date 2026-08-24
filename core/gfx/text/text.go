@@ -24,6 +24,23 @@ var (
 	basicFace     font.Face
 )
 
+// faceMu serializes every call into any font.Face this package hands out —
+// the basic face here and NewFace's cached faces in face.go alike. Required,
+// not defensive: font.Face "is not safe for concurrent use by multiple
+// goroutines, as its methods may re-use implementation-specific caches and
+// mask image buffers" (golang.org/x/image/font.Face's own doc), and every
+// face this package returns is a shared singleton — one basicFace for the
+// whole process, one cached instance per (weight, size) in face.go. A host
+// that runs more than one render loop at once (push-tethered-app's
+// pushapp-ui, one goroutine per connected Push session) calls into the same
+// Face concurrently from separate goroutines without this: confirmed live
+// 2026-08-24, two simultaneous sessions corrupted the opentype rasterizer's
+// internal buffers and panicked with "index out of range" / "slice bounds
+// out of range" inside golang.org/x/image/font/sfnt and .../vector — not a
+// per-model bug, a data race, reproducible only with >=2 concurrent sessions
+// drawing text at once.
+var faceMu sync.Mutex
+
 // face7x13 returns the default basic face (Tamzen7x13r rendered at its
 // native 13px cell), building and caching it on first use.
 func face7x13() font.Face {
@@ -57,6 +74,8 @@ func Draw(img *image.NRGBA, x, baseline int, s string, col color.NRGBA) {
 		Face: face7x13(),
 		Dot:  fixed.P(x, baseline),
 	}
+	faceMu.Lock()
+	defer faceMu.Unlock()
 	d.DrawString(strings.ToUpper(sanitizeASCII(s)))
 }
 
@@ -74,7 +93,9 @@ func DrawScaled(img *image.NRGBA, x, baseline, scale int, s string, col color.NR
 	if w <= 0 {
 		return
 	}
+	faceMu.Lock()
 	m := face7x13().Metrics()
+	faceMu.Unlock()
 	ascent, descent := m.Ascent.Ceil(), m.Descent.Ceil()
 	h := ascent + descent
 	if h <= 0 {
@@ -130,11 +151,18 @@ func DrawWith(img *image.NRGBA, x, baseline int, s string, col color.NRGBA, face
 		Face: face,
 		Dot:  fixed.P(x, baseline),
 	}
+	// Same faceMu as Draw/DrawScaled: face may be one of NewFace's cached,
+	// process-wide-shared instances (see faceMu's doc), so this needs the
+	// same serialization even though face is caller-supplied.
+	faceMu.Lock()
+	defer faceMu.Unlock()
 	d.DrawString(sanitizeASCII(s))
 }
 
 // WidthWith returns the pixel width of s rendered with face.
 func WidthWith(s string, face font.Face) int {
+	faceMu.Lock()
+	defer faceMu.Unlock()
 	return font.MeasureString(face, sanitizeASCII(s)).Ceil()
 }
 
