@@ -534,6 +534,8 @@ func main() {
 	mux.HandleFunc("/api/live/playing", handleLivePlaying)
 	mux.HandleFunc("/api/live/play", handleLivePlay)
 	mux.HandleFunc("/api/live/stop", handleLiveStop)
+	mux.HandleFunc("/api/input/usbhid", handleUsbHid)
+	mux.HandleFunc("/api/input/usbhid/status", handleUsbHidStatus)
 
 	handler := withCORS(withLogging(mux))
 

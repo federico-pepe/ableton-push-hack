@@ -205,7 +205,26 @@ function showStats() {
 }
 function startStatsPolling() {
   loadStats();
+  loadUsbHidState();
   _statsTimer = setInterval(loadStats, 3000);
+}
+
+async function usbHidChanged() {
+  const enabled = $('usb-hid-enabled').checked;
+  try {
+    await api('POST', '/api/input/usbhid', JSON.stringify({enabled}));
+    toast(enabled ? 'USB mouse/keyboard enabled' : 'USB mouse/keyboard disabled', 'success');
+  } catch(e) {
+    $('usb-hid-enabled').checked = !enabled; // revert
+    toast('Failed: ' + esc(e.message), 'error');
+  }
+}
+
+async function loadUsbHidState() {
+  try {
+    const s = await api('GET', '/api/input/usbhid/status');
+    if (s && $('usb-hid-enabled')) $('usb-hid-enabled').checked = !!s.enabled;
+  } catch(_) {}
 }
 function stopStatsPolling() {
   if (_statsTimer) { clearInterval(_statsTimer); _statsTimer = null; }
