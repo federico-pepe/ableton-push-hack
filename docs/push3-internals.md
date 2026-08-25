@@ -23,6 +23,27 @@ Reference document for Ableton Push 3's OS and filesystem. Discovered via `./scr
 
 > **Update note (2026-07-25):** device updated to AbletonOS `v3.21` (was `v3.20`). Kernel unchanged. Firmware bundle `push3_fw_1.5.4` (from `/data/logs/Push3.log`). New since v3.20: A/B dual-slot OS updates via **SWUpdate** (`swupdate` daemon + `S70swupdate`), and three Live↔Push3 **Unix-socket IPC channels** under `/data` (see Filesystem layout).
 
+> **Update note (2026-08-25):** Ableton published GPL source for v2.4.2
+> (`resources/push-assets/push3-242-gpl-sources.tgz`, gitignored — kernel +
+> stock GPL package sources only, not the proprietary rootfs). **Headline
+> result: a keyboard plugged into the USB-A port can already control the
+> onboard Live, visibly reflected on Push's own screen, with zero new
+> code** — Live's own shortcuts (`Ctrl+N`/`Ctrl+T`/`Ctrl+Shift+T`) executed
+> live and Push3's app redrew to show it (see "Keyboard shortcuts control
+> the onboard Live" below). The kernel config's USB Gadget options looked
+> promising but were **checked live on the device and ruled out** — no
+> gadget instance, no UDC exists at runtime (see "External-facing USB
+> personality — gadget theory tested and killed" below); the external
+> interface layout is most likely XMOS's own USB device presenting
+> directly, not an SoC-composed gadget. Also confirmed: mouse/keyboard HID
+> works end-to-end at the raw `/dev/input/eventN` level too (needs `root`
+> or `input`-group membership to read it), and the three Live↔Push3
+> `/data` IPC sockets are real and currently
+> connected, but standalone-mode only (Push's own onboard Live↔Push3 app,
+> not reachable from a tethered external computer). No custom Ableton
+> driver code found in the kernel tree itself — the actual protocol logic
+> lives in proprietary userspace, not GPL sources.
+
 ---
 
 ## SSH access
@@ -261,6 +282,28 @@ if childStat.Dev == parentStat.Dev { /* not mounted, leftover dir */ }
 
 **Swap partitions:** udev also mounts swap partitions (names like `swap1-nvme0n1p2`). Filter these in any listing code.
 
+### Mouse/keyboard (HID) — kernel supports it, disabled by default
+
+Confirmed from the kernel config shipped in Ableton's GPL source release for
+v2.4.2 (`resources/push-assets/push3-242-gpl-sources.tgz`, gitignored —
+see `sources/x86_64-oe-linux/linux-push3-*/kernel.config`):
+`CONFIG_USB_HID=m`, `usbmouse`/`usbkbd`/`hid-generic` modules all present
+(matches a prior on-device investigation: the `.ko` files exist under
+`/lib/modules/5.15.48-intel-pk-preempt-rt/kernel/drivers/hid/usbhid/` but
+are **not loaded at boot**). `CONFIG_INPUT_MOUSEDEV=y`,
+`CONFIG_INPUT_EVDEV=y`, `CONFIG_INPUT_KEYBOARD=y` are all built in, so once
+`usbhid` is loaded (`modprobe usbhid`, or hotplug if udev rules allow it —
+unconfirmed) a plugged-in mouse/keyboard should appear under
+`/dev/input/eventN` via the normal kernel input subsystem.
+
+**Known limitation, unchanged by this finding:** Push3's own app runs
+`--faceless` (see Push3 process architecture below) and reads all its own
+hardware input from the XMOS co-processor, never from X11/evdev — so even
+with `usbhid` loaded, a keyboard would not work in Push3's own UI. It would
+work in a separate X11 client running on `:0` (`Xorg` is confirmed running
+at boot — see Init system), since that's a normal X server with normal
+input handling.
+
 ### Battery — XMOS firmware only, not via sysfs
 
 `/sys/class/power_supply/` is **empty** on Push 3. The ACPI battery driver is present but has no devices bound. Battery state is managed by the XMOS co-processor and communicated to the Linux Compute Module via a **custom MIDI SysEx protocol** over the internal USB connection (`2982:1969`, ALSA device `Ableton Push 3`).
@@ -395,6 +438,174 @@ SysEx manufacturer ID: `00 21 1D` (Ableton). Known constants from `Push2/sysex.p
 Push3 sends periodic SysEx heartbeats (~3–5/sec) including LED state and touch sensor data.
 
 Full Push 2 MIDI implementation documented at https://github.com/Ableton/push-interface — Push 3 is a superset. For the exact Push 3 control→CC/Note assignments verified on hardware, see [`push3-button-map.md`](push3-button-map.md); for the LED color indices (same palette for pad Note-velocity and button CC-value), see [`push3-led-colors.md`](push3-led-colors.md).
+
+### External-facing USB personality — gadget theory tested and killed (2026-08-25)
+
+Ableton's v2.4.2 GPL source release (`resources/push-assets/push3-242-gpl-sources.tgz`,
+gitignored, ~725MB Yocto/OpenEmbedded dump — kernel + stock GPL package
+sources, not the proprietary rootfs) has this in the kernel config
+(`sources/x86_64-oe-linux/linux-push3-*/kernel.config`):
+
+```
+CONFIG_USB_GADGET=m
+CONFIG_USB_LIBCOMPOSITE=m
+CONFIG_USB_CONFIGFS=m
+CONFIG_USB_CONFIGFS_F_MIDI=y / F_UAC1=y / F_UAC2=y / F_HID=y / F_FS=y
+```
+
+Read on its own, that looks like evidence the SoC composes the external,
+host-facing personality (display/MIDI/audio/`xPort`) as a Linux USB gadget.
+**Checked live on the device (SSH, 2026-08-25) and this is wrong** —
+worth recording the correction, not just deleting the wrong guess:
+
+```
+$ ls /sys/kernel/config/usb_gadget/
+ls: cannot access '/sys/kernel/config/usb_gadget/': No such file or directory
+$ ls /sys/class/udc/
+ls: cannot access '/sys/class/udc/': No such file or directory
+```
+
+No gadget instance, no USB Device Controller registered at all — the
+kernel merely has the *capability* compiled in as loadable modules; nothing
+instantiates it on this unit. The `pci_ep` configfs group is mounted
+instead (`mount | grep configfs` → `configfs on /sys/kernel/config`,
+containing only `pci_ep/`, unrelated to USB gadget).
+
+**What `lsusb -t`/`lsusb` show instead, from the SoC's own perspective
+(it is host, not device, on this link):**
+
+```
+Bus 01.Port 1: Dev 4, Class=Hub, Driver=hub/4p         <- 0424:2534 (SMSC/Microchip hub)
+    Port 4: Dev 5, 2982:1969 "Ableton Push 3"          <- the XMOS-driven device, 7 interfaces
+```
+
+`2982:1969` — the exact same VID:PID and 7-interface layout (vendor
+display, 4-5 audio-class interfaces including MIDI streaming, vendor
+`xPort`) that push-tethered-app's docs describe seeing from an *external*
+host computer over the tether cable. **Leading hypothesis now:** there is
+no SoC-generated gadget at all. The XMOS chip's own USB device is what
+directly presents to whichever side is currently allowed to see it — the
+SoC itself in standalone mode (as captured above), an external tethered
+computer in controller mode — mediated by the hub (`0424:2534`) and
+whatever the leftmost mode-switch button actually toggles at the hub/mux
+level. Simpler than the gadget theory, and fits the "mutually exclusive,
+not concurrent" behavior push-tethered-app's docs already established
+without needing a separate explanation for it. Still not proven — would
+need catching the hub's port assignments changing between standalone and
+controller mode to confirm.
+
+This also means the previous version of this section's claim — that
+`xPort` might be a *relay* of the SoC-composed gadget's own interface 6 —
+doesn't hold up either; simpler explanation now is `xPort` (host-facing
+interface 6) *is* XMOS's own interface 6 directly ("Hardware control
+(LEDs, battery?)" per the table above), not a relay of anything.
+
+### Live↔Push3 IPC sockets — confirmed live, but standalone-mode only (2026-08-25)
+
+`push3-internals.md`'s own August update note mentioned three Unix-socket
+IPC channels under `/data` without detail. Confirmed live on the device:
+
+```
+/data/live-to-push-midi-ipc-channel
+/data/push-to-live-midi-ipc-channel
+/data/push-flip-api-ipc-channel
+```
+
+All three had an active connected peer at check time
+(`/proc/net/unix`, state `03` = connected), and `ps aux` at the same
+moment showed **`/opt/push3/Live` running** alongside `/opt/push3/Push3
+--faceless` — i.e. Push was in **standalone mode** with its own bundled
+Live active, not tethered to an external computer. These sockets are
+therefore the local IPC between Push3's *onboard* Live and its *onboard*
+hardware-control app — not something an externally-tethered computer's
+Live (or push-tethered-app) can reach; a USB tether can't carry a Unix
+socket. Doesn't resolve push-tethered-app's external-MIDI MPE mystery
+directly, but does confirm Push3's app is an active, stateful participant
+in a real negotiation protocol with Live (not a passive relay) — which
+makes an equivalent SysEx-based negotiation over the actual MIDI wire, for
+the tethered case, plausible again. See
+[docs/protocol/live-handshake.md](../../push-tethered-app/docs/protocol/live-handshake.md)
+in push-tethered-app for that side of it — not re-litigated here since
+this repo can't observe the external-tether case at all.
+
+### Mouse/keyboard, live test — confirmed working end-to-end (2026-08-25)
+
+`modprobe usbhid` loads cleanly. A Keychron K2 keyboard plugged into the
+USB-A port enumerates as 4 separate HID input devices (base keyboard,
+consumer control, system control, an extra keyboard interface — standard
+for a composite USB keyboard), on hub port `1-1.2` — the same internal hub
+(`0424:2534`) XMOS sits on at port `1-1.4` (see the USB gadget section
+below). `dmesg` shows a clean `usbkbd`/`hid-generic` probe, `hidraw0`/
+`hidraw1` created.
+
+**Nothing else was holding the device** — `fuser` on every `/dev/input/eventN`
+it created came back empty, meaning Xorg (confirmed running at boot) is
+not consuming it, at least not by default. Raw keystrokes are delivered
+correctly: reading `/dev/input/event4` while typing captured real
+`input_event` structs, decoded (`EV_KEY`, codes 30/31/32 = KEY_A/S/D,
+press then release) matching keys actually typed.
+
+**One real constraint found:** the `ableton` account (the normal,
+non-root SSH account) is **not** in the `input` group
+(`groups ableton` → `users disk audio messagebus realtime`, no `input`),
+and `/dev/input/eventN` is `root:input 0660` — so reading it requires
+either running as `root`, or a one-time provisioning step (add `ableton`
+to the `input` group, or a udev rule relaxing the permission) before a
+hack running as the normal user can read keyboard/mouse input itself.
+
+**Conclusion: the kernel/driver path is fully proven.** A standalone hack
+*can* read a real mouse/keyboard plugged into the USB-A port today, once
+`usbhid` is loaded and the permission issue above is provisioned for. See
+below, though — the more direct, no-code-needed path turned out to be
+even more useful.
+
+### Keyboard shortcuts control the onboard Live, reflected on Push's own screen — no hack needed (2026-08-25)
+
+The single most useful finding of this whole session. Federico typed real
+Ableton Live keyboard shortcuts (`Ctrl+N` = New Live Set, `Ctrl+T` = new
+audio track, `Ctrl+Shift+T` = new MIDI track) on the keyboard plugged into
+the USB-A port, **and watched them execute live, visible on Push 3's own
+physical screen** — new set created, new tracks appearing.
+
+**Mechanism, traced end to end:**
+
+1. `usbhid` enumerates the keyboard (see above).
+2. There's a delay before anything claims it — the first `fuser` check
+   (run right after plugging in) showed nothing holding
+   `/dev/input/eventN`. A later check, after Federico's shortcut test,
+   found **`Xorg` (PID 625) now holding `event4`-`event7` open** — udev
+   hotplug detection with some startup lag, not instant.
+3. `/opt/push3/Live` (PID 889, the full bundled Ableton Live, already
+   confirmed running earlier this session — standalone mode) is a normal
+   X11 client on display `:0`. Once Xorg owns the keyboard, Live receives
+   ordinary X key events and runs its own native shortcuts exactly as it
+   would on a desktop — nothing Push-specific about this part at all.
+4. Live's resulting session-state change (new set, new tracks) reaches
+   **Push3's own onboard app** (`--faceless`, direct DRM/KMS,
+   confirmed earlier to never read X11/evdev itself — that part still
+   holds) via IPC, not via any screen-sharing/mirroring — almost
+   certainly through `push-flip-api-ipc-channel` (see the IPC sockets
+   section above), which is exactly the kind of state-sync channel this
+   finding implies must exist. Push3's app then redraws its own native
+   Push-style UI to reflect the new state, using its own DRM/KMS
+   framebuffer — Federico is seeing Push's own rendering of Live's state,
+   not a pixel mirror of Live's X11 window.
+
+**Practical consequence — bigger than the "read raw evdev, draw our own
+UI" plan this section originally scoped:** a keyboard plugged into Push 3
+standalone can *already*, today, with zero new code, drive real,
+visible-on-Push's-own-screen actions, just by using Live's existing
+keyboard shortcut set. No need to reverse-engineer the display protocol
+or write a custom input-reading hack to get *this* class of interaction —
+it's Live's own shortcut surface, for free. Untested but very likely true
+by the same mechanism: text entry (e.g. typing to rename a track) and
+mouse input, since both are ordinary X11 input Live already handles like
+any desktop app.
+
+**Still true, unchanged:** Push3's own app doesn't read keyboard/mouse
+*directly* — everything above flows through Live. A hack wanting keyboard
+input Live doesn't already expose a shortcut for still needs the
+`/dev/input/eventN` route from the previous section.
 
 ### Intercepting XMOS traffic — LD_PRELOAD hook (`hacks/push-display`)
 
