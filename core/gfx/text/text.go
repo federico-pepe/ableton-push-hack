@@ -16,7 +16,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-//go:embed assets/Tamzen7x13r.ttf
+//go:embed assets/JetBrainsMono-Regular.ttf
 var tamzenRegular []byte
 
 var (
@@ -50,7 +50,7 @@ func face7x13() font.Face {
 			panic(err)
 		}
 		f, err := opentype.NewFace(pf, &opentype.FaceOptions{
-			Size:    13,
+			Size:    12,
 			DPI:     72,
 			Hinting: font.HintingFull,
 		})
@@ -139,7 +139,11 @@ func WidthScaled(s string, scale int) int {
 // Note this counts bytes, while Truncate counts runes — they agree for ASCII,
 // which is all Draw ever renders (sanitized before drawing), but a string
 // carrying multibyte characters will measure wider here than it renders.
-func Width(s string) int { return len(s) * 7 }
+func Width(s string) int {
+	faceMu.Lock()
+	defer faceMu.Unlock()
+	return font.MeasureString(face7x13(), sanitizeASCII(s)).Ceil()
+}
 
 // DrawWith draws s using an arbitrary font.Face (e.g. from NewFace) instead
 // of the package default basic face. Sanitizes to ASCII itself, same as
