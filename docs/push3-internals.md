@@ -500,10 +500,11 @@ doesn't hold up either; simpler explanation now is `xPort` (host-facing
 interface 6) *is* XMOS's own interface 6 directly ("Hardware control
 (LEDs, battery?)" per the table above), not a relay of anything.
 
-### Live↔Push3 IPC sockets — confirmed live, but standalone-mode only (2026-08-25)
+### Live↔Push3 IPC sockets (2026-08-25/26)
 
-`push3-internals.md`'s own August update note mentioned three Unix-socket
-IPC channels under `/data` without detail. Confirmed live on the device:
+Three Unix-domain sockets under `/data`, all standalone-mode only — this is
+local IPC between Push3's *onboard* Live and its *onboard* hardware-control
+app, not reachable over a USB tether from an external computer:
 
 ```
 /data/live-to-push-midi-ipc-channel
@@ -511,22 +512,53 @@ IPC channels under `/data` without detail. Confirmed live on the device:
 /data/push-flip-api-ipc-channel
 ```
 
-All three had an active connected peer at check time
-(`/proc/net/unix`, state `03` = connected), and `ps aux` at the same
-moment showed **`/opt/push3/Live` running** alongside `/opt/push3/Push3
---faceless` — i.e. Push was in **standalone mode** with its own bundled
-Live active, not tethered to an external computer. These sockets are
-therefore the local IPC between Push3's *onboard* Live and its *onboard*
-hardware-control app — not something an externally-tethered computer's
-Live (or push-tethered-app) can reach; a USB tether can't carry a Unix
-socket. Doesn't resolve push-tethered-app's external-MIDI MPE mystery
-directly, but does confirm Push3's app is an active, stateful participant
-in a real negotiation protocol with Live (not a passive relay) — which
-makes an equivalent SysEx-based negotiation over the actual MIDI wire, for
-the tethered case, plausible again. See
-[docs/protocol/live-handshake.md](../../push-tethered-app/docs/protocol/live-handshake.md)
-in push-tethered-app for that side of it — not re-litigated here since
-this repo can't observe the external-tether case at all.
+**Topology** (via `strace -p` on both endpoint processes as root — both
+processes' `/proc/<pid>/fd` need root even though `ps` shows owner
+`ableton`): `/opt/push3/Push3 --faceless` is the server for
+`live-to-push-midi-ipc-channel`; `/opt/push3/Live` is the server for the
+other two.
+
+**These sockets do not carry MIDI.** `aconnect -l` shows Push3's own
+`--faceless` app doing its real MIDI over the kernel ALSA sequencer —
+`RtMidi Input/Output Client` wired straight to Push 3's own `Live Port`,
+the exact same kernel MIDI port an externally-tethered host uses. Traced
+`push-to-live-midi-ipc-channel` and `live-to-push-midi-ipc-channel` live
+during real pad touches and playback: both stayed completely silent every
+time.
+
+**`push-flip-api-ipc-channel` is active, Live→Push3 only, framed but not
+decoded.** Every message so far has the same envelope: a 9-byte header
+(`01 00 00 00 00 00 00 <hi> <lo>`, big-endian 16-bit at the end) followed
+by a second, variable-length payload in the same `sendmsg` call — and that
+second field's length is exactly what the header's trailing 16-bit value
+encodes (confirmed: header said `0x00A0` = 160, the payload was 160 bytes).
+So the header is a **type + length prefix**, not a value of its own — an
+earlier pass mistook the length field for audio-meter data and drew a
+now-retracted L/R-stereo conclusion from it. The actual payload is
+structured binary containing readable ASCII fragments (`sig `,
+`{ablelive`, repeated within a single message) — looks like an internal
+Ableton object/signature serialization, not raw sensor or meter data.
+Traffic only appears during real activity (touches, transport running) and
+stops the instant the transport stops; the payload itself is undecoded.
+
+**Next step, if picked back up:** capture full raw messages to a file for
+offline, tool-assisted parsing instead of reading truncated `strace`
+output live over SSH — the payload is real structured data and deserves
+that, but is a bigger reverse-engineering task than this session's ad hoc
+probing was set up for.
+
+**Unrelated quirk found along the way — not a push-hack bug.**
+`/data/logs/Push3.log` has logged `MidiHub: Failed to push MIDI message to
+outgoing queue` at a rock-steady **~800/minute (~13.3/sec)** ever since its
+first occurrence, **2026-06-17T12:32:06**, with no drift — the "escalating"
+read in an earlier version of this note was a misread of a cumulative
+counter, not an actual increase. `Push Hack Automation`'s CC-sending toggle
+(bound to Push's Play button) was a suspect, but its on/off state only
+changed today from deliberate button presses; the error rate stayed flat
+for weeks before that with nobody touching the device, ruling it out.
+`MidiHub` is Live's own internal (proprietary) subsystem — no source
+access, so this isn't something fixable from push-hack or
+push-tethered-app. Left as a known device quirk, not investigated further.
 
 ### Mouse/keyboard, live test — confirmed working end-to-end (2026-08-25)
 
