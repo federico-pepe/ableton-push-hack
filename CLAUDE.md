@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Doc sync rule:** Keep this file, all `docs/` files, and `README.md` in sync with every code change. If a change affects behaviour, APIs, architecture, or known issues — update the relevant docs in the same commit. Save all implementation plans to `/plans/` with filename format `YYYY-MM-DD-title-of-the-plan.md`.
+> **Doc sync rule:** Keep this file, all `docs/` files, and `README.md` in sync with every code change. If a change affects behaviour, APIs, architecture, or known issues — update the relevant docs in the same commit. Save all implementation plans to `/plans/` with filename format `YYYY-MM-DD-title-of-the-plan.md`. Update [CHANGELOG.md](CHANGELOG.md)'s `## [Unreleased]` section in the same commit as any change worth noting to a future reader — new behavior, a fix, a changed API. Skip internal refactors and trivial edits.
 
 ## Project
 
@@ -249,6 +249,26 @@ explicitly:
 4. `./scripts/install.sh --hack <id>`
 
 Ports: 7705+ (7701=push-manager, 7702=keyboard-visualizer, 7703=automation, 7704=browser-bridge).
+
+## Releases
+
+This project uses Semantic Versioning for the repo as a whole (not
+`hack.json`'s per-hack `version` field, which is separate and unrelated).
+It is pre-1.0, so expect breaking changes between minor versions:
+`vMAJOR.MINOR.PATCH[-alpha|-beta|-rc.N]`. Current stage: `-alpha`.
+
+Update [CHANGELOG.md](CHANGELOG.md) in the same commit as the tagged code,
+retitling `## [Unreleased]` to the new version and dating it. Cutting a
+release:
+
+```bash
+git tag v0.1.1-alpha
+git push origin v0.1.1-alpha
+```
+
+There is no tag-triggered CI release job in this repo (unlike
+`push-tethered-app`) — tagging here is changelog bookkeeping, not a
+publish step.
 
 ## Reference Docs
 
