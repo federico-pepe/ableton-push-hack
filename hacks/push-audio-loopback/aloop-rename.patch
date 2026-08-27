@@ -1,0 +1,40 @@
+--- a/sound/drivers/aloop.c	2026-08-27 16:28:48
++++ b/sound/drivers/aloop.c	2026-08-27 16:35:36
+@@ -1319,7 +1319,12 @@
+ 
+ 	pcm->private_data = loopback;
+ 	pcm->info_flags = 0;
+-	strcpy(pcm->name, "Loopback PCM");
++	/* Short on purpose: some UIs (e.g. Live on Push 3) build their
++	 * device label by concatenating card shortname + pcm name with no
++	 * separator. A pcm name that repeats the full card name reads as
++	 * "Push Hack Virtual Audio Push Hack Virtual Audio PCM" — confirmed
++	 * live on-device. Keep this to a short, non-repeating suffix. */
++	strcpy(pcm->name, "PCM");
+ 
+ 	loopback->pcm[device] = pcm;
+ 	return 0;
+@@ -1551,7 +1556,7 @@
+ 	struct loopback_setup *setup;
+ 	int err, dev, substr, substr_count, idx;
+ 
+-	strcpy(card->mixername, "Loopback Mixer");
++	strcpy(card->mixername, "Push Hack Virtual Audio Mixer");
+ 	for (dev = 0; dev < 2; dev++) {
+ 		pcm = loopback->pcm[dev];
+ 		substr_count =
+@@ -1740,9 +1745,11 @@
+ 	loopback_cable_proc_new(loopback, 0);
+ 	loopback_cable_proc_new(loopback, 1);
+ 	loopback_timer_source_proc_new(loopback);
+-	strcpy(card->driver, "Loopback");
+-	strcpy(card->shortname, "Loopback");
+-	sprintf(card->longname, "Loopback %i", dev + 1);
++	/* card->driver is char[16] — keep short, unlike shortname/longname
++	 * below (char[32]/char[80]), to avoid overflowing it. */
++	strcpy(card->driver, "PHVAudio");
++	strcpy(card->shortname, "Push Hack Virtual Audio");
++	sprintf(card->longname, "Push Hack Virtual Audio %i", dev + 1);
+ 	err = snd_card_register(card);
+ 	if (err < 0)
+ 		return err;

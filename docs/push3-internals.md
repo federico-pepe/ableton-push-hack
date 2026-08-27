@@ -439,6 +439,55 @@ Push3 sends periodic SysEx heartbeats (~3–5/sec) including LED state and touch
 
 Full Push 2 MIDI implementation documented at https://github.com/Ableton/push-interface — Push 3 is a superset. For the exact Push 3 control→CC/Note assignments verified on hardware, see [`push3-button-map.md`](push3-button-map.md); for the LED color indices (same palette for pad Note-velocity and button CC-value), see [`push3-led-colors.md`](push3-led-colors.md).
 
+### Audio — real hardware is exclusive, a virtual sound card works (2026-08-27)
+
+The XMOS chip exposes Push 3's speaker and headphone jack as a standard
+Linux USB audio device (`card 0`, id `A3`). Live opens this device once
+and keeps it open. A second process that opens the same device gets a
+`Device or resource busy` error, even when idle. This is normal Linux
+behavior for a real sound card with one owner. It is confirmed with
+`speaker-test` against `hw:0,0` while Live runs: the open fails right
+away, with no visible process holding a matching file handle — the
+Linux USB audio driver itself holds the device, below the level a
+second process can see or share.
+
+A working alternative is a virtual sound card, built from the Linux
+kernel's own ALSA Loopback driver (`sound/drivers/aloop.c`, kernel
+config option `CONFIG_SND_ALOOP`). Push 3's kernel supports this
+option, but Ableton does not ship the built file. The GPL source
+release for Push 3 firmware v2.4.2
+(`resources/push-assets/push3-242-gpl-sources.tgz`, see the section
+above for its origin) has the full kernel source and its exact build
+config, so a matching module can be built outside the device and
+loaded with `insmod`. Module signing is on for this kernel but not
+enforced (`CONFIG_MODULE_SIG_FORCE` is not set), so an unloaded, unsigned
+module still loads — it only marks the kernel as tainted.
+
+This module, once loaded, shows up in Live's own audio device picker
+on Push 3's screen, the same way any real audio device does. A small
+patch renames it from the generic "Loopback" to "Push Hack Virtual
+Audio", so a user can tell it apart from the real hardware. Full build
+and deploy steps, plus a small test tool for feeding audio into it,
+are in `hacks/push-audio-loopback/`.
+
+One timing detail matters for clean audio through this virtual card.
+Push 3's kernel updates its clock every 4 milliseconds
+(`CONFIG_HZ=250`), and the Loopback driver uses this same clock by
+default. Live's own audio buffer is often much smaller than this,
+around 3 milliseconds. This mismatch causes audio to arrive in uneven
+bursts, heard as clicks and stutter, even though no buffer error is
+ever reported. **The fix: raise Live's own audio buffer size** (for
+example to 512 samples) in its audio settings on Push 3's screen. A
+larger buffer absorbs the mismatch and the audio comes through clean.
+Pointing the Loopback driver at a faster clock instead does not work:
+its `timer_source` setting only supports another real sound card's
+clock, and Push 3's own USB audio driver does not support this kind of
+clock sharing.
+
+Full write-up, including the two approaches tried and dropped before
+this one (Ableton Link's audio extension, and an LD_PRELOAD hook
+inside Live's own process): `plans/2026-08-27-push-audio-virtual-device.md`.
+
 ### External-facing USB personality — gadget theory tested and killed (2026-08-25)
 
 Ableton's v2.4.2 GPL source release (`resources/push-assets/push3-242-gpl-sources.tgz`,
