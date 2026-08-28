@@ -189,6 +189,15 @@ cmd_install() {
   rm -f "$tmp"
   [ -f "$dir/hack.json" ] || die "tarball for $id did not contain hack.json"
 
+  # tar run as root restores the *original* uid/gid baked into the archive
+  # (e.g. a CI runner's own uid) rather than defaulting to the current user.
+  # Re-chown to match hacks_dir's owner (normally ableton:users) — same
+  # convention push-manager's own runtime file writes already follow —
+  # so `ableton` (uninstall.sh, manual rm; the Push has no sudo) can still
+  # manage/delete what a root-run install just extracted.
+  local owner; owner="$(stat -c '%u:%g' "$hacks_dir" 2>/dev/null || stat -f '%u:%g' "$hacks_dir" 2>/dev/null || echo "")"
+  [ -n "$owner" ] && as_root chown -R "$owner" "$dir"
+
   install_service "$id" "$dir"
   rm -f "$reg"
   info "installed $id v$version"

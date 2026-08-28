@@ -7,6 +7,17 @@ between minor versions).
 
 ## [Unreleased]
 
+### Fixed
+
+- `push-catalogue install` left the installed hack's directory owned by
+  whatever uid/gid was baked into its release tarball (e.g. a CI runner's
+  own uid) instead of `ableton:users` — `tar` run as root restores original
+  ownership from the archive rather than defaulting to the current user.
+  `uninstall.sh --purge` runs as the non-root `ableton` account (the Push
+  has no sudo) and couldn't delete those directories. Now chowns the
+  extracted hack dir to match `hacks/`'s own owner right after extraction,
+  same convention push-manager's own runtime file writes already follow.
+
 ## [0.1.2-alpha] - 2026-08-28
 
 ### Added
