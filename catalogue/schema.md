@@ -39,13 +39,21 @@ never requires a catalog PR.
 ```json
 {
   "version": "0.1.0",
-  "download_url": "https://github.com/you/my-hack/releases/download/v0.1.0/my-hack.tar.gz"
+  "download_url": "https://github.com/you/my-hack/releases/download/v0.1.0/my-hack.tar.gz",
+  "released_at": "2026-08-28T13:39:00Z"
 }
 ```
+
+`released_at` is optional (ISO 8601 UTC) — when present, the catalogue's web
+UI shows it as that hack's "last updated" date. Omit it and the UI just shows
+`?`.
 
 The store fetches this via
 `https://raw.githubusercontent.com/<github_repo>/<default_branch>/release.json`.
 A release workflow (see `PUBLISHING.md`) keeps it in sync with each tag.
+`GET /api/catalog` re-fetches every hack's `release.json` live on every
+request to source `version`/`released_at` for the listing — catalog entries
+never carry those fields themselves.
 
 ## The release tarball
 

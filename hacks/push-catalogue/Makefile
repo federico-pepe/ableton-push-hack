@@ -1,4 +1,4 @@
-BINARY    := push-store
+BINARY    := push-catalogue
 SRC_DIR   := src
 BUILD_DIR := build
 
@@ -14,7 +14,7 @@ all: build
 # The canonical installer script lives at the hack root; copy it into src/ so
 # go:embed bakes it into the binary (single self-contained artifact to deploy).
 embed:
-	@cp push-store.sh $(SRC_DIR)/push-store.sh
+	@cp push-catalogue.sh $(SRC_DIR)/push-catalogue.sh
 
 build: embed
 	@echo "Building $(BINARY) for $(GOOS)/$(GOARCH)..."
@@ -35,4 +35,4 @@ vet: embed
 	cd $(SRC_DIR) && go vet ./...
 
 clean:
-	rm -rf $(BUILD_DIR) $(BINARY) $(SRC_DIR)/push-store.sh
+	rm -rf $(BUILD_DIR) $(BINARY) $(SRC_DIR)/push-catalogue.sh

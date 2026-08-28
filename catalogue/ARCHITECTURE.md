@@ -2,7 +2,7 @@
 
 ## The model: an index, not a host
 
-Push Store does **not** host hacks. It is a **catalog** (`catalogue/catalog.json`)
+Push Hack Catalogue does **not** host hacks. It is a **catalog** (`catalogue/catalog.json`)
 that points at hacks living in **their authors' own repositories**. Each repo
 publishes its own GitHub Releases and keeps a `release.json` at its root
 pointing at the current one. Same shape as a Homebrew tap or a Go module: the
@@ -22,7 +22,7 @@ keep their code, their releases, and full control over both.
           │  entry(foo) → owner A github_repo                    │
           │  entry(bar) → owner B github_repo                    │
           └───────────────────────────────────────────────────┘
-                              │  push-store daemon (on the Push)
+                              │  push-catalogue daemon (on the Push)
                               ▼
         fetch catalog → pick hack → fetch that repo's release.json
         → download the tarball it points at → extract as a framework hack
@@ -91,7 +91,7 @@ numbers — every entry is a live pointer at an owner's `release.json`.
 There is deliberately **no integrity pin** (no sha256, no signing) — the
 trust boundary is "this repo is on GitHub, served over HTTPS, and its
 catalog entry was reviewed at PR time," the same trust model as installing
-any open-source release binary directly. If Push Store ever opens to
+any open-source release binary directly. If Push Hack Catalogue ever opens to
 unreviewed third-party taps, this is the layer to revisit.
 
 ## Adding your hack to the store

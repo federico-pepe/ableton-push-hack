@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# push-store — install & manage push-hack hacks from the Push itself.
+# push-catalogue — install & manage push-hack hacks from the Push itself.
 #
-#   push-store list                 # show catalog
-#   push-store install <id>         # fetch release, extract, register, start
-#   push-store remove  <id>         # stop, disable, delete
-#   push-store installed            # what's installed now
-#   push-store --self-test          # offline checks (runs anywhere)
+#   push-catalogue list                 # show catalog
+#   push-catalogue install <id>         # fetch release, extract, register, start
+#   push-catalogue remove  <id>         # stop, disable, delete
+#   push-catalogue installed            # what's installed now
+#   push-catalogue --self-test          # offline checks (runs anywhere)
 #
 # Mirrors the framework's install.sh, but runs ON the Push. Needs root for the
 # service bits (init.d, rc symlinks) — re-exec via sudo if not already root.
@@ -17,9 +17,9 @@
 set -euo pipefail
 
 # Registry URL has ONE source of truth: hack.json's settings.registry (the
-# daemon passes it here as PUSH_STORE_REGISTRY). No URL is baked into this
-# script. Standalone CLI use: export PUSH_STORE_REGISTRY yourself.
-REGISTRY_URL="${PUSH_STORE_REGISTRY:-}"
+# daemon passes it here as PUSH_CATALOGUE_REGISTRY). No URL is baked into
+# this script. Standalone CLI use: export PUSH_CATALOGUE_REGISTRY yourself.
+REGISTRY_URL="${PUSH_CATALOGUE_REGISTRY:-}"
 PUSH_HACK_DIR="${PUSH_HACK_DIR:-/data/push-hack}"
 
 # ── tiny helpers ──────────────────────────────────────────────────────────────
@@ -52,7 +52,31 @@ if op=="schema": print(D.get("catalog_version"))
 elif op=="list":
     for h in D["hacks"]: print(f'{h["id"]}\t{h["name"]} — {h["description"]}')
 elif op=="catalog":
-    print(json.dumps([{k:h.get(k) for k in ("id","name","description","author","homepage","requires")} for h in D["hacks"]]))
+    # Author/name/description come straight from the catalog entry; version
+    # and released_at are always fetched live from the hack's own
+    # release.json (never cached in the catalog itself, same as install) —
+    # a slow/unreachable hack repo degrades to "?" rather than failing the
+    # whole listing.
+    import urllib.request
+    out=[]
+    for h in D["hacks"]:
+        e={k:h.get(k) for k in ("id","name","description","author","homepage","requires")}
+        rel_url=h.get("release_url") or (
+            f"https://raw.githubusercontent.com/{h['github_repo']}/{h.get('default_branch','main')}/release.json"
+            if h.get("github_repo") else None)
+        version=None; released_at=None
+        if rel_url:
+            try:
+                with urllib.request.urlopen(rel_url, timeout=10) as r:
+                    rel=json.load(r)
+                version=rel.get("version")
+                released_at=rel.get("released_at")
+            except Exception:
+                pass
+        e["version"]=version
+        e["released_at"]=released_at
+        out.append(e)
+    print(json.dumps(out))
 elif op=="has": sys.exit(0 if entry(a[0]) else 1)
 elif op=="field":
     e=entry(a[0]); sys.exit(1) if e is None else None
@@ -116,7 +140,7 @@ as_root() {
 
 # ── registry access ───────────────────────────────────────────────────────────
 load_registry() { # -> path to a temp copy of index.json
-  [ -n "$REGISTRY_URL" ] || die "no registry configured — set settings.registry in hack.json (or export PUSH_STORE_REGISTRY)"
+  [ -n "$REGISTRY_URL" ] || die "no registry configured — set settings.registry in hack.json (or export PUSH_CATALOGUE_REGISTRY)"
   local f; f="$(mktemp)"
   fetch "$REGISTRY_URL" "$f"   # urllib handles http(s):// and file://
   [ "$(q "$f" schema)" = "2" ] || die "unsupported catalog_version"
@@ -140,7 +164,7 @@ cmd_installed() {
 }
 
 cmd_install() {
-  local id="$1"; [ -n "$id" ] || die "usage: push-store install <id>"
+  local id="$1"; [ -n "$id" ] || die "usage: push-catalogue install <id>"
   local reg; reg="$(load_registry)"
   q "$reg" has "$id" || die "no such hack: $id"
 
@@ -192,7 +216,7 @@ install_service() {
 # Required-Stop:     \$local_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: push-hack: $id (via push-store)
+# Short-Description: push-hack: $id (via push-catalogue)
 ### END INIT INFO
 BIN="$dir/$bin"; CFG="$dir/hack.json"; LOG="$log"; PIDF="/var/run/$svc.pid"
 start() { echo "starting $svc"; mkdir -p "\$(dirname "\$LOG")"
@@ -211,7 +235,7 @@ EOF
 }
 
 cmd_remove() {
-  local id="$1"; [ -n "$id" ] || die "usage: push-store remove <id>"
+  local id="$1"; [ -n "$id" ] || die "usage: push-catalogue remove <id>"
   local svc="push-hack-$id"
   as_root "/etc/init.d/$svc" stop 2>/dev/null || true
   command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
@@ -224,10 +248,10 @@ cmd_remove() {
 self_test() {
   local here; here="$(cd "$(dirname "$0")" && pwd)"
   # Real production catalog — one directory too shallow was the old bug here
-  # (registry/ was a level *inside* hacks/push-store/, not the repo root).
+  # (registry/ was a level *inside* hacks/push-catalogue/, not the repo root).
   local fixture="$here/../../catalogue/catalog.json"
   [ -f "$fixture" ] || die "self-test: fixture not found ($fixture)"
-  PUSH_STORE_REGISTRY="file://$fixture"; REGISTRY_URL="$PUSH_STORE_REGISTRY"
+  PUSH_CATALOGUE_REGISTRY="file://$fixture"; REGISTRY_URL="$PUSH_CATALOGUE_REGISTRY"
   local reg; reg="$(load_registry)"
 
   # 1. catalog lists the seeded hack
@@ -245,12 +269,22 @@ self_test() {
   local tarball="$here/testdata/fixture-hack.tar.gz"
   [ -f "$tarball" ] || die "self-test: fixture tarball not found ($tarball)"
   local rel; rel="$(mktemp)"
-  printf '{"version":"0.1.0","download_url":"file://%s"}\n' "$tarball" > "$rel"
+  printf '{"version":"0.1.0","download_url":"file://%s","released_at":"2026-01-01T00:00:00Z"}\n' "$tarball" > "$rel"
   local version dl_url
   IFS=$'\t' read -r version dl_url < <(fetch_release "" "" "file://$rel")
-  rm -f "$rel"
   [ "$version" = "0.1.0" ] || die "self-test: fetch_release version wrong ($version)"
   [ "$dl_url" = "file://$tarball" ] || die "self-test: fetch_release download_url wrong"
+
+  # 3b. catalog op: per-hack live-release enrichment (version + released_at),
+  #     exercised offline via a release_url override so no network is hit.
+  local cat; cat="$(mktemp)"
+  printf '{"catalog_version":2,"hacks":[{"id":"fixture-hack","name":"Fixture Hack","description":"d","author":"tester","homepage":"https://example.invalid","release_url":"file://%s","requires":[]}]}\n' "$rel" > "$cat"
+  local catjson
+  catjson="$(q "$cat" catalog)"
+  rm -f "$rel" "$cat"
+  echo "$catjson" | grep -q '"author": "tester"' || die "self-test: catalog missing author"
+  echo "$catjson" | grep -q '"version": "0.1.0"' || die "self-test: catalog missing live version"
+  echo "$catjson" | grep -q '"released_at": "2026-01-01T00:00:00Z"' || die "self-test: catalog missing released_at"
 
   # 4. extraction: same `tar -xzf ... -C hacks_dir` cmd_install uses, into a
   #    scratch dir (no as_root/root/service registration — this only proves
@@ -268,8 +302,8 @@ self_test() {
 }
 
 # ── dispatch ──────────────────────────────────────────────────────────────────
-# Skip when sourced for testing: `PUSH_STORE_LIB=1 source push-store.sh`
-[ -n "${PUSH_STORE_LIB:-}" ] && return 0 2>/dev/null || true
+# Skip when sourced for testing: `PUSH_CATALOGUE_LIB=1 source push-catalogue.sh`
+[ -n "${PUSH_CATALOGUE_LIB:-}" ] && return 0 2>/dev/null || true
 case "${1:---help}" in
   list)       cmd_list ;;
   catalog)    cmd_catalog ;;

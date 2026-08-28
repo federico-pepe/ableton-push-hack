@@ -1,7 +1,7 @@
-// push-store daemon — the web face of the homebrew store.
+// push-catalogue daemon — the web face of Push Hack Catalogue.
 //
 // It does almost nothing itself: serves one page and shells out to the embedded
-// push-store.sh for every action, so the install logic has exactly one home.
+// push-catalogue.sh for every action, so the install logic has exactly one home.
 // Runs as root under init.d (installing hacks needs it); when root, the script's
 // as_root calls are no-ops.
 package main
@@ -19,7 +19,7 @@ import (
 	"strings"
 )
 
-//go:embed push-store.sh
+//go:embed push-catalogue.sh
 var storeScript string
 
 //go:embed index.html
@@ -41,7 +41,7 @@ func runStore(registry string, args ...string) (string, error) {
 	cmd.Stdin = strings.NewReader(storeScript)
 	cmd.Env = os.Environ()
 	if registry != "" {
-		cmd.Env = append(cmd.Env, "PUSH_STORE_REGISTRY="+registry)
+		cmd.Env = append(cmd.Env, "PUSH_CATALOGUE_REGISTRY="+registry)
 	}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -52,7 +52,7 @@ func main() {
 	addr := flag.String("addr", "", "override listen address (default :<port from config>)")
 	flag.Parse()
 
-	cfg := config{Port: 7705}
+	cfg := config{Port: 7702}
 	if b, err := os.ReadFile(*cfgPath); err != nil {
 		log.Printf("no config at %s, using defaults", *cfgPath)
 	} else if len(strings.TrimSpace(string(b))) == 0 {
@@ -124,6 +124,6 @@ func main() {
 	if listen == "" {
 		listen = ":" + strconv.Itoa(cfg.Port)
 	}
-	log.Printf("push-store listening on %s (registry: %s)", listen, registry)
+	log.Printf("push-catalogue listening on %s (registry: %s)", listen, registry)
 	log.Fatal(http.ListenAndServe(listen, mux))
 }

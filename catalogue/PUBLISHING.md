@@ -1,6 +1,6 @@
-# Publishing a hack to Push Store
+# Publishing a hack to Push Hack Catalogue
 
-This is the step-by-step for getting your hack installable via `push-store`
+This is the step-by-step for getting your hack installable via `push-catalogue`
 on any Push. For the field reference, see [`schema.md`](schema.md); for why
 the model looks like this, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
@@ -46,11 +46,18 @@ Add `.github/workflows/release.yml`, triggered on `v*` tags, that:
    (e.g. `softprops/action-gh-release`).
 6. Commits an updated `release.json` back to your default branch:
    ```json
-   { "version": "X.Y.Z", "download_url": "https://github.com/<you>/<repo>/releases/download/vX.Y.Z/<id>.tar.gz" }
+   {
+     "version": "X.Y.Z",
+     "download_url": "https://github.com/<you>/<repo>/releases/download/vX.Y.Z/<id>.tar.gz",
+     "released_at": "2026-08-28T13:39:00Z"
+   }
    ```
+   `released_at` (ISO 8601 UTC, e.g. `date -u +%Y-%m-%dT%H:%M:%SZ` at build
+   time) is optional but recommended — it drives the "last updated" date the
+   catalogue's web UI shows for your hack.
 
-`hacks/keyboard-visualizer`'s own repo (once split out) has a working
-example of this workflow — copy it as a starting point.
+[`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer)
+has a working example of this workflow — copy it as a starting point.
 
 ## 3. Cut your first release
 

@@ -9,28 +9,52 @@ between minor versions).
 
 ### Added
 
-- `push-store`: on-device homebrew-style installer (port 7705) for
-  community hacks, browsable and installable from a phone. Catalog lives at
+- `push-catalogue` (`hacks/push-catalogue/`, formerly `push-store`):
+  on-device homebrew-style installer (port 7702) for community hacks,
+  browsable and installable from a phone or from push-manager's own Shadow
+  UI (new `CATALOG` tab, `src/catalogue_panel.go`). Catalog lives at
   `catalogue/catalog.json`; each hack is an independent GitHub repo that
-  publishes its own `release.json` + release tarball — the store always
-  resolves the latest release live, no central hash-pinning. See
+  publishes its own `release.json` + release tarball — the daemon always
+  resolves the latest release live, no central hash-pinning. `GET
+  /api/catalog` and the web UI also show each hack's author, live version,
+  and last-updated date (from that hack's own `release.json`). See
   `catalogue/ARCHITECTURE.md` and `catalogue/PUBLISHING.md`.
 
 ### Changed
 
 - `keyboard-visualizer` moved out of this repo to its own
   `federico-pepe/push-hack-keyboard-visualizer`, as the first hack
-  published through the new push-store catalog model. History preserved
-  via `git subtree split`. Depends on `core` as a real tagged Go module
-  (`core/v0.1.0`) instead of a relative `replace`.
+  published through the new push-catalogue model. History preserved via
+  `git subtree split`. Depends on `core` as a real tagged Go module
+  (`core/v0.1.0`) instead of a relative `replace`. Port moved 7702 → 7705
+  to make room for push-catalogue at 7702 (next after push-manager).
+- Ports: 7701 = push-manager, 7702 = push-catalogue, 7703 = automation,
+  7704 = browser-bridge, 7705 = keyboard-visualizer (external repo).
+- Renamed `push-store` → `push-catalogue` throughout (hack id, binary,
+  directory, script, `PUSH_STORE_REGISTRY` → `PUSH_CATALOGUE_REGISTRY`,
+  web UI title "Push Hack Catalogue").
 
 ### Fixed
 
-- `push-store`'s `--self-test` fixture path was one directory too shallow
-  and always failed; also extended to exercise the release-fetch +
-  tarball-extract path, not just catalog parsing.
-- `push-store`'s web UI: a hack's `requires` list rendered unescaped,
+- `push-catalogue`'s `--self-test` fixture path was one directory too
+  shallow and always failed; also extended to exercise the release-fetch +
+  tarball-extract path and the new catalog-enrichment op, not just catalog
+  parsing.
+- `push-catalogue`'s web UI: a hack's `requires` list rendered unescaped,
   a stored-XSS gap if a malicious catalog entry were ever merged.
+- `push-catalogue`'s generated init.d service used `start-stop-daemon -b`,
+  which silently drops the invoking shell's log redirection once it
+  detaches on this device's busybox — a store-installed hack ran correctly
+  but wrote nothing to its log file. Switched to the same `nice`-backgrounded
+  pattern the framework's own `install.sh` template already uses. Found via
+  an on-device install, not by reading the code.
+- keyboard-visualizer's first GitHub Actions release (v0.1.0) built cgo-enabled
+  and dynamically linked against the CI runner's glibc — Go only disables cgo
+  automatically when cross-compiling to a *different* OS/arch than the build
+  host, so a linux/amd64 runner building for linux/amd64 doesn't get that for
+  free. Binary built cleanly but couldn't even exec on Push 3. Fixed with
+  explicit `CGO_ENABLED=0`; documented in `catalogue/PUBLISHING.md` so future
+  hack authors don't hit the same trap.
 
 ## [0.1.0-alpha] - 2026-08-26
 

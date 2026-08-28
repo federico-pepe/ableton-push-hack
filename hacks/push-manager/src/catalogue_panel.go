@@ -1,14 +1,10 @@
-// store_panel.go — "STORE" tab for push-manager's Shadow UI.
-//
-// Drop this file into push-manager's src/ (it's `package main`, same as the
-// other panels) and wire it in with the three edits in INTEGRATION.md. It
-// implements the Panel interface exactly like FilePanel/StatsPanel.
+// catalogue_panel.go — "CATALOG" tab for push-manager's Shadow UI.
 //
 // It is a THIN client: it never installs anything itself. All work goes to the
-// push-store daemon over localhost HTTP (the same daemon that serves the web
-// UI), which runs as root and owns the install logic. That keeps one install
-// engine behind three faces — CLI, web, and this screen. Requires the
-// `push-store` hack to be installed and running.
+// push-catalogue daemon over localhost HTTP (the same daemon that serves the
+// web UI), which runs as root and owns the install logic. That keeps one
+// install engine behind three faces — CLI, web, and this screen. Requires the
+// `push-catalogue` hack to be installed and running.
 package main
 
 import (
@@ -23,15 +19,15 @@ import (
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/widgets"
 )
 
-const storeAPIBase = "http://127.0.0.1:7705"
+const catalogueAPIBase = "http://127.0.0.1:7702"
 
 // Rows visible in the content area: (suiContentBot-suiContentY - breadcrumb 13)
 // / rowH(18) ≈ 6. Kept as a const so cursor/scroll math needs no render pass.
-const storeRowH = 18
-const storeVisibleRows = 6
+const catalogueRowH = 18
+const catalogueVisibleRows = 6
 
-// storeHack mirrors the daemon's /api/catalog JSON entry.
-type storeHack struct {
+// catalogueHack mirrors the daemon's /api/catalog JSON entry.
+type catalogueHack struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Version     string   `json:"version"`
@@ -40,9 +36,9 @@ type storeHack struct {
 	Requires    []string `json:"requires"`
 }
 
-type StorePanel struct {
+type CataloguePanel struct {
 	mu        sync.Mutex
-	hacks     []storeHack
+	hacks     []catalogueHack
 	installed map[string]bool
 	cursor    int
 	scroll    int
@@ -51,24 +47,24 @@ type StorePanel struct {
 	lastRefresh time.Time // for render-triggered auto-refresh while the tab is visible
 }
 
-func newStorePanel() *StorePanel {
-	p := &StorePanel{installed: map[string]bool{}, status: "loading…"}
+func newCataloguePanel() *CataloguePanel {
+	p := &CataloguePanel{installed: map[string]bool{}, status: "loading…"}
 	go p.refresh()
 	return p
 }
 
-func (p *StorePanel) Label() string { return "STORE" }
+func (p *CataloguePanel) Label() string { return "CATALOG" }
 
 // ── data ──────────────────────────────────────────────────────────────────────
 
-var storeGetClient = &http.Client{Timeout: 5 * time.Second}
-var storeActClient = &http.Client{Timeout: 3 * time.Minute} // installs download binaries
+var catalogueGetClient = &http.Client{Timeout: 5 * time.Second}
+var catalogueActClient = &http.Client{Timeout: 3 * time.Minute} // installs download binaries
 
-func (p *StorePanel) refresh() {
-	var cat []storeHack
-	catErr := storeGetJSON("/api/catalog", &cat)
+func (p *CataloguePanel) refresh() {
+	var cat []catalogueHack
+	catErr := catalogueGetJSON("/api/catalog", &cat)
 	var inst []string
-	_ = storeGetJSON("/api/installed", &inst) // best-effort
+	_ = catalogueGetJSON("/api/installed", &inst) // best-effort
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -80,7 +76,7 @@ func (p *StorePanel) refresh() {
 		if inst != nil {
 			p.status = "catalog unavailable — set registry URL"
 		} else {
-			p.status = "store daemon offline?"
+			p.status = "catalogue daemon offline?"
 		}
 		return
 	}
@@ -95,13 +91,13 @@ func (p *StorePanel) refresh() {
 	}
 	// clear any prior load/error status once the catalog loads
 	switch p.status {
-	case "loading…", "store daemon offline?", "catalog unavailable — set registry URL":
+	case "loading…", "catalogue daemon offline?", "catalog unavailable — set registry URL":
 		p.status = ""
 	}
 }
 
-func storeGetJSON(path string, v any) error {
-	resp, err := storeGetClient.Get(storeAPIBase + path)
+func catalogueGetJSON(path string, v any) error {
+	resp, err := catalogueGetClient.Get(catalogueAPIBase + path)
 	if err != nil {
 		return err
 	}
@@ -111,7 +107,7 @@ func storeGetJSON(path string, v any) error {
 
 // act runs install/remove on the selected hack, asynchronously so the render
 // loop and MIDI thread never block on a multi-second download.
-func (p *StorePanel) act(verb, id string) {
+func (p *CataloguePanel) act(verb, id string) {
 	p.mu.Lock()
 	if p.busy || id == "" {
 		p.mu.Unlock()
@@ -122,7 +118,7 @@ func (p *StorePanel) act(verb, id string) {
 	p.mu.Unlock()
 
 	go func() {
-		ok := storeAct(verb, id)
+		ok := catalogueAct(verb, id)
 		p.mu.Lock()
 		p.busy = false
 		if ok {
@@ -135,9 +131,9 @@ func (p *StorePanel) act(verb, id string) {
 	}()
 }
 
-func storeAct(verb, id string) bool {
-	u := storeAPIBase + "/api/" + verb + "?id=" + url.QueryEscape(id)
-	resp, err := storeActClient.Post(u, "", nil)
+func catalogueAct(verb, id string) bool {
+	u := catalogueAPIBase + "/api/" + verb + "?id=" + url.QueryEscape(id)
+	resp, err := catalogueActClient.Post(u, "", nil)
 	if err != nil {
 		return false
 	}
@@ -153,7 +149,7 @@ func storeAct(verb, id string) bool {
 
 // ── input ─────────────────────────────────────────────────────────────────────
 
-func (p *StorePanel) moveCursor(d int) { // caller holds p.mu
+func (p *CataloguePanel) moveCursor(d int) { // caller holds p.mu
 	n := len(p.hacks)
 	if n == 0 {
 		return
@@ -162,8 +158,8 @@ func (p *StorePanel) moveCursor(d int) { // caller holds p.mu
 	if p.cursor < p.scroll {
 		p.scroll = p.cursor
 	}
-	if p.cursor >= p.scroll+storeVisibleRows {
-		p.scroll = p.cursor - storeVisibleRows + 1
+	if p.cursor >= p.scroll+catalogueVisibleRows {
+		p.scroll = p.cursor - catalogueVisibleRows + 1
 	}
 }
 
@@ -177,14 +173,14 @@ func clampInt(v, lo, hi int) int {
 	return v
 }
 
-func (p *StorePanel) selected() (storeHack, bool) { // caller holds p.mu
+func (p *CataloguePanel) selected() (catalogueHack, bool) { // caller holds p.mu
 	if p.cursor < 0 || p.cursor >= len(p.hacks) {
-		return storeHack{}, false
+		return catalogueHack{}, false
 	}
 	return p.hacks[p.cursor], true
 }
 
-func (p *StorePanel) handleJog(val uint8) {
+func (p *CataloguePanel) handleJog(val uint8) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	switch val {
@@ -195,7 +191,7 @@ func (p *StorePanel) handleJog(val uint8) {
 	}
 }
 
-func (p *StorePanel) HandleCC(cc, val uint8) {
+func (p *CataloguePanel) HandleCC(cc, val uint8) {
 	if val != 127 {
 		return // press events only
 	}
@@ -231,7 +227,7 @@ func (p *StorePanel) HandleCC(cc, val uint8) {
 
 // ── render ────────────────────────────────────────────────────────────────────
 
-func (p *StorePanel) Render(img *image.NRGBA) {
+func (p *CataloguePanel) Render(img *image.NRGBA) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -254,20 +250,20 @@ func (p *StorePanel) Render(img *image.NRGBA) {
 		rows[i] = widgets.ListRow{Text: text, TextCol: tc}
 	}
 
-	crumb := fmt.Sprintf("Store — %d hacks", len(p.hacks))
+	crumb := fmt.Sprintf("Catalogue — %d hacks", len(p.hacks))
 	widgets.RenderList(img, widgets.Default, widgets.ListView{
 		Rows:       rows,
 		Cursor:     p.cursor,
 		Scroll:     p.scroll,
 		Breadcrumb: crumb,
 		Status:     p.status, // when non-empty, overrides breadcrumb
-		EmptyText:  "No hacks — is the push-store daemon running?",
-	}, suiContentY, suiW, storeRowH, suiContentBot)
+		EmptyText:  "No hacks — is the push-catalogue daemon running?",
+	}, suiContentY, suiW, catalogueRowH, suiContentBot)
 }
 
 // ── bottom strip ──────────────────────────────────────────────────────────────
 
-func (p *StorePanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
+func (p *CataloguePanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var b [8]widgets.SoftButton
@@ -292,7 +288,7 @@ func (p *StorePanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	return b, hint
 }
 
-func (p *StorePanel) BotLEDColors() [8]uint8 {
+func (p *CataloguePanel) BotLEDColors() [8]uint8 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	h, ok := p.selected()

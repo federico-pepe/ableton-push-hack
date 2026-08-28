@@ -1,11 +1,11 @@
 {
-  "id": "push-store",
-  "name": "Push Store",
+  "id": "push-catalogue",
+  "name": "Push Hack Catalogue",
   "description": "Homebrew store for Push 3 — browse and install community hacks from your phone.",
   "version": "0.1.0",
   "author": "itsrave",
-  "port": 7705,
-  "binary": "push-store",
+  "port": 7702,
+  "binary": "push-catalogue",
   "enabled": true,
   "allowed_roots": [],
   "settings": {
