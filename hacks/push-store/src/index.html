@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Push Store</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --muted:#666; --card:#f4f4f5; --line:#e4e4e7; --accent:#111; --accent-fg:#fff; --danger:#b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0c0c0d; --fg:#f4f4f5; --muted:#9a9aa2; --card:#18181b; --line:#27272a; --accent:#f4f4f5; --accent-fg:#111; --danger:#f87171; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,sans-serif; }
+  header { padding:20px 16px 8px; }
+  h1 { margin:0; font-size:22px; letter-spacing:-.02em; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+  main { padding:12px 16px 32px; max-width:640px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:10px 0; }
+  .row { display:flex; align-items:center; gap:12px; }
+  .grow { flex:1; min-width:0; }
+  .name { font-weight:600; }
+  .desc { color:var(--muted); font-size:14px; margin-top:2px; }
+  .ver { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+  button { border:0; border-radius:8px; padding:8px 14px; font:inherit; font-weight:600; font-size:14px; cursor:pointer; }
+  .install { background:var(--accent); color:var(--accent-fg); }
+  .remove { background:transparent; color:var(--danger); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:default; }
+  .tag { display:inline-block; background:var(--line); color:var(--muted); font-size:11px; padding:1px 7px; border-radius:99px; }
+  pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; font-size:12px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+  .empty { color:var(--muted); text-align:center; padding:40px 0; }
+  .log-wrap { margin-top:20px; }
+  .log-wrap h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Push Store</h1>
+  <p>Browse and install community hacks on this Push.</p>
+</header>
+<main>
+  <div id="list" class="empty">Loading catalog…</div>
+  <div class="log-wrap" hidden id="logwrap">
+    <h2>Output</h2>
+    <pre id="log"></pre>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const log = t => { $("#logwrap").hidden = false; $("#log").textContent = t; };
+
+async function load() {
+  let catalog = [], installed = [];
+  try {
+    [catalog, installed] = await Promise.all([
+      fetch("/api/catalog").then(r => r.json()),
+      fetch("/api/installed").then(r => r.json()),
+    ]);
+  } catch (e) { $("#list").textContent = "Could not reach the store: " + e; return; }
+
+  const inst = new Set(installed);
+  if (!catalog.length) { $("#list").className = "empty"; $("#list").textContent = "Catalog is empty."; return; }
+
+  const el = $("#list"); el.className = ""; el.innerHTML = "";
+  for (const h of catalog) {
+    const on = inst.has(h.id);
+    const card = document.createElement("div");
+    card.className = "card";
+    const req = (h.requires || []).map(r => `<span class="tag">needs ${r}</span>`).join(" ");
+    card.innerHTML = `
+      <div class="row">
+        <div class="grow">
+          <div class="name">${esc(h.name)} <span class="ver">v${esc(h.version)}</span></div>
+          <div class="desc">${esc(h.description || "")}</div>
+          <div style="margin-top:6px">${req}</div>
+        </div>
+        <button class="${on ? "remove" : "install"}" data-id="${esc(h.id)}" data-verb="${on ? "remove" : "install"}">
+          ${on ? "Remove" : "Install"}
+        </button>
+      </div>`;
+    el.appendChild(card);
+  }
+  el.querySelectorAll("button").forEach(b => b.onclick = () => act(b));
+}
+
+async function act(btn) {
+  const { id, verb } = btn.dataset;
+  btn.disabled = true; btn.textContent = verb === "install" ? "Installing…" : "Removing…";
+  log(`$ push-store ${verb} ${id}\n`);
+  try {
+    const res = await fetch(`/api/${verb}?id=${encodeURIComponent(id)}`, { method: "POST" }).then(r => r.json());
+    log(res.output || (res.ok ? "done" : "failed"));
+  } catch (e) { log("request failed: " + e); }
+  load();
+}
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+load();
+</script>
+</body>
+</html>

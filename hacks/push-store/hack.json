@@ -1,0 +1,14 @@
+{
+  "id": "push-store",
+  "name": "Push Store",
+  "description": "Homebrew store for Push 3 — browse and install community hacks from your push.",
+  "version": "0.1.0",
+  "author": "itsrave",
+  "port": 7705,
+  "binary": "push-store",
+  "enabled": true,
+  "allowed_roots": [],
+  "settings": {
+    "registry": "https://raw.githubusercontent.com/YOUR_USER/push-homebrew/main/registry/index.json"
+  }
+}
