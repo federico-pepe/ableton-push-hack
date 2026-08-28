@@ -26,9 +26,18 @@ Add `.github/workflows/release.yml`, triggered on `v*` tags, that:
 
 1. Checks the pushed tag (`vX.Y.Z`) matches `hack.json`'s `version` — fail
    fast if you forgot to bump it.
-2. Builds the binary: `GOOS=linux GOARCH=amd64 go build -o dist/<id>/<id> ./src`
-   (or your build system's equivalent — no cgo/Docker needed for a plain-Go
-   hack).
+2. Builds the binary: `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/<id>/<id> ./src`
+   (or your build system's equivalent). **`CGO_ENABLED=0` is not optional if
+   your CI runner is `ubuntu-latest`** — Go only disables cgo automatically
+   when cross-compiling to a *different* OS/arch than the build host, so a
+   linux/amd64 GitHub Actions runner building for linux/amd64 (same OS/arch)
+   silently produces a binary dynamically linked against the runner's glibc.
+   It builds fine and looks static, but fails to exec at all on Push 3
+   (`No such file or directory` — the kernel can't find that exact glibc's
+   dynamic linker path). Building on a non-Linux dev machine masks this,
+   since a cross-OS build disables cgo by default regardless of the flag —
+   so this only bites you in CI. Learned the hard way; see this repo's own
+   `.github/workflows/release.yml` for a known-good example.
 3. Copies `hack.json` (and any other runtime files — `remote-script/`, data
    files, etc.) into `dist/<id>/` alongside the binary.
 4. Packages it: `tar -czf <id>.tar.gz -C dist <id>/` — the tarball's single
