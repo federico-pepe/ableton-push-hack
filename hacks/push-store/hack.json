@@ -10,6 +10,6 @@
   "allowed_roots": [],
   "settings": {
     "_comment": "registry is the ONE place to configure the catalog source. Edit here (redeploy, or edit on-device + restart). Any http(s):// or file:// URL.",
-    "registry": "https://raw.githubusercontent.com/federico-pepe/ableton-push-hack/main/registry/index.json"
+    "registry": "https://raw.githubusercontent.com/federico-pepe/ableton-push-hack/main/catalogue/catalog.json"
   }
 }

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Hacks: Push Manager (web file browser + display control), Push Display (LD_PRELOAD display hook), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), Automation (LFO/CC curve sequencer, port 7703), Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes, port 7702).
+`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Hacks: Push Manager (web file browser + display control), Push Display (LD_PRELOAD display hook), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), Automation (LFO/CC curve sequencer, port 7703), Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes, port 7702), Push Store (on-device installer for community hacks published in their own repos, port 7705).
 
 `core/` is a shared Go module (see "Core shared library" below) that push-manager, automation and keyboard-visualizer all depend on via `require`+`replace` — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across the three hacks.
 
@@ -161,6 +161,19 @@ Go binary, no runtime deps. Port 7702. Renders a piano-keyboard visualization on
 
 Runs independent of MIDI intercept — never reads pad Note On/Off from Push's raw hardware MIDI (only watches CC49/50 for the toggle chord, see `chord.go`), so the pad grid keeps playing into Live normally throughout regardless of takeover state. One-time manual setup: route a Live track's MIDI Out to "Keyboard Viz In" from Push's own screen (stock Live routing, no script/M4L install). Display takeover itself is toggled live via **Shift + Note** on the hardware — off by default so the native Push UI isn't disturbed until asked for. The web view at `http://push.local:7702` works regardless of takeover state.
 
+### Push Store (`hacks/push-store/`)
+Go binary, no runtime deps. Port 7705. On-device installer for community hacks — browse and install from a phone, no SSH/build toolchain needed. Does almost nothing itself: serves one page and shells out to an embedded `push-store.sh` for every action, so the install logic has exactly one home (`go:embed`).
+
+**Model:** Push Store hosts no binaries. `catalogue/catalog.json` (this repo) is an index of pointers — each entry names a hack's own `github_repo`. That repo publishes its own GitHub Releases and keeps a `release.json` at its root; the store fetches that live on every install, downloads the release tarball it points at, and extracts it (the tarball's own `hack.json` + binary) straight into `/data/push-hack/hacks/<id>/`. No sha256 pin, no signing — the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once." See `catalogue/ARCHITECTURE.md` for the full model and `catalogue/PUBLISHING.md` for how a hack author publishes into it.
+
+| File | Role |
+|------|------|
+| `push-store.sh` (embedded into the binary via `make embed`) | All the logic: `q()`/`rq()` (python3-only JSON readers — no jq dependency, mirrors the framework installer's own avoidance of it), `fetch_release()` (pulls a hack's `release.json` off `raw.githubusercontent.com`, or a `release_url` override for local/dev entries), `cmd_install` (fetch release → download tarball → `tar -xzf` into `hacks/` → read the extracted `hack.json` → `install_service`), `cmd_remove`, `--self-test` (offline: catalog parsing + a checked-in `testdata/fixture-hack.tar.gz` exercising the fetch/extract path without touching the real network or `/etc/init.d`). |
+| `src/main.go` | HTTP server: `GET /`, `GET /api/catalog` (proxies `push-store.sh catalog`), `GET /api/installed`, `POST /api/install?id=`, `POST /api/remove?id=` — hack id validated against `^[a-z0-9][a-z0-9-]{0,63}$` before it ever reaches the shell. |
+| `src/index.html` | Single-file mobile web UI: lists the catalog, Install/Remove buttons, an output log pane. |
+
+**Key routes:** `GET /`, `GET /api/catalog`, `GET /api/installed`, `POST /api/install?id=<id>`, `POST /api/remove?id=<id>`.
+
 ## USB-A port safety
 
 **Fix (in `midi.go`):** `waitForBootSettle()` defers all `/dev/snd` access until uptime ≥ 30s. Opening ALSA seq during the cold-boot USB-A enumeration window (~3–15s) wedges the port permanently until power-cycle. HTTP server starts immediately; MIDI/LED/Shadow-UI come online ~30s after cold boot.
@@ -248,7 +261,7 @@ explicitly:
 3. Go source + `Makefile` with `GOOS=linux GOARCH=amd64`
 4. `./scripts/install.sh --hack <id>`
 
-Ports: 7705+ (7701=push-manager, 7702=keyboard-visualizer, 7703=automation, 7704=browser-bridge).
+Ports: 7706+ (7701=push-manager, 7702=keyboard-visualizer, 7703=automation, 7704=browser-bridge, 7705=push-store).
 
 ## Releases
 
@@ -286,5 +299,7 @@ Per-hack (in each hack folder):
 - `hacks/browser-bridge/README.md` — how preset loading works (PushHackBrowser remote script)
 - `hacks/push-display/README.md` — LD_PRELOAD display/MIDI hook, shared-memory layout, build/deploy
 - `hacks/keyboard-visualizer/README.md` — Live-sourced keyboard visualizer, ALSA port routing setup
+- `hacks/push-store/README.md` — on-device installer API, how the catalog install flow works
+- `catalogue/ARCHITECTURE.md`, `catalogue/schema.md`, `catalogue/PUBLISHING.md` — the store's catalog model and how to publish a hack into it
 
 Local-only research notes live in `discovery/` (gitignored, not shipped)

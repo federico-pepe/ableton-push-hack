@@ -7,6 +7,31 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `push-store`: on-device homebrew-style installer (port 7705) for
+  community hacks, browsable and installable from a phone. Catalog lives at
+  `catalogue/catalog.json`; each hack is an independent GitHub repo that
+  publishes its own `release.json` + release tarball — the store always
+  resolves the latest release live, no central hash-pinning. See
+  `catalogue/ARCHITECTURE.md` and `catalogue/PUBLISHING.md`.
+
+### Changed
+
+- `keyboard-visualizer` moved out of this repo to its own
+  `federico-pepe/push-hack-keyboard-visualizer`, as the first hack
+  published through the new push-store catalog model. History preserved
+  via `git subtree split`. Depends on `core` as a real tagged Go module
+  (`core/v0.1.0`) instead of a relative `replace`.
+
+### Fixed
+
+- `push-store`'s `--self-test` fixture path was one directory too shallow
+  and always failed; also extended to exercise the release-fetch +
+  tarball-extract path, not just catalog parsing.
+- `push-store`'s web UI: a hack's `requires` list rendered unescaped,
+  a stored-XSS gap if a malicious catalog entry were ever merged.
+
 ## [0.1.0-alpha] - 2026-08-26
 
 Retroactive baseline: this is the first tagged release, covering everything
