@@ -14,6 +14,11 @@ between minor versions).
   audio from it, without opening the real hardware device. Built from
   the Linux kernel's own ALSA Loopback driver, with a small rename
   patch. See `plans/2026-08-27-push-audio-virtual-device.md`.
+- `hacks/push-braids-host`: a minimal Push3 host proving pad presses
+  can drive a third-party DSP plugin (Braids, a Move Anything
+  `plugin_api_v2` module) and reach Push 3's real speaker through
+  `push-audio-loopback`'s virtual card — confirmed live on hardware.
+  See `docs/push3-dsp-hosting.md`.
 
 ## [0.1.6-alpha] - 2026-08-30
 

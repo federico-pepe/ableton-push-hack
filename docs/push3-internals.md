@@ -470,6 +470,11 @@ Audio", so a user can tell it apart from the real hardware. Full build
 and deploy steps, plus a small test tool for feeding audio into it,
 are in `hacks/push-audio-loopback/`.
 
+This card is also how a third-party DSP plugin gets its audio out of
+Push 3's real speaker — see
+[`push3-dsp-hosting.md`](push3-dsp-hosting.md) for the full working
+chain, built on `hacks/push-braids-host`.
+
 One timing detail matters for clean audio through this virtual card.
 Push 3's kernel updates its clock every 4 milliseconds
 (`CONFIG_HZ=250`), and the Loopback driver uses this same clock by
