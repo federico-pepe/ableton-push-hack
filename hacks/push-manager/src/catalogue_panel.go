@@ -48,7 +48,7 @@ type CataloguePanel struct {
 }
 
 func newCataloguePanel() *CataloguePanel {
-	p := &CataloguePanel{installed: map[string]bool{}, status: "loading…"}
+	p := &CataloguePanel{installed: map[string]bool{}, status: "loading..."}
 	go p.refresh()
 	return p
 }
@@ -74,7 +74,7 @@ func (p *CataloguePanel) refresh() {
 		// /api/installed answered, the daemon is fine and the registry is the
 		// problem, not the daemon.
 		if inst != nil {
-			p.status = "catalog unavailable — set registry URL"
+			p.status = "catalog unavailable - set registry URL"
 		} else {
 			p.status = "catalogue daemon offline?"
 		}
@@ -91,7 +91,7 @@ func (p *CataloguePanel) refresh() {
 	}
 	// clear any prior load/error status once the catalog loads
 	switch p.status {
-	case "loading…", "catalogue daemon offline?", "catalog unavailable — set registry URL":
+	case "loading...", "catalogue daemon offline?", "catalog unavailable - set registry URL":
 		p.status = ""
 	}
 }
@@ -114,7 +114,7 @@ func (p *CataloguePanel) act(verb, id string) {
 		return
 	}
 	p.busy = true
-	p.status = verb + "ing " + id + "…"
+	p.status = verb + "ing " + id + "..."
 	p.mu.Unlock()
 
 	go func() {
@@ -250,14 +250,14 @@ func (p *CataloguePanel) Render(img *image.NRGBA) {
 		rows[i] = widgets.ListRow{Text: text, TextCol: tc}
 	}
 
-	crumb := fmt.Sprintf("Catalogue — %d hacks", len(p.hacks))
+	crumb := fmt.Sprintf("Catalogue - %d hacks", len(p.hacks))
 	widgets.RenderList(img, widgets.Default, widgets.ListView{
 		Rows:       rows,
 		Cursor:     p.cursor,
 		Scroll:     p.scroll,
 		Breadcrumb: crumb,
 		Status:     p.status, // when non-empty, overrides breadcrumb
-		EmptyText:  "No hacks — is the push-catalogue daemon running?",
+		EmptyText:  "No hacks - is the push-catalogue daemon running?",
 	}, suiContentY, suiW, catalogueRowH, suiContentBot)
 }
 
@@ -281,9 +281,9 @@ func (p *CataloguePanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	b[0] = widgets.SoftButton{Label: "Install", State: installState}
 	b[1] = widgets.SoftButton{Label: "Remove", State: removeState}
 
-	hint := "jog / ▲▼ move  ·  ● install"
+	hint := "jog / up-down move, press to install"
 	if p.busy {
-		hint = "working…"
+		hint = "working..."
 	}
 	return b, hint
 }
