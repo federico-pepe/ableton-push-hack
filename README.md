@@ -193,7 +193,9 @@ Write your service in `hacks/my-hack/src/`, then:
 ./scripts/install.sh --hack my-hack
 ```
 
-The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7705 (7701 = push-manager, 7702 = keyboard-visualizer, 7703 = automation, 7704 = browser-bridge).
+The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7706 (7701 = push-manager, 7702 = keyboard-visualizer [external repo], 7703 = automation, 7704 = browser-bridge, 7705 = push-store).
+
+Prefer not building/deploying it yourself? [`push-store`](hacks/push-store/) is an on-device installer — browse and install hacks published in their own repos (like keyboard-visualizer) straight from your phone. See `catalogue/PUBLISHING.md` for how to publish your own hack into it.
 
 ### Core shared library
 
@@ -237,7 +239,10 @@ replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
 - `hacks/automation/README.md` — API, lane types, BPM sync, transport sync
 - `hacks/browser-bridge/README.md` — how preset loading works (PushHackBrowser remote script)
 - `hacks/push-display/README.md` — LD_PRELOAD display/MIDI hook, shared-memory layout, build/deploy
-- `hacks/keyboard-visualizer/README.md` — Live-sourced keyboard visualizer, ALSA port routing setup
+- [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer) — Live-sourced keyboard visualizer, ALSA port routing setup (external repo, install via push-store)
+- `hacks/push-store/README.md` — on-device installer API, how the catalogue install flow works
+
+**Catalogue (`catalogue/`):** `catalogue/ARCHITECTURE.md`, `catalogue/schema.md`, `catalogue/PUBLISHING.md` — the push-store catalog model and how to publish a hack into it
 
 ---
 ## License

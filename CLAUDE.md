@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Hacks: Push Manager (web file browser + display control), Push Display (LD_PRELOAD display hook), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), Automation (LFO/CC curve sequencer, port 7703), Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes, port 7702), Push Store (on-device installer for community hacks published in their own repos, port 7705).
+`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Hacks: Push Manager (web file browser + display control), Push Display (LD_PRELOAD display hook), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), Automation (LFO/CC curve sequencer, port 7703), Push Store (on-device installer for community hacks published in their own repos, port 7705). Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes) now lives in its own repo, [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer) — install via Push Store.
 
 `core/` is a shared Go module (see "Core shared library" below) that push-manager, automation and keyboard-visualizer all depend on via `require`+`replace` — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across the three hacks.
 
@@ -143,23 +143,21 @@ MIDI Remote Script (`PushHackBrowser`) that loads presets and controls Live's tr
 - `get_beat` → `"%.6f\n"` — current song time in beats (reply-box query)
 - `get_playing` → `"1\n"` or `"0\n"` — transport state (reply-box query)
 
-### Keyboard Visualizer (`hacks/keyboard-visualizer/`)
-Go binary, no runtime deps. Port 7702. Renders a piano-keyboard visualization on Push 3's screen driven by Live's actual sounding notes (after octave-shift / Scale-mode transforms) — not the pad grid's raw pre-transform MIDI. See `discovery/live-note-keyboard-viz.md` for the feasibility writeup and `hacks/keyboard-visualizer/README.md` for setup.
-
-**Requires push-manager + push-display also installed and running** — see "Display-owning hacks" below. `src/depcheck.go` checks `push-manager`'s `/api/display/status` on startup and every 30s, logging a clear warning (`push-manager not reachable` vs. `push-display's framebuffer not connected` vs. OK) so a silent no-op takeover is never a mystery.
-
-| File | Role |
-|------|------|
-| `src/main.go` | HTTP server: `GET /` (embedded mobile web view), `GET /vendor/tonal.min.js` (embedded), `GET /api/status`, `GET /api/notes/stream` (SSE). `-push-manager` flag sets push-manager base URL (default `http://localhost:7701`). Boot-settle then starts the ALSA read loop and render loop as goroutines. |
-| `src/depcheck.go` | Polls push-manager's display status via `core/pmclient.Client.DisplayStatus()` (`{"connected": bool}` — reflects whether push-display's shm is attached) at startup and every 30s, using its own 2s-timeout client rather than `pmclient.New`'s 3s default; logs once per state transition, not every poll. Doesn't wait for boot-settle (pure HTTP, no ALSA/USB risk). |
-| `src/midi.go` | Creates a single writable ALSA seq port, **Keyboard Viz In**, via `core/alsaseq.Client` (`CapWrite\|CapSubsWrite`, same pattern as push-manager's own "Push Manager In"). Live initiates the connection when the user routes a track's MIDI Out to this port from Push's own screen — no subscribe needed on our side for that. Separately, `maintainPush3Subscription()` calls `c.Subscribe()` to self-subscribe this same port to Push 3's hardware port ("Ableton Push 3 Live Port", auto-detected by `core/alsaseq.FindByName` with `requireCaps=0`, re-checked every 30s in case the client number shifts) so it also receives CC49/50 for the takeover chord — one ALSA seq port can receive from multiple senders, so this avoids a second visible ALSA client. Because Push 3's raw pad stream now shares the port with Live's routed notes, `kvSeqHandler.Fixed` (an `alsaseq.Handler`, fed by `alsaseq.Walk`/`ReadLoop`) reads each event's ALSA source client and filters Note On/Off by `isPush3Client()` — only non-Push3 sources (i.e. Live) update the held-notes `[128]bool`, so a pad press doesn't double up with Live's post-transform note. CC49/50 are forwarded to `onChordCC` (chord.go) regardless of source. Boot-settle (30s, `alsaseq.WaitForBootSettle`) same as push-manager/automation. |
-| `src/chord.go` | Shift+Note (CC49+CC50) chord state machine — 500ms-debounced (same pattern as push-manager's `chordCCPressed`/`chordCCReleased`), calls `toggleTakeover()` when both are held together. Also holds `detectPush3Port()` (now `core/alsaseq.FindByName` with `requireCaps=0` — the one deliberately preserved divergence from push-manager's/automation's `CapRead`-filtered lookups), used by `midi.go`'s subscription maintenance. |
-| `src/render.go` | Draws the keyboard into a plain `image.NRGBA` (960×160, fixed 49-key window in v1: notes 36-84, centered on middle C) using `core/gfx.FillRect`. Display takeover is **off by default**; `toggleTakeover()` (called from chord.go) flips it via `core/pmclient.Client.SetMode`/`PushImage` — on: mode 2 + immediate frame; off: mode 0, handing the screen back to the native Push UI. `runRenderLoop` polls held notes at ~30fps (bumped from 10fps 2026-08-18, matching Shadow UI's rate): on every change it calls `broadcastNotes()` (web.go) unconditionally, and additionally pushes a frame to Push's screen only while takeover is on. Never touches shared memory directly; it's an HTTP client of push-manager (via `core/pmclient`) for display purposes only. |
-| `src/web.go` | SSE broadcaster built on `core/sse.Broker[notesPayload]` (`pruneDropped=false` — a slow/stuck web client just misses an update rather than being dropped, the opposite of automation's broker) for `GET /api/notes/stream` — independent of on-device takeover state, so the web view works whether or not the Shift+Note chord is active. |
-| `src/ui/index.html` | Single-file mobile-friendly web view: same 49-key keyboard driven by the SSE feed, plus **chord detection** (3+ held notes) via vendored `Tonal.Chord.detect()`. |
-| `src/ui/vendor/tonal.min.js` | Vendored prebuilt browser bundle from [tonaljs/tonal](https://github.com/tonaljs/tonal) (`packages/tonal/browser/tonal.min.js`, MIT, `tonal.LICENSE` alongside) — no CDN dependency, works offline. |
-
-Runs independent of MIDI intercept — never reads pad Note On/Off from Push's raw hardware MIDI (only watches CC49/50 for the toggle chord, see `chord.go`), so the pad grid keeps playing into Live normally throughout regardless of takeover state. One-time manual setup: route a Live track's MIDI Out to "Keyboard Viz In" from Push's own screen (stock Live routing, no script/M4L install). Display takeover itself is toggled live via **Shift + Note** on the hardware — off by default so the native Push UI isn't disturbed until asked for. The web view at `http://push.local:7702` works regardless of takeover state.
+### Keyboard Visualizer (external repo)
+Moved out of this monorepo into its own repo,
+[`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer)
+— the first hack published through the Push Store catalogue model (see
+`catalogue/ARCHITECTURE.md`). Go binary, no runtime deps, port 7702, renders a
+piano-keyboard visualization on Push 3's screen driven by Live's actual
+sounding notes (after octave-shift / Scale-mode transforms) — not the pad
+grid's raw pre-transform MIDI. Requires `push-manager` + `push-display`
+(this repo) also installed and running — see "Display-owning hacks" below
+and that repo's own `README.md` for the full design writeup. Depends on this
+repo's `core` module as a real tagged dependency
+(`github.com/federico-pepe/ableton-push-hack/core@core/v0.1.0`, no relative
+`replace`) — bump the `core/vX.Y.Z` tag here whenever a change to `core/`
+needs to reach it, and update that repo's `go.mod` to match.
+Install it via Push Store, or see its README for a manual build/deploy.
 
 ### Push Store (`hacks/push-store/`)
 Go binary, no runtime deps. Port 7705. On-device installer for community hacks — browse and install from a phone, no SSH/build toolchain needed. Does almost nothing itself: serves one page and shells out to an embedded `push-store.sh` for every action, so the install logic has exactly one home (`go:embed`).
@@ -261,7 +259,7 @@ explicitly:
 3. Go source + `Makefile` with `GOOS=linux GOARCH=amd64`
 4. `./scripts/install.sh --hack <id>`
 
-Ports: 7706+ (7701=push-manager, 7702=keyboard-visualizer, 7703=automation, 7704=browser-bridge, 7705=push-store).
+Ports: 7706+ (7701=push-manager, 7702=keyboard-visualizer [external repo], 7703=automation, 7704=browser-bridge, 7705=push-store).
 
 ## Releases
 
