@@ -170,7 +170,12 @@ cmd_install() {
   info "installed $id v$version"
 }
 
-# Generate + enable + start an init.d service (mirrors install.sh's fallback).
+# Generate + enable + start an init.d service — same shell-backgrounding
+# pattern as the framework's own generate_initd_script() (lib/common.sh),
+# not start-stop-daemon: on this device's busybox, `start-stop-daemon -b`
+# silently drops the invoking shell's stdout/stderr redirection once it
+# detaches, so a store-installed hack would run correctly but write nothing
+# to its log file — found by an on-device install, not by reading the code.
 # Reads the hack's own binary name from the hack.json the tarball just
 # extracted — the catalog no longer carries hack metadata.
 install_service() {
@@ -190,9 +195,9 @@ install_service() {
 # Short-Description: push-hack: $id (via push-store)
 ### END INIT INFO
 BIN="$dir/$bin"; CFG="$dir/hack.json"; LOG="$log"; PIDF="/var/run/$svc.pid"
-start() { echo "starting $svc"; mkdir -p "$(dirname "\$LOG")"
-  start-stop-daemon -S -b -m -p "\$PIDF" -x "\$BIN" -- -config "\$CFG" >>"\$LOG" 2>&1 \\
-    || { nohup "\$BIN" -config "\$CFG" >>"\$LOG" 2>&1 & echo \$! >"\$PIDF"; }; }
+start() { echo "starting $svc"; mkdir -p "\$(dirname "\$LOG")"
+  nice -n 19 "\$BIN" -config "\$CFG" >>"\$LOG" 2>&1 &
+  echo \$! >"\$PIDF"; }
 stop()  { echo "stopping $svc"; [ -f "\$PIDF" ] && kill "\$(cat "\$PIDF")" 2>/dev/null; rm -f "\$PIDF"; }
 case "\$1" in start) start;; stop) stop;; restart) stop; sleep 1; start;;
   status) [ -f "\$PIDF" ] && kill -0 "\$(cat "\$PIDF")" 2>/dev/null && echo active || echo inactive;;
