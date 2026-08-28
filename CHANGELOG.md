@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.2-alpha] - 2026-08-28
+
 ### Added
 
 - `push-catalogue` (`hacks/push-catalogue/`, formerly `push-store`):
