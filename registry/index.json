@@ -1,0 +1,59 @@
+{
+  "tap": "push-homebrew",
+  "schema": 1,
+  "hacks": [
+    {
+      "id": "random-preset",
+      "name": "Random Preset",
+      "description": "Shift+Add loads a random preset, Shift+Swap a random drum rack kit.",
+      "version": "0.3.0",
+      "author": "itsrave",
+      "homepage": "https://github.com/YOUR_USER/push-homebrew/tree/main/hacks/random-preset",
+      "requires": ["push-manager", "browser-bridge"],
+      "hack": {
+        "id": "random-preset",
+        "name": "Random Preset",
+        "version": "0.3.0",
+        "author": "itsrave",
+        "binary": "random-preset",
+        "enabled": true,
+        "allowed_roots": []
+      },
+      "assets": [
+        {
+          "name": "random-preset",
+          "url": "https://github.com/YOUR_USER/push-homebrew/releases/download/random-preset-0.1.0/random-preset",
+          "sha256": "REPLACE_WITH_REAL_SHA256_OF_THE_amd64_BINARY",
+          "exec": true
+        }
+      ]
+    },
+    {
+      "id": "keyboard-visualizer",
+      "name": "Keyboard Visualizer",
+      "description": "Live piano-keyboard on Push's screen, from Live's actual sounding notes.",
+      "version": "0.1.0",
+      "author": "push-hack",
+      "homepage": "https://github.com/federico-pepe/ableton-push-hack/tree/main/hacks/keyboard-visualizer",
+      "requires": ["push-manager", "push-display"],
+      "hack": {
+        "id": "keyboard-visualizer",
+        "name": "Keyboard Visualizer",
+        "version": "0.1.0",
+        "author": "push-hack",
+        "port": 7702,
+        "binary": "keyboard-visualizer",
+        "enabled": true,
+        "allowed_roots": []
+      },
+      "assets": [
+        {
+          "name": "keyboard-visualizer",
+          "url": "https://github.com/YOUR_USER/YOUR_REPO/releases/download/keyboard-visualizer-0.1.0/keyboard-visualizer",
+          "sha256": "REPLACE_WITH_REAL_SHA256_OF_THE_amd64_BINARY",
+          "exec": true
+        }
+      ]
+    }
+  ]
+}

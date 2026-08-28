@@ -14,7 +14,10 @@
 # a reviewed catalog; add minisign before opening public taps (see PLAN Phase 3).
 set -euo pipefail
 
-REGISTRY_URL="${PUSH_STORE_REGISTRY:-https://raw.githubusercontent.com/YOUR_USER/push-homebrew/main/registry/index.json}"
+# Registry URL has ONE source of truth: hack.json's settings.registry (the
+# daemon passes it here as PUSH_STORE_REGISTRY). No URL is baked into this
+# script. Standalone CLI use: export PUSH_STORE_REGISTRY yourself.
+REGISTRY_URL="${PUSH_STORE_REGISTRY:-}"
 PUSH_HACK_DIR="${PUSH_HACK_DIR:-/data/push-hack}"
 
 # ── tiny helpers ──────────────────────────────────────────────────────────────
@@ -83,6 +86,7 @@ as_root() {
 
 # ── registry access ───────────────────────────────────────────────────────────
 load_registry() { # -> path to a temp copy of index.json
+  [ -n "$REGISTRY_URL" ] || die "no registry configured — set settings.registry in hack.json (or export PUSH_STORE_REGISTRY)"
   local f; f="$(mktemp)"
   fetch "$REGISTRY_URL" "$f"   # urllib handles http(s):// and file://
   [ "$(q "$f" schema)" = "1" ] || die "unsupported registry schema"
