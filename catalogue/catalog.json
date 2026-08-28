@@ -10,7 +10,24 @@
       "github_repo": "federico-pepe/push-hack-keyboard-visualizer",
       "default_branch": "main",
       "asset_name": "keyboard-visualizer.tar.gz",
-      "requires": ["push-manager", "push-display"]
+      "requires": [
+        "push-manager",
+        "push-display"
+      ]
+    },
+    {
+      "id": "random-preset",
+      "name": "Random Preset",
+      "description": "Shift+Add loads a random preset, Shift+Swap a random drum rack kit.",
+      "author": "itsrave",
+      "homepage": "https://github.com/itsrave/push-random-preset",
+      "github_repo": "itsrave/push-random-preset",
+      "default_branch": "main",
+      "asset_name": "random-preset.tar.gz",
+      "requires": [
+        "push-manager",
+        "browser-bridge"
+      ]
     }
   ]
 }
