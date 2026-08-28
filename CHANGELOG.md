@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.3-alpha] - 2026-08-28
+
 ### Fixed
 
 - `push-catalogue install` left the installed hack's directory owned by
@@ -17,6 +19,10 @@ between minor versions).
   has no sudo) and couldn't delete those directories. Now chowns the
   extracted hack dir to match `hacks/`'s own owner right after extraction,
   same convention push-manager's own runtime file writes already follow.
+- push-manager's Shadow UI `CATALOG` tab (`catalogue_panel.go`) drew boxes
+  in place of several characters — em dashes, an ellipsis, arrows/bullets in
+  the bottom-strip hint — since `core/gfx/text` only has ASCII glyphs.
+  Replaced with plain ASCII.
 
 ## [0.1.2-alpha] - 2026-08-28
 
