@@ -36,3 +36,4 @@ hacks/*/src/keyboard-visualizer
 core/gfx/text/assets/*.otf
 hacks/push-store/push-store
 hacks/random-preset/random-preset
+.vscode/PythonImportHelper-v2-Completion.json
