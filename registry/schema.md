@@ -1,9 +1,14 @@
 # Registry format & how to publish a hack
 
+For the big picture — the store as an index of hacks living in their owners'
+repos — see [`ARCHITECTURE.md`](ARCHITECTURE.md). This file is the field
+reference for one `index.json` entry.
+
 The catalog is one file: `index.json`. Installing a hack means the store reads
-this, downloads the entry's `assets`, verifies their `sha256`, drops them into
-`/data/push-hack/hacks/<id>/`, writes the `hack` object as that hack's
-`hack.json`, and registers an init.d service. Nothing else.
+this, downloads the entry's `assets` (from the owner's release), verifies their
+`sha256`, drops them into `/data/push-hack/hacks/<id>/`, writes the `hack`
+object as that hack's `hack.json`, and registers an init.d service. Nothing
+else — the store hosts no binaries of its own.
 
 ## Publishing = a pull request
 
@@ -11,10 +16,11 @@ this, downloads the entry's `assets`, verifies their `sha256`, drops them into
    `GOOS=linux GOARCH=amd64 go build -o myhack ./src`
 2. Upload the binary as a **GitHub Release asset** on your own repo. Get its sha256:
    `sha256sum myhack`
-3. Add one entry to `index.json` (below) and open a PR. That's the "upload".
+3. Add one entry to `index.json` (below) and open a PR. That's the "upload" —
+   the binary stays in your release; the store only gains a pointer + sha256.
 
-Later (Phase 3) you'll be able to host your own tap instead of PR-ing here:
-`push-store tap add <you>/<your-repo>`.
+Later, multiple taps will let you host your own `index.json` instead of PR-ing
+into a central one — see ARCHITECTURE.md's closing note. Not built yet.
 
 ## Entry schema
 
