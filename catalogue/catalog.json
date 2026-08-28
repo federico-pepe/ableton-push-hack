@@ -1,0 +1,16 @@
+{
+  "catalog_version": 2,
+  "hacks": [
+    {
+      "id": "keyboard-visualizer",
+      "name": "Keyboard Visualizer",
+      "description": "Live piano-keyboard on Push's screen, from Live's actual sounding notes.",
+      "author": "push-hack",
+      "homepage": "https://github.com/federico-pepe/push-hack-keyboard-visualizer",
+      "github_repo": "federico-pepe/push-hack-keyboard-visualizer",
+      "default_branch": "main",
+      "asset_name": "keyboard-visualizer.tar.gz",
+      "requires": ["push-manager", "push-display"]
+    }
+  ]
+}

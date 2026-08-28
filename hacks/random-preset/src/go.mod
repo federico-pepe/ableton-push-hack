@@ -1,4 +1,4 @@
-module keyboard-visualizer
+module random-preset
 
 go 1.25.0
 

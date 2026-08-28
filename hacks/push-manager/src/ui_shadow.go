@@ -146,6 +146,9 @@ type jogHandler interface{ handleJog(uint8) }
 // browsePanelIdx is the index of the BrowserPanel within shadowUI.panels.
 const browsePanelIdx = 3
 
+// cataloguePanelIdx is the index of the CataloguePanel within shadowUI.panels.
+const cataloguePanelIdx = 4
+
 type Panel interface {
 	Render(img *image.NRGBA)
 	HandleCC(cc, val uint8)
@@ -200,6 +203,7 @@ func shadowRegisterLEDs(activePanelIdx int) {
 	ledConfigs[CCScreenTop2] = LEDConfig{Mode: LEDModeExclusive, Color: shadowTabColor, Group: "shadow-tabs"}
 	ledConfigs[CCScreenTop3] = LEDConfig{Mode: LEDModeExclusive, Color: shadowTabColor, Group: "shadow-tabs"}
 	ledConfigs[CCScreenTop4] = LEDConfig{Mode: LEDModeExclusive, Color: shadowTabColor, Group: "shadow-tabs"}
+	ledConfigs[CCScreenTop5] = LEDConfig{Mode: LEDModeExclusive, Color: shadowTabColor, Group: "shadow-tabs"}
 	ledConfigs[CCSettings] = LEDConfig{Mode: LEDModeExclusive, Color: 127, Group: "settings-anchor"}
 	ledConfigMu.Unlock()
 	// Bottom button LEDs are managed dynamically via updateBotLEDs — no static config needed.
@@ -212,6 +216,8 @@ func shadowRegisterLEDs(activePanelIdx int) {
 		activeCC = CCScreenTop3
 	case browsePanelIdx:
 		activeCC = CCScreenTop4
+	case cataloguePanelIdx:
+		activeCC = CCScreenTop5
 	}
 	go exclusiveLED(activeCC, shadowTabColor)
 }
@@ -225,12 +231,14 @@ func shadowUnregisterLEDs() {
 	delete(ledConfigs, CCScreenTop2)
 	delete(ledConfigs, CCScreenTop3)
 	delete(ledConfigs, CCScreenTop4)
+	delete(ledConfigs, CCScreenTop5)
 	delete(ledConfigs, CCSettings)
 	ledConfigMu.Unlock()
 	sendSeqCC(0, CCScreenTop1, 0) //nolint:errcheck
 	sendSeqCC(0, CCScreenTop2, 0) //nolint:errcheck
 	sendSeqCC(0, CCScreenTop3, 0) //nolint:errcheck
 	sendSeqCC(0, CCScreenTop4, 0) //nolint:errcheck
+	sendSeqCC(0, CCScreenTop5, 0) //nolint:errcheck
 	// Clear all bottom button LEDs.
 	for _, cc := range []uint8{CCScreenBot1, CCScreenBot2, CCScreenBot3, CCScreenBot4,
 		CCScreenBot5, CCScreenBot6, CCScreenBot7, CCScreenBot8} {
@@ -259,6 +267,7 @@ func shadowUIStart() {
 		newStatsPanel(),
 		newMidiPanel(),
 		newBrowserPanel(),
+		newCataloguePanel(),
 	}
 	shadowUI.panelIdx = 0
 	shadowUI.stopCh = make(chan struct{})
@@ -379,6 +388,13 @@ func shadowUIHandleCC(cc, val uint8) {
 			shadowUI.mu.Unlock()
 			go exclusiveLED(uint8(CCScreenTop4), shadowTabColor)
 			go updateBotLEDs(panel3)
+			return
+		case CCScreenTop5: // Catalogue
+			shadowUI.panelIdx = cataloguePanelIdx
+			panel4 := shadowUI.panels[cataloguePanelIdx]
+			shadowUI.mu.Unlock()
+			go exclusiveLED(uint8(CCScreenTop5), shadowTabColor)
+			go updateBotLEDs(panel4)
 			return
 		}
 	}
