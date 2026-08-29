@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.5-alpha] - 2026-08-29
+
 ### Added
 
 - `push-catalog install` now resolves a hack's `requires` before installing
