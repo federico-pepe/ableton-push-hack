@@ -1217,7 +1217,7 @@ func initMidiChords() {
 							{Text: "Shadow UI ON", Scale: 1},
 							{Text: "MIDI INTERCEPT ON", Scale: 1},
 						},
-						Duration:   2 * time.Second,
+						Duration:   750 * time.Millisecond,
 						OnComplete: shadowUIStart,
 					}:
 						sent = true
@@ -1237,7 +1237,7 @@ func initMidiChords() {
 							{Text: "Shadow UI OFF", Scale: 1},
 							{Text: "MIDI INTERCEPT OFF", Scale: 1},
 						},
-						Duration: 2 * time.Second,
+						Duration: 750 * time.Millisecond,
 					}:
 					default:
 						log.Printf("osd: channel full, dropping OSD request")
@@ -1266,7 +1266,7 @@ func initMidiChords() {
 							{Text: "Shadow UI OFF", Scale: 1},
 							{Text: "MIDI INTERCEPT OFF", Scale: 1},
 						},
-						Duration: 2 * time.Second,
+						Duration: 750 * time.Millisecond,
 					}:
 					default:
 						log.Printf("osd: channel full, dropping OSD request")
@@ -1291,7 +1291,7 @@ func initMidiChords() {
 						{Text: "Browser", Scale: 1},
 						{Text: "Shift + Set", Scale: 1},
 					},
-					Duration:   2 * time.Second,
+					Duration:   750 * time.Millisecond,
 					OnComplete: openBrowse,
 				}:
 				default:

@@ -7,6 +7,11 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- Push-manager OSD (intercept ON/OFF, browser-open chord) shown for 750ms
+  instead of 2s — faster to dismiss.
+
 ## [0.1.4-alpha] - 2026-08-29
 
 ### Added
