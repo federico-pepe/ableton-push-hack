@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Hacks: Push Manager (web file browser + display control, port 7701), Push Hack Catalog (on-device installer for community hacks published in their own repos, port 7702), Automation (LFO/CC curve sequencer, port 7703), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), Push Display (LD_PRELOAD display hook). Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes, port 7705) now lives in its own repo, [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer) — install via Push Hack Catalog.
+`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Hacks: Push Manager (web file browser + display control, port 7701), Push Hack Catalog (on-device installer for community hacks, port 7702), Automation (LFO/CC curve sequencer, port 7703), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), Push Display (LD_PRELOAD display hook), Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes, port 7705). Automation and Keyboard Visualizer are installed via Push Hack Catalog rather than built from this repo — see `catalog/catalog.json`.
 
 `core/` is a shared Go module (see "Core shared library" below) that push-manager, automation and keyboard-visualizer all depend on via `require`+`replace` — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across the three hacks.
 
@@ -23,7 +23,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Build
 ```bash
 cd hacks/push-manager && PATH=$PATH:/usr/local/go/bin make
-cd hacks/automation && PATH=$PATH:/usr/local/go/bin make
 cd hacks/push-display && make          # cross-compiles push_hook.so via Docker
 ```
 
@@ -114,24 +113,6 @@ total: 655376 bytes, permissions 0666
 
 **Display geometry:** 960×160 px, BGR565 XOR-shaped (`{0xE7,0xF3,0xE7,0xFF}` repeated), stride 1024, frame sent twice.
 
-### Automation (`hacks/automation/`)
-Go binary, no runtime deps. Port 7703. LFO-style MIDI CC automation sequencer. All lanes send MIDI CC to Live's ALSA input port (`128:2`).
-
-| File | Role |
-|------|------|
-| `src/main.go` | HTTP server, routes, lifecycle. `-push-manager` flag sets push-manager base URL (default `http://localhost:7701`). |
-| `src/engine.go` | `AutoLane`, `AutoState`, `CurvePoint`. 50Hz playback goroutine. Linear + Catmull-Rom interpolation. `TransportSync bool`. SSE broadcast (20Hz) via `core/sse.Broker[autoStreamPayload]` (`pruneDropped=true`). `pollTempo` uses `core/pmclient.Client.Tempo()`. Persistence to `automation.json`. |
-| `src/midi.go` | ALSA seq output + input, now built on `core/alsaseq` (two `*alsaseq.Client`s: **Push Hack Automation** output → Live 128:2, **Push Hack Clock** input ← Push3 16:0). `detectLivePort()`/`detectPush3Port()` call `core/alsaseq.EnumPorts`/`FindByName`. Reads MIDI clock (24 PPQN) for BPM via `autoSeqHandler.Fixed` (an `alsaseq.Handler`, replacing the old fixed-stride-only `readMidiEvents` — sharing `alsaseq.Walk` fixed a real bug where a SysEx byte stream from Push 3 desynced the old decode). `onPlayButtonPress()` handles CC85 val=127 — sole transport toggle when synced. Boot-settle (30s, `alsaseq.WaitForBootSettle`) same as push-manager. |
-| `src/ui/index.html` | Single-file SPA. Canvas curve editor per lane (click=add, drag=move, right-click=delete). Sync to Live checkbox — when on, play/stop button becomes a read-only status indicator (● Playing / ○ Stopped) driven by SSE. Max 8 lanes. |
-
-**Key routes (port 7703):** `GET /api/auto/state`, `POST /api/auto/play`, `POST /api/auto/stop`, `POST /api/auto/transport_sync`, `POST /api/auto/lane`, `PUT /api/auto/lane/{id}`, `DELETE /api/auto/lane/{id}`, `POST /api/auto/lane/{id}/reset`, `GET /api/auto/stream` (SSE).
-
-**BPM sync:** MIDI clock from Push3:16:0 → 24-tick ring buffer → `BPM = 60.0 / elapsed_per_beat`. Falls back to last known BPM (default 120) if no clock received in 5s. HTTP `/api/live/tempo` is still available as an alternative but not used by the engine.
-
-**Transport sync:** when `TransportSync=true`, the **Push Play button (CC85 val=127)** is the SOLE driver of `Running` — each press toggles play/stop (Push has no stop button). MIDI Start only resets the BPM clock ring; it does NOT touch transport. WebUI play/stop button becomes a read-only SSE-driven indicator. (Earlier versions had CC85 toggle + MIDI Start/Stop + a `/api/live/playing` poller all fighting over `Running`, causing desync — now removed.)
-
-**Persistence:** `automation.json` at `/data/push-hack/hacks/automation/automation.json`. Atomic write (tmp + rename).
-
 ### Browser Bridge (`hacks/browser-bridge/`)
 MIDI Remote Script (`PushHackBrowser`) that loads presets and controls Live's transport + device parameters. **One-time manual activation required** (deploy installs the script into the User Library, but Live won't load it until you select `PushHackBrowser` in a free control-surface slot with Input/Output = None, then restart Live). Verify in Live's `Log.txt`. See `hacks/browser-bridge/README.md` for how it works.
 
@@ -156,22 +137,6 @@ Go binary, no runtime deps. Port 7702. On-device installer for community hacks �
 | `src/index.html` | Single-file mobile web UI: catalog cards (name, description, author, live version, last-updated date, `requires` tags), Install/Update/Remove (Update shown, with an "update available" tag, when `update_available` is true), output log pane. |
 
 **Key routes:** `GET /`, `GET /api/catalog`, `GET /api/installed`, `POST /api/install?id=<id>`, `POST /api/remove?id=<id>`.
-
-### Keyboard Visualizer (external repo)
-Moved out of this monorepo into its own repo,
-[`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer)
-— the first hack published through the Push Hack Catalog model (see
-`catalog/ARCHITECTURE.md`). Go binary, no runtime deps, port 7705, renders a
-piano-keyboard visualization on Push 3's screen driven by Live's actual
-sounding notes (after octave-shift / Scale-mode transforms) — not the pad
-grid's raw pre-transform MIDI. Requires `push-manager` + `push-display`
-(this repo) also installed and running — see "Display-owning hacks" below
-and that repo's own `README.md` for the full design writeup. Depends on this
-repo's `core` module as a real tagged dependency
-(`github.com/federico-pepe/ableton-push-hack/core@core/v0.1.0`, no relative
-`replace`) — bump the `core/vX.Y.Z` tag here whenever a change to `core/`
-needs to reach it, and update that repo's `go.mod` to match.
-Install it via Push Hack Catalog, or see its README for a manual build/deploy.
 
 ## USB-A port safety
 
@@ -235,23 +200,20 @@ into push-display itself was considered and rejected — push-display is
 injected directly into the `Push3` process, and running an HTTP listener (or
 any new surface) inside a component whose failure mode is a frozen screen is
 a much bigger blast-radius change than it sounds, versus push-manager's HTTP
-server which is a normal, separate, restartable process. See
-`hacks/keyboard-visualizer/` (`src/render.go`) for the reference
-implementation: `POST /api/display/mode` to enter/exit takeover,
-`POST /api/display/image` to push frames, both called as a plain HTTP client.
+server which is a normal, separate, restartable process. The interface is
+plain HTTP, called like any other client: `POST /api/display/mode` to
+enter/exit takeover, `POST /api/display/image` to push frames.
 
 This means **display-owning hacks have a hard runtime dependency on
 push-manager + push-display also being installed and running** — declare it
 explicitly:
-- State it in the hack's `hack.json` description and README (see
-  `hacks/keyboard-visualizer/hack.json`/`README.md`).
+- State it in the hack's `hack.json` description and README.
 - Add a dependency-watcher that polls `GET /api/display/status`
   (`{"connected": bool}`) at startup and periodically, logging a clear,
   state-transition-only warning distinguishing "push-manager unreachable"
-  from "push-manager up but push-display's framebuffer not connected" —
-  see `hacks/keyboard-visualizer/src/depcheck.go`. Without this, a hack that
-  silently no-ops every display call because a dependency isn't installed is
-  very hard to diagnose from the logs.
+  from "push-manager up but push-display's framebuffer not connected".
+  Without this, a hack that silently no-ops every display call because a
+  dependency isn't installed is very hard to diagnose from the logs.
 
 ## Adding a New Hack
 
@@ -260,7 +222,7 @@ explicitly:
 3. Go source + `Makefile` with `GOOS=linux GOARCH=amd64`
 4. `./scripts/install.sh --hack <id>`
 
-Ports: 7706+ (7701=push-manager, 7702=push-catalog, 7703=automation, 7704=browser-bridge, 7705=keyboard-visualizer [external repo]).
+Ports: 7706+ (7701=push-manager, 7702=push-catalog, 7703=automation, 7704=browser-bridge, 7705=keyboard-visualizer).
 
 ## Releases
 
@@ -294,10 +256,8 @@ Push hardware / OS (`docs/`):
 
 Per-hack (in each hack folder):
 - `hacks/push-manager/README.md` — full API reference, features, display control, MIDI monitor
-- `hacks/automation/README.md` — API, lane types (CC + Selected), BPM/transport sync
 - `hacks/browser-bridge/README.md` — how preset loading works (PushHackBrowser remote script)
 - `hacks/push-display/README.md` — LD_PRELOAD display/MIDI hook, shared-memory layout, build/deploy
-- `hacks/keyboard-visualizer/README.md` — Live-sourced keyboard visualizer, ALSA port routing setup
 - `hacks/push-catalog/README.md` — on-device installer API, how the catalog install flow works
 - `catalog/ARCHITECTURE.md`, `catalog/schema.md`, `catalog/PUBLISHING.md` — the store's catalog model and how to publish a hack into it
 
