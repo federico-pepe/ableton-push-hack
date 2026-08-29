@@ -90,40 +90,11 @@ C shared library injected into Push 3's process via `LD_PRELOAD`. Intercepts `li
 
 ---
 
-### Automation drawing in the browser
-
-Draw CC automation curves in a web UI. The hack loops them in real time and sends MIDI CC to Live for recording or live control. **⚠️ This hack requires additionals setup steps. Please refer to the [manual](MANUAL.md)**.
-
-- Sends **MIDI CC** to Live's internal ALSA input port — map parameters in Live's MIDI Learn like a hardware controller.
-- **BPM sync** — derives BPM from Live's MIDI clock (24 PPQN) received from Push 3 hardware. Accurate to the current tempo; updates in real time.
-- **Sync to Live** — the **Push Play button (CC85)** toggles transport: press to start, press again to stop.
-- **Timing modes** — Sync (loop length in beats) or Free (own BPM + seconds). Per lane.
-- **Catmull-Rom smooth** or linear interpolation. Per lane.
-- Up to 8 lanes.
-
-**Port:** 7703 → `http://push.local:7703`
-
----
-
 ### Browser Bridge — load Live presets onto a track
 
 An Ableton Live **MIDI Remote Script** (`PushHackBrowser`) that loads `.adv`/`.adg` presets onto the selected track via the Live browser API — powering the Shadow UI's BROWSE tab and Push Manager. Only Live's engine can instantiate a preset, so push-manager hands the request to this script over a localhost socket (port 7704); it calls `browser.load_item()` on Live's engine thread.
 
 **Requirements**: Push 2.4+ installed on your Push and some additional setup.
-
----
-
-### Keyboard Visualizer — piano keyboard on Push's screen
-
-Renders a piano-keyboard visualization on Push 3's own screen, driven by the notes **actually sounding in Live** (after octave-shift / Scale mode transforms) rather than the pad grid's raw pre-transform MIDI.
-
-- Creates its own writable ALSA MIDI port, **Keyboard Viz In** — route any Live track's MIDI Out to it from Push's own screen (stock Live routing, no script/M4L install required).
-- Display takeover is toggled live by holding **Shift + Note** on the hardware — off by default so the native Push UI isn't disturbed until asked for.
-- Runs independent of MIDI intercept — never reads pad Note On/Off from Push's raw hardware MIDI, so the pad grid keeps playing into Live normally throughout.
-- Renders via push-manager's own display API (screen takeover), so it must be installed alongside Push Manager.
-- **Mobile web view** — open the URL below on your phone/tablet for the same live keyboard plus **chord detection** (via [Tonal.js](https://github.com/tonaljs/tonal), vendored offline), independent of on-device takeover state.
-
-**Port:** 7705 → `http://push.local:7705`
 
 ---
 
@@ -205,9 +176,9 @@ Write your service in `hacks/my-hack/src/`, then:
 ./scripts/install.sh --hack my-hack
 ```
 
-The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7706 (7701 = push-manager, 7702 = push-catalog, 7703 = automation, 7704 = browser-bridge, 7705 = keyboard-visualizer [external repo]).
+The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7706 (7701 = push-manager, 7702 = push-catalog, 7703 = automation, 7704 = browser-bridge, 7705 = keyboard-visualizer).
 
-Prefer not building/deploying it yourself? [`push-catalog`](hacks/push-catalog/) is an on-device installer — browse and install hacks published in their own repos (like keyboard-visualizer) straight from your phone. See `catalog/PUBLISHING.md` for how to publish your own hack into it.
+Prefer not building/deploying it yourself? [`push-catalog`](hacks/push-catalog/) is an on-device installer — browse and install community-published hacks straight from your phone. See `catalog/PUBLISHING.md` for how to publish your own hack into it.
 
 ### Core shared library
 
@@ -248,10 +219,8 @@ replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
 
 **Per-hack** (folder README):
 - `hacks/push-manager/README.md` — full API reference, features, display control, MIDI monitor
-- `hacks/automation/README.md` — API, lane types, BPM sync, transport sync
 - `hacks/browser-bridge/README.md` — how preset loading works (PushHackBrowser remote script)
 - `hacks/push-display/README.md` — LD_PRELOAD display/MIDI hook, shared-memory layout, build/deploy
-- [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer) — Live-sourced keyboard visualizer, ALSA port routing setup (external repo, install via push-catalog)
 - `hacks/push-catalog/README.md` — on-device installer API, how the catalog install flow works
 
 **Catalog (`catalog/`):** `catalog/ARCHITECTURE.md`, `catalog/schema.md`, `catalog/PUBLISHING.md` — the push-catalog model and how to publish a hack into it

@@ -7,8 +7,31 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `push-catalog install` now resolves a hack's `requires` before installing
+  it: any required id that's itself a catalog entry and isn't installed yet
+  is installed first (recursively); anything else named (the framework's
+  own `push-manager`/`push-display`/`push-catalog`, or a hack not yet in
+  the catalog) just gets a logged warning, since the daemon has nothing it
+  could fetch for those.
+
 ### Changed
 
+- `automation` moved out of this monorepo into its own repo,
+  [`federico-pepe/push-hack-automation`](https://github.com/federico-pepe/push-hack-automation),
+  now installed via Push Hack Catalog like Keyboard Visualizer. History
+  preserved via `git subtree split`. Depends on `core` as a real tagged Go
+  module (`core/v0.1.0`) instead of a relative `replace`. Port unchanged
+  (7703).
+- `catalog/catalog.json`: dropped `push-manager`/`push-display` from
+  every entry's `requires` — they're the framework's own base install,
+  assumed present, not something the catalog can install anyway. Added an
+  `automation` entry (no `requires`). `random-preset` keeps `requires:
+  ["browser-bridge"]` (a genuine catalog-to-catalog dependency).
+- CLAUDE.md/README.md no longer describe hacks that live in their own
+  repos (Automation, Keyboard Visualizer) — `catalog/catalog.json` is now
+  the source of truth for what's installable and where its docs live.
 - Push-manager OSD (intercept ON/OFF, browser-open chord) shown for 750ms
   instead of 2s — faster to dismiss.
 

@@ -179,8 +179,52 @@ cmd_installed() {
 cmd_install() {
   local id="$1"; [ -n "$id" ] || die "usage: push-catalog install <id>"
   local reg; reg="$(load_registry)"
+  install_with_deps "$id" "$reg" " "
+  rm -f "$reg"
+}
+
+# push-manager/push-display/push-catalog are the framework's own base
+# install, never entries in the catalog — a `requires` naming one of them
+# just means "the base install", not something this daemon could fetch.
+is_core_hack() { case "$1" in push-manager|push-display|push-catalog) return 0 ;; *) return 1 ;; esac; }
+
+# Resolves $1's `requires` (installing any that are themselves catalog
+# entries and aren't installed yet, recursively) before installing $1
+# itself. $3 is a space-padded " id1 id2 " chain guard — dedupes repeated
+# deps in one run and stops a cycle between catalog entries from recursing
+# forever.
+install_with_deps() {
+  local id="$1" reg="$2" chain="$3"
+  case "$chain" in *" $id "*) return 0 ;; esac
+  chain="${chain}${id} "
+
   q "$reg" has "$id" || die "no such hack: $id"
 
+  local reqn; reqn="$(q "$reg" len "$id" 'requires' 2>/dev/null || echo 0)"
+  if [ "$reqn" -gt 0 ]; then
+    local installed_now; installed_now="$(cmd_installed)"
+    local i dep
+    for ((i=0; i<reqn; i++)); do
+      dep="$(q "$reg" field "$id" "requires[$i]")"
+      echo "$installed_now" | grep -qx "$dep" && continue
+      if q "$reg" has "$dep" 2>/dev/null; then
+        info "installing dependency: $dep (required by $id)"
+        install_with_deps "$dep" "$reg" "$chain"
+      elif is_core_hack "$dep"; then
+        info "WARNING: '$id' requires '$dep', part of the base install — deploy it with ./scripts/install.sh if missing"
+      else
+        info "WARNING: '$id' requires '$dep', which isn't installed and isn't in the catalog — install it separately"
+      fi
+    done
+  fi
+
+  install_one "$id" "$reg"
+}
+
+# Fetch + extract + register the single hack $1 (no dependency handling —
+# see install_with_deps).
+install_one() {
+  local id="$1" reg="$2"
   local github_repo branch override
   github_repo="$(q "$reg" field "$id" 'github_repo' 2>/dev/null || echo "")"
   branch="$(q "$reg" field "$id" 'default_branch' 2>/dev/null || echo "main")"
@@ -212,7 +256,6 @@ cmd_install() {
   [ -n "$owner" ] && as_root chown -R "$owner" "$dir"
 
   install_service "$id" "$dir"
-  rm -f "$reg"
   info "installed $id v$version"
 }
 
@@ -315,6 +358,31 @@ self_test() {
   echo "$catjson" | grep -q '"released_at": "2026-01-01T00:00:00Z"' || die "self-test: catalog missing released_at"
   echo "$catjson" | grep -q '"installed_version": "0.0.9"' || die "self-test: catalog missing installed_version"
   echo "$catjson" | grep -q '"update_available": true' || die "self-test: update_available not flagged"
+
+  # 3c. dependency-resolution building blocks (is_core_hack, requires
+  #     parsing). A full install_with_deps run needs a privileged
+  #     PUSH_HACK_DIR (init.d, as_root writes) so it's covered by the
+  #     hardware check instead — this exercises the pure-logic pieces.
+  is_core_hack push-manager || die "self-test: is_core_hack missed a real core hack"
+  is_core_hack totally-unrelated-hack && die "self-test: is_core_hack false-positive" || true
+
+  local cat2; cat2="$(mktemp)"
+  cat > "$cat2" <<'JSON'
+{"catalog_version":2,"hacks":[
+  {"id":"leaf","name":"Leaf","description":"d","author":"t","requires":[]},
+  {"id":"root","name":"Root","description":"d","author":"t","requires":["leaf","push-manager","not-in-catalog"]},
+  {"id":"no-reqs","name":"No Reqs","description":"d","author":"t"}
+]}
+JSON
+  [ "$(q "$cat2" len root 'requires')" = "3" ] || die "self-test: requires length wrong"
+  [ "$(q "$cat2" field root 'requires[0]')" = "leaf" ] || die "self-test: requires[0] wrong"
+  [ "$(q "$cat2" len leaf 'requires')" = "0" ] || die "self-test: empty requires array wrong"
+  # real entries (keyboard-visualizer, automation) omit `requires` entirely
+  # when they have none — install_with_deps's `2>/dev/null || echo 0`
+  # fallback is what makes that safe; assert the fallback path directly.
+  [ "$(q "$cat2" len no-reqs 'requires' 2>/dev/null || echo 0)" = "0" ] \
+    || die "self-test: missing requires field mishandled"
+  rm -f "$cat2"
 
   # 4. extraction: same `tar -xzf ... -C hacks_dir` cmd_install uses, into a
   #    scratch dir (no as_root/root/service registration — this only proves

@@ -26,13 +26,24 @@ or a Homebrew tap does.
   "github_repo": "you/my-hack",       // owner/repo the store fetches release.json from
   "default_branch": "main",           // branch release.json lives on
   "asset_name": "my-hack.tar.gz",     // filename of the release asset (informational; download_url from release.json is authoritative)
-  "requires": ["push-manager"]        // optional: other hack ids that must be installed
+  "requires": ["some-other-hack"]     // optional: other *catalog* hack ids that must be installed first
 }
 ```
 
 No `version`, `url`, or `sha256` lives in the catalog — those are always
 fetched fresh from the hack's own `release.json`, so cutting a new release
 never requires a catalog PR.
+
+**Don't list `push-manager`, `push-display`, or `push-catalog` in `requires`.**
+They're the framework's own base install, not catalog entries — the daemon
+can't fetch them (no `github_repo` for them in the catalog) and every hack
+already assumes they're present. `requires` is for genuine catalog-to-catalog
+dependencies only (e.g. a hack that needs another community hack also
+installed). On `install`, the daemon checks each `requires` entry: if it's a
+catalog hack and isn't installed yet, it's installed automatically first; if
+it names one of the three base hacks or anything else not in the catalog, the
+daemon just logs a warning (it has nothing it can fetch) rather than failing
+the install.
 
 ## Per-hack `release.json` (lives at the repo root, `default_branch`)
 
