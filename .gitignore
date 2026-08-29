@@ -14,7 +14,7 @@ hacks/*/src/vendor/
 # `find -maxdepth 2` picks up first alphabetically)
 hacks/*/build/
 hacks/*/push-manager
-hacks/*/push-catalogue
+hacks/*/push-catalog
 hacks/*/automation
 hacks/*/src/push-manager
 hacks/*/src/automation

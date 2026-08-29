@@ -44,7 +44,7 @@ never requires a catalog PR.
 }
 ```
 
-`released_at` is optional (ISO 8601 UTC) — when present, the catalogue's web
+`released_at` is optional (ISO 8601 UTC) — when present, the catalog's web
 UI shows it as that hack's "last updated" date. Omit it and the UI just shows
 `?`.
 

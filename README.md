@@ -68,13 +68,13 @@ Use `Shift + Preference` to open/close the Shadow UI.
 
 ---
 
-### Push Hack Catalogue — install community hacks from your phone
+### Push Hack Catalog — install community hacks from your phone
 On-device homebrew-style installer. Browse a catalog of community hacks — each published from its own GitHub repo, not hosted by this project — and install/remove them without SSH or a build toolchain.
 
 - Web UI lists every hack's **name, description, author, live version, and last-updated date** (fetched fresh from that hack's own repo on every page load), plus its `requires` (other hacks it depends on).
-- **Install/Remove**, one tap, with the shell output shown in a log pane.
-- No sha256 pinning — the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once," the same model as `go get` or a Homebrew tap. See [`catalogue/ARCHITECTURE.md`](catalogue/ARCHITECTURE.md).
-- Want to publish your own hack into it? See [`catalogue/PUBLISHING.md`](catalogue/PUBLISHING.md).
+- **Install/Update/Remove**, one tap, with the shell output shown in a log pane — Update appears once an installed hack falls behind the catalog's live version.
+- No sha256 pinning — the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once," the same model as `go get` or a Homebrew tap. See [`catalog/ARCHITECTURE.md`](catalog/ARCHITECTURE.md).
+- Want to publish your own hack into it? See [`catalog/PUBLISHING.md`](catalog/PUBLISHING.md).
 
 **Port:** 7702 → `http://push.local:7702`
 
@@ -205,9 +205,9 @@ Write your service in `hacks/my-hack/src/`, then:
 ./scripts/install.sh --hack my-hack
 ```
 
-The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7706 (7701 = push-manager, 7702 = push-catalogue, 7703 = automation, 7704 = browser-bridge, 7705 = keyboard-visualizer [external repo]).
+The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7706 (7701 = push-manager, 7702 = push-catalog, 7703 = automation, 7704 = browser-bridge, 7705 = keyboard-visualizer [external repo]).
 
-Prefer not building/deploying it yourself? [`push-catalogue`](hacks/push-catalogue/) is an on-device installer — browse and install hacks published in their own repos (like keyboard-visualizer) straight from your phone. See `catalogue/PUBLISHING.md` for how to publish your own hack into it.
+Prefer not building/deploying it yourself? [`push-catalog`](hacks/push-catalog/) is an on-device installer — browse and install hacks published in their own repos (like keyboard-visualizer) straight from your phone. See `catalog/PUBLISHING.md` for how to publish your own hack into it.
 
 ### Core shared library
 
@@ -251,10 +251,10 @@ replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
 - `hacks/automation/README.md` — API, lane types, BPM sync, transport sync
 - `hacks/browser-bridge/README.md` — how preset loading works (PushHackBrowser remote script)
 - `hacks/push-display/README.md` — LD_PRELOAD display/MIDI hook, shared-memory layout, build/deploy
-- [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer) — Live-sourced keyboard visualizer, ALSA port routing setup (external repo, install via push-catalogue)
-- `hacks/push-catalogue/README.md` — on-device installer API, how the catalogue install flow works
+- [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer) — Live-sourced keyboard visualizer, ALSA port routing setup (external repo, install via push-catalog)
+- `hacks/push-catalog/README.md` — on-device installer API, how the catalog install flow works
 
-**Catalogue (`catalogue/`):** `catalogue/ARCHITECTURE.md`, `catalogue/schema.md`, `catalogue/PUBLISHING.md` — the push-catalogue model and how to publish a hack into it
+**Catalog (`catalog/`):** `catalog/ARCHITECTURE.md`, `catalog/schema.md`, `catalog/PUBLISHING.md` — the push-catalog model and how to publish a hack into it
 
 ---
 ## License

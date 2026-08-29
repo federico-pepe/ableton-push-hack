@@ -146,8 +146,8 @@ type jogHandler interface{ handleJog(uint8) }
 // browsePanelIdx is the index of the BrowserPanel within shadowUI.panels.
 const browsePanelIdx = 3
 
-// cataloguePanelIdx is the index of the CataloguePanel within shadowUI.panels.
-const cataloguePanelIdx = 4
+// catalogPanelIdx is the index of the CatalogPanel within shadowUI.panels.
+const catalogPanelIdx = 4
 
 type Panel interface {
 	Render(img *image.NRGBA)
@@ -216,7 +216,7 @@ func shadowRegisterLEDs(activePanelIdx int) {
 		activeCC = CCScreenTop3
 	case browsePanelIdx:
 		activeCC = CCScreenTop4
-	case cataloguePanelIdx:
+	case catalogPanelIdx:
 		activeCC = CCScreenTop5
 	}
 	go exclusiveLED(activeCC, shadowTabColor)
@@ -267,7 +267,7 @@ func shadowUIStart() {
 		newStatsPanel(),
 		newMidiPanel(),
 		newBrowserPanel(),
-		newCataloguePanel(),
+		newCatalogPanel(),
 	}
 	shadowUI.panelIdx = 0
 	shadowUI.stopCh = make(chan struct{})
@@ -389,9 +389,9 @@ func shadowUIHandleCC(cc, val uint8) {
 			go exclusiveLED(uint8(CCScreenTop4), shadowTabColor)
 			go updateBotLEDs(panel3)
 			return
-		case CCScreenTop5: // Catalogue
-			shadowUI.panelIdx = cataloguePanelIdx
-			panel4 := shadowUI.panels[cataloguePanelIdx]
+		case CCScreenTop5: // Catalog
+			shadowUI.panelIdx = catalogPanelIdx
+			panel4 := shadowUI.panels[catalogPanelIdx]
 			shadowUI.mu.Unlock()
 			go exclusiveLED(uint8(CCScreenTop5), shadowTabColor)
 			go updateBotLEDs(panel4)

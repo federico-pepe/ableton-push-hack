@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Push Hack Catalogue</title>
+<title>Push Hack Catalog</title>
 <style>
   :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --muted:#666; --card:#f4f4f5; --line:#e4e4e7; --accent:#111; --accent-fg:#fff; --danger:#b91c1c; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0c0c0d; --fg:#f4f4f5; --muted:#9a9aa2; --card:#18181b; --line:#27272a; --accent:#f4f4f5; --accent-fg:#111; --danger:#f87171; } }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,sans-serif; }
   header { padding:20px 16px 8px; }
+  footer { text-align: center; }
   h1 { margin:0; font-size:22px; letter-spacing:-.02em; }
   header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
   main { padding:12px 16px 32px; max-width:640px; margin:0 auto; }
@@ -24,16 +25,19 @@
   .remove { background:transparent; color:var(--danger); border:1px solid var(--line); }
   button:disabled { opacity:.5; cursor:default; }
   .tag { display:inline-block; background:var(--line); color:var(--muted); font-size:11px; padding:1px 7px; border-radius:99px; }
+  .tag.update { background:var(--accent); color:var(--accent-fg); font-weight:600; }
   pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; font-size:12px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
   .empty { color:var(--muted); text-align:center; padding:40px 0; }
   .log-wrap { margin-top:20px; }
   .log-wrap h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 8px; }
+  .warning { background: rgb(255,160,0); }
 </style>
 </head>
 <body>
 <header>
-  <h1>Push Hack Catalogue</h1>
-  <p>Browse and install community hacks on this Push.</p>
+  <h1>Push Hack Catalog</h1>
+  <p>Browse and install community hacks on your Push.</p>
+  <p class="warning">Hacks are created by the community. Their functionality is not verified in any way. If you decide to install them, you do so at your own risk.</p>
 </header>
 <main>
   <div id="list" class="empty">Loading catalog…</div>
@@ -42,6 +46,10 @@
     <pre id="log"></pre>
   </div>
 </main>
+<footer id="footer">
+  <p>This project is not approved, endorsed or supported by Ableton. Use at your own risk.</p>
+  <p><a href="https://github.com/federico-pepe/ableton-push-hack">GitHub</a> &bull; <a href="https://discord.gg/8y6aYxy9nU" target="_blank">Join the Discord server</a></p>
+</footer>
 <script>
 const $ = s => document.querySelector(s);
 const log = t => { $("#logwrap").hidden = false; $("#log").textContent = t; };
@@ -53,7 +61,7 @@ async function load() {
       fetch("/api/catalog").then(r => r.json()),
       fetch("/api/installed").then(r => r.json()),
     ]);
-  } catch (e) { $("#list").textContent = "Could not reach the catalogue: " + e; return; }
+  } catch (e) { $("#list").textContent = "Could not reach the catalog: " + e; return; }
 
   const inst = new Set(installed);
   if (!catalog.length) { $("#list").className = "empty"; $("#list").textContent = "Catalog is empty."; return; }
@@ -61,25 +69,31 @@ async function load() {
   const el = $("#list"); el.className = ""; el.innerHTML = "";
   for (const h of catalog) {
     const on = inst.has(h.id);
+    const update = on && h.update_available;
     const card = document.createElement("div");
     card.className = "card";
     const req = (h.requires || []).map(r => `<span class="tag">needs ${esc(r)}</span>`).join(" ");
     const meta = [
       h.author && `by ${esc(h.author)}`,
-      `v${esc(h.version || "?")}`,
+      update ? `v${esc(h.installed_version)} installed &rarr; v${esc(h.version || "?")} available`
+             : `v${esc(h.version || "?")}`,
       `updated ${fmtDate(h.released_at)}`,
     ].filter(Boolean).join(" · ");
+    const buttons = update
+      ? `<button class="install" data-id="${esc(h.id)}" data-verb="install">Update</button>
+         <button class="remove" data-id="${esc(h.id)}" data-verb="remove">Remove</button>`
+      : `<button class="${on ? "remove" : "install"}" data-id="${esc(h.id)}" data-verb="${on ? "remove" : "install"}">
+           ${on ? "Remove" : "Install"}
+         </button>`;
     card.innerHTML = `
       <div class="row">
         <div class="grow">
-          <div class="name">${esc(h.name)}</div>
+          <div class="name">${esc(h.name)} ${update ? '<span class="tag update">update available</span>' : ""}</div>
           <div class="desc">${esc(h.description || "")}</div>
           <div class="meta">${meta}</div>
           <div style="margin-top:6px">${req}</div>
         </div>
-        <button class="${on ? "remove" : "install"}" data-id="${esc(h.id)}" data-verb="${on ? "remove" : "install"}">
-          ${on ? "Remove" : "Install"}
-        </button>
+        <div class="row" style="gap:8px">${buttons}</div>
       </div>`;
     el.appendChild(card);
   }
@@ -89,7 +103,7 @@ async function load() {
 async function act(btn) {
   const { id, verb } = btn.dataset;
   btn.disabled = true; btn.textContent = verb === "install" ? "Installing…" : "Removing…";
-  log(`$ push-catalogue ${verb} ${id}\n`);
+  log(`$ push-catalog ${verb} ${id}\n`);
   try {
     const res = await fetch(`/api/${verb}?id=${encodeURIComponent(id)}`, { method: "POST" }).then(r => r.json());
     log(res.output || (res.ok ? "done" : "failed"));

@@ -2,7 +2,7 @@
 
 ## The model: an index, not a host
 
-Push Hack Catalogue does **not** host hacks. It is a **catalog** (`catalogue/catalog.json`)
+Push Hack Catalog does **not** host hacks. It is a **catalog** (`catalog/catalog.json`)
 that points at hacks living in **their authors' own repositories**. Each repo
 publishes its own GitHub Releases and keeps a `release.json` at its root
 pointing at the current one. Same shape as a Homebrew tap or a Go module: the
@@ -18,11 +18,11 @@ keep their code, their releases, and full control over both.
 └──────────────────┬──────┘        └─────────────────┬────────┘
                     │                                 │
                     ▼                                 ▼
-          ┌─ store repo: catalogue/catalog.json ────────────────┐
+          ┌─ store repo: catalog/catalog.json ────────────────┐
           │  entry(foo) → owner A github_repo                    │
           │  entry(bar) → owner B github_repo                    │
           └───────────────────────────────────────────────────┘
-                              │  push-catalogue daemon (on the Push)
+                              │  push-catalog daemon (on the Push)
                               ▼
         fetch catalog → pick hack → fetch that repo's release.json
         → download the tarball it points at → extract as a framework hack
@@ -45,7 +45,7 @@ To be installable, a hack repo must provide exactly three things:
    contains a standard framework `hack.json` plus the `linux/amd64` binary
    (Push 3 is Intel) and any other files the hack needs. The store never
    compiles anything — it only extracts what's published.
-3. **A catalog entry** in `catalogue/catalog.json` naming the repo
+3. **A catalog entry** in `catalog/catalog.json` naming the repo
    (`github_repo`, `default_branch`, `asset_name`) — see
    [`schema.md`](schema.md) for the field reference.
 
@@ -69,7 +69,7 @@ store only ever points at a `github_repo`.
 
 ### The store repo (this one)
 ```
-catalogue/
+catalog/
   catalog.json         # THE catalog — one entry per added hack, nothing else
   schema.md             # entry + release.json field reference
   PUBLISHING.md          # step-by-step: build, release, open the catalog PR
@@ -91,7 +91,7 @@ numbers — every entry is a live pointer at an owner's `release.json`.
 There is deliberately **no integrity pin** (no sha256, no signing) — the
 trust boundary is "this repo is on GitHub, served over HTTPS, and its
 catalog entry was reviewed at PR time," the same trust model as installing
-any open-source release binary directly. If Push Hack Catalogue ever opens to
+any open-source release binary directly. If Push Hack Catalog ever opens to
 unreviewed third-party taps, this is the layer to revisit.
 
 ## Adding your hack to the store

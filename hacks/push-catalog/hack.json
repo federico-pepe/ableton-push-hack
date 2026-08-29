@@ -1,15 +1,15 @@
 {
-  "id": "push-catalogue",
-  "name": "Push Hack Catalogue",
+  "id": "push-catalog",
+  "name": "Push Hack Catalog",
   "description": "Homebrew store for Push 3 — browse and install community hacks from your phone.",
   "version": "0.1.0",
   "author": "itsrave",
   "port": 7702,
-  "binary": "push-catalogue",
+  "binary": "push-catalog",
   "enabled": true,
   "allowed_roots": [],
   "settings": {
     "_comment": "registry is the ONE place to configure the catalog source. Edit here (redeploy, or edit on-device + restart). Any http(s):// or file:// URL.",
-    "registry": "https://raw.githubusercontent.com/federico-pepe/ableton-push-hack/main/catalogue/catalog.json"
+    "registry": "https://raw.githubusercontent.com/federico-pepe/ableton-push-hack/main/catalog/catalog.json"
   }
 }

@@ -1,7 +1,7 @@
-// push-catalogue daemon — the web face of Push Hack Catalogue.
+// push-catalog daemon — the web face of Push Hack Catalog.
 //
 // It does almost nothing itself: serves one page and shells out to the embedded
-// push-catalogue.sh for every action, so the install logic has exactly one home.
+// push-catalog.sh for every action, so the install logic has exactly one home.
 // Runs as root under init.d (installing hacks needs it); when root, the script's
 // as_root calls are no-ops.
 package main
@@ -19,7 +19,7 @@ import (
 	"strings"
 )
 
-//go:embed push-catalogue.sh
+//go:embed push-catalog.sh
 var storeScript string
 
 //go:embed index.html
@@ -41,7 +41,7 @@ func runStore(registry string, args ...string) (string, error) {
 	cmd.Stdin = strings.NewReader(storeScript)
 	cmd.Env = os.Environ()
 	if registry != "" {
-		cmd.Env = append(cmd.Env, "PUSH_CATALOGUE_REGISTRY="+registry)
+		cmd.Env = append(cmd.Env, "PUSH_CATALOG_REGISTRY="+registry)
 	}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -124,6 +124,6 @@ func main() {
 	if listen == "" {
 		listen = ":" + strconv.Itoa(cfg.Port)
 	}
-	log.Printf("push-catalogue listening on %s (registry: %s)", listen, registry)
+	log.Printf("push-catalog listening on %s (registry: %s)", listen, registry)
 	log.Fatal(http.ListenAndServe(listen, mux))
 }

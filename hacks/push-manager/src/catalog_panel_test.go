@@ -1,6 +1,6 @@
 // Covers the two things that actually break silently: the cursor/scroll
 // window math, and the catalog JSON tags (the wire contract with the
-// push-catalogue daemon).
+// push-catalog daemon).
 package main
 
 import (
@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-func TestCatalogueCursorScrollWindow(t *testing.T) {
-	p := &CataloguePanel{installed: map[string]bool{}}
-	p.hacks = make([]catalogueHack, 20)
+func TestCatalogCursorScrollWindow(t *testing.T) {
+	p := &CatalogPanel{installed: map[string]bool{}}
+	p.hacks = make([]catalogHack, 20)
 
 	for i := 0; i < 8; i++ {
 		p.moveCursor(1)
@@ -18,7 +18,7 @@ func TestCatalogueCursorScrollWindow(t *testing.T) {
 	if p.cursor != 8 {
 		t.Fatalf("cursor=%d want 8", p.cursor)
 	}
-	if want := 8 - catalogueVisibleRows + 1; p.scroll != want {
+	if want := 8 - catalogVisibleRows + 1; p.scroll != want {
 		t.Fatalf("scroll=%d want %d (cursor must stay in the visible window)", p.scroll, want)
 	}
 
@@ -35,18 +35,21 @@ func TestCatalogueCursorScrollWindow(t *testing.T) {
 	if p.cursor != 19 {
 		t.Fatalf("bottom clamp: cursor=%d want 19", p.cursor)
 	}
-	if want := 19 - catalogueVisibleRows + 1; p.scroll != want {
+	if want := 19 - catalogVisibleRows + 1; p.scroll != want {
 		t.Fatalf("bottom scroll=%d want %d", p.scroll, want)
 	}
 }
 
-func TestCatalogueCatalogParse(t *testing.T) {
-	const j = `[{"id":"kv","name":"KV","version":"0.1.0","description":"d","author":"a","requires":["push-manager"]}]`
-	var got []catalogueHack
+func TestCatalogCatalogParse(t *testing.T) {
+	const j = `[{"id":"kv","name":"KV","version":"0.1.0","installed_version":"0.0.9","update_available":true,"description":"d","author":"a","requires":["push-manager"]}]`
+	var got []catalogHack
 	if err := json.Unmarshal([]byte(j), &got); err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].ID != "kv" || got[0].Version != "0.1.0" || len(got[0].Requires) != 1 {
 		t.Fatalf("json tags out of sync with daemon: %+v", got)
+	}
+	if got[0].InstalledVersion != "0.0.9" || !got[0].UpdateAvailable {
+		t.Fatalf("update-check fields out of sync with daemon: %+v", got[0])
 	}
 }

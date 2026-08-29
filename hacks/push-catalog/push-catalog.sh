@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# push-catalogue — install & manage push-hack hacks from the Push itself.
+# push-catalog — install & manage push-hack hacks from the Push itself.
 #
-#   push-catalogue list                 # show catalog
-#   push-catalogue install <id>         # fetch release, extract, register, start
-#   push-catalogue remove  <id>         # stop, disable, delete
-#   push-catalogue installed            # what's installed now
-#   push-catalogue --self-test          # offline checks (runs anywhere)
+#   push-catalog list                 # show catalog
+#   push-catalog install <id>         # fetch release, extract, register, start
+#   push-catalog remove  <id>         # stop, disable, delete
+#   push-catalog installed            # what's installed now
+#   push-catalog --self-test          # offline checks (runs anywhere)
 #
 # Mirrors the framework's install.sh, but runs ON the Push. Needs root for the
 # service bits (init.d, rc symlinks) — re-exec via sudo if not already root.
@@ -13,13 +13,13 @@
 # Trust model: no sha256 pin, no signing. Each catalog entry points at an
 # owner's own GitHub repo (github_repo); the store fetches that repo's
 # release.json live for the current version + download_url, same trust
-# boundary as `go get` or a Homebrew tap. See catalogue/ARCHITECTURE.md.
+# boundary as `go get` or a Homebrew tap. See catalog/ARCHITECTURE.md.
 set -euo pipefail
 
 # Registry URL has ONE source of truth: hack.json's settings.registry (the
-# daemon passes it here as PUSH_CATALOGUE_REGISTRY). No URL is baked into
-# this script. Standalone CLI use: export PUSH_CATALOGUE_REGISTRY yourself.
-REGISTRY_URL="${PUSH_CATALOGUE_REGISTRY:-}"
+# daemon passes it here as PUSH_CATALOG_REGISTRY). No URL is baked into
+# this script. Standalone CLI use: export PUSH_CATALOG_REGISTRY yourself.
+REGISTRY_URL="${PUSH_CATALOG_REGISTRY:-}"
 PUSH_HACK_DIR="${PUSH_HACK_DIR:-/data/push-hack}"
 
 # ── tiny helpers ──────────────────────────────────────────────────────────────
@@ -56,8 +56,11 @@ elif op=="catalog":
     # and released_at are always fetched live from the hack's own
     # release.json (never cached in the catalog itself, same as install) —
     # a slow/unreachable hack repo degrades to "?" rather than failing the
-    # whole listing.
-    import urllib.request
+    # whole listing. Optional a[0] is hacks_dir: when given, each entry is
+    # also enriched with the *installed* copy's own hack.json version, so
+    # callers can flag update_available without a second round-trip.
+    import urllib.request, os
+    hacks_dir=a[0] if a else None
     out=[]
     for h in D["hacks"]:
         e={k:h.get(k) for k in ("id","name","description","author","homepage","requires")}
@@ -75,6 +78,16 @@ elif op=="catalog":
                 pass
         e["version"]=version
         e["released_at"]=released_at
+        installed_version=None
+        if hacks_dir:
+            hp=os.path.join(hacks_dir,h["id"],"hack.json")
+            if os.path.isfile(hp):
+                try:
+                    installed_version=json.load(open(hp)).get("version")
+                except Exception:
+                    pass
+        e["installed_version"]=installed_version
+        e["update_available"]=bool(installed_version and version and installed_version!=version)
         out.append(e)
     print(json.dumps(out))
 elif op=="has": sys.exit(0 if entry(a[0]) else 1)
@@ -140,7 +153,7 @@ as_root() {
 
 # ── registry access ───────────────────────────────────────────────────────────
 load_registry() { # -> path to a temp copy of index.json
-  [ -n "$REGISTRY_URL" ] || die "no registry configured — set settings.registry in hack.json (or export PUSH_CATALOGUE_REGISTRY)"
+  [ -n "$REGISTRY_URL" ] || die "no registry configured — set settings.registry in hack.json (or export PUSH_CATALOG_REGISTRY)"
   local f; f="$(mktemp)"
   fetch "$REGISTRY_URL" "$f"   # urllib handles http(s):// and file://
   [ "$(q "$f" schema)" = "2" ] || die "unsupported catalog_version"
@@ -155,7 +168,7 @@ cmd_list() {
 }
 
 cmd_catalog() { # machine-readable catalog for the web/screen UI
-  local reg; reg="$(load_registry)"; q "$reg" catalog; rm -f "$reg"
+  local reg; reg="$(load_registry)"; q "$reg" catalog "$PUSH_HACK_DIR/hacks"; rm -f "$reg"
 }
 
 cmd_installed() {
@@ -164,7 +177,7 @@ cmd_installed() {
 }
 
 cmd_install() {
-  local id="$1"; [ -n "$id" ] || die "usage: push-catalogue install <id>"
+  local id="$1"; [ -n "$id" ] || die "usage: push-catalog install <id>"
   local reg; reg="$(load_registry)"
   q "$reg" has "$id" || die "no such hack: $id"
 
@@ -225,7 +238,7 @@ install_service() {
 # Required-Stop:     \$local_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: push-hack: $id (via push-catalogue)
+# Short-Description: push-hack: $id (via push-catalog)
 ### END INIT INFO
 BIN="$dir/$bin"; CFG="$dir/hack.json"; LOG="$log"; PIDF="/var/run/$svc.pid"
 start() { echo "starting $svc"; mkdir -p "\$(dirname "\$LOG")"
@@ -244,7 +257,7 @@ EOF
 }
 
 cmd_remove() {
-  local id="$1"; [ -n "$id" ] || die "usage: push-catalogue remove <id>"
+  local id="$1"; [ -n "$id" ] || die "usage: push-catalog remove <id>"
   local svc="push-hack-$id"
   as_root "/etc/init.d/$svc" stop 2>/dev/null || true
   command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
@@ -257,10 +270,10 @@ cmd_remove() {
 self_test() {
   local here; here="$(cd "$(dirname "$0")" && pwd)"
   # Real production catalog — one directory too shallow was the old bug here
-  # (registry/ was a level *inside* hacks/push-catalogue/, not the repo root).
-  local fixture="$here/../../catalogue/catalog.json"
+  # (registry/ was a level *inside* hacks/push-catalog/, not the repo root).
+  local fixture="$here/../../catalog/catalog.json"
   [ -f "$fixture" ] || die "self-test: fixture not found ($fixture)"
-  PUSH_CATALOGUE_REGISTRY="file://$fixture"; REGISTRY_URL="$PUSH_CATALOGUE_REGISTRY"
+  PUSH_CATALOG_REGISTRY="file://$fixture"; REGISTRY_URL="$PUSH_CATALOG_REGISTRY"
   local reg; reg="$(load_registry)"
 
   # 1. catalog lists the seeded hack
@@ -286,14 +299,22 @@ self_test() {
 
   # 3b. catalog op: per-hack live-release enrichment (version + released_at),
   #     exercised offline via a release_url override so no network is hit.
+  #     Also covers the optional hacks_dir arg: installed_version read from a
+  #     local hack.json, update_available flipped since it differs from the
+  #     live release version above (0.0.9 installed vs. 0.1.0 released).
   local cat; cat="$(mktemp)"
   printf '{"catalog_version":2,"hacks":[{"id":"fixture-hack","name":"Fixture Hack","description":"d","author":"tester","homepage":"https://example.invalid","release_url":"file://%s","requires":[]}]}\n' "$rel" > "$cat"
+  local fake_hacks_dir; fake_hacks_dir="$(mktemp -d)"
+  mkdir -p "$fake_hacks_dir/fixture-hack"
+  printf '{"id":"fixture-hack","version":"0.0.9"}\n' > "$fake_hacks_dir/fixture-hack/hack.json"
   local catjson
-  catjson="$(q "$cat" catalog)"
-  rm -f "$rel" "$cat"
+  catjson="$(q "$cat" catalog "$fake_hacks_dir")"
+  rm -f "$rel" "$cat"; rm -rf "$fake_hacks_dir"
   echo "$catjson" | grep -q '"author": "tester"' || die "self-test: catalog missing author"
   echo "$catjson" | grep -q '"version": "0.1.0"' || die "self-test: catalog missing live version"
   echo "$catjson" | grep -q '"released_at": "2026-01-01T00:00:00Z"' || die "self-test: catalog missing released_at"
+  echo "$catjson" | grep -q '"installed_version": "0.0.9"' || die "self-test: catalog missing installed_version"
+  echo "$catjson" | grep -q '"update_available": true' || die "self-test: update_available not flagged"
 
   # 4. extraction: same `tar -xzf ... -C hacks_dir` cmd_install uses, into a
   #    scratch dir (no as_root/root/service registration — this only proves
@@ -311,8 +332,8 @@ self_test() {
 }
 
 # ── dispatch ──────────────────────────────────────────────────────────────────
-# Skip when sourced for testing: `PUSH_CATALOGUE_LIB=1 source push-catalogue.sh`
-[ -n "${PUSH_CATALOGUE_LIB:-}" ] && return 0 2>/dev/null || true
+# Skip when sourced for testing: `PUSH_CATALOG_LIB=1 source push-catalog.sh`
+[ -n "${PUSH_CATALOG_LIB:-}" ] && return 0 2>/dev/null || true
 case "${1:---help}" in
   list)       cmd_list ;;
   catalog)    cmd_catalog ;;

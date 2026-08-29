@@ -1,23 +1,23 @@
-# Push Hack Catalogue
+# Push Hack Catalog
 
 On-device installer for community `push-hack` hacks — browse and install
 from your phone, no SSH or build toolchain needed. Port 7702.
 
-Push Hack Catalogue hosts nothing itself. It reads a catalog
-(`catalogue/catalog.json` in this repo) that's just a list of pointers to
+Push Hack Catalog hosts nothing itself. It reads a catalog
+(`catalog/catalog.json` in this repo) that's just a list of pointers to
 hacks living in **their own GitHub repos**. Each hack repo publishes its own
 GitHub Releases and keeps a `release.json` at its root; the daemon fetches
 that live on every install, downloads the release tarball it points at, and
-extracts it. See [`catalogue/ARCHITECTURE.md`](../../catalogue/ARCHITECTURE.md)
-for the full model and [`catalogue/PUBLISHING.md`](../../catalogue/PUBLISHING.md)
+extracts it. See [`catalog/ARCHITECTURE.md`](../../catalog/ARCHITECTURE.md)
+for the full model and [`catalog/PUBLISHING.md`](../../catalog/PUBLISHING.md)
 for how to get your own hack into the catalog.
 
 ## API
 
 | Route | Method | Description |
 |---|---|---|
-| `/` | GET | Web UI — lists the catalog (name, author, live version, last-update date), Install/Remove per hack, output log pane. |
-| `/api/catalog` | GET | The catalog as JSON: `id`, `name`, `description`, `author`, `homepage`, `requires` from the catalog entry, plus `version` and `released_at` fetched live from each hack's own `release.json` (`null` if that hack's repo is unreachable — degrades per-entry, never fails the whole listing). |
+| `/` | GET | Web UI — lists the catalog (name, author, live version, last-update date), Install/Update/Remove per hack (Update replaces Install when an installed hack's version is behind the catalog's), output log pane. |
+| `/api/catalog` | GET | The catalog as JSON: `id`, `name`, `description`, `author`, `homepage`, `requires` from the catalog entry, plus `version` and `released_at` fetched live from each hack's own `release.json` (`null` if that hack's repo is unreachable — degrades per-entry, never fails the whole listing). Also `installed_version` (read from that hack's locally installed `hack.json`, `null` if not installed) and `update_available` (`true` when `installed_version` differs from the live `version`). |
 | `/api/installed` | GET | JSON array of hack ids currently present under `/data/push-hack/hacks/`. |
 | `/api/install?id=<id>` | POST | Fetches the hack's `release.json`, downloads + extracts its release tarball, registers and starts its init.d service. Returns `{ok, output}` (the shell output, for the log pane). |
 | `/api/remove?id=<id>` | POST | Stops the service, removes it from init.d, deletes the hack's directory. |
@@ -28,7 +28,7 @@ the shell.
 ## How an install works
 
 1. Read `settings.registry` (this hack's `hack.json`) → fetch
-   `catalogue/catalog.json`.
+   `catalog/catalog.json`.
 2. Look up the requested hack's `github_repo` (or a `release_url` override,
    used by local/dev catalog entries) and fetch its `release.json`:
    `https://raw.githubusercontent.com/<github_repo>/<default_branch>/release.json`
@@ -43,17 +43,17 @@ the shell.
 
 No sha256 pin, no signing — the trust boundary is "this repo is on GitHub,
 served over HTTPS, and its catalog entry was PR-reviewed once." See
-`catalogue/ARCHITECTURE.md` for the reasoning.
+`catalog/ARCHITECTURE.md` for the reasoning.
 
 ## Development
 
 ```bash
-cd hacks/push-catalogue && PATH=$PATH:/usr/local/go/bin make        # build
-bash push-catalogue.sh --self-test                                   # offline checks
-bash push-catalogue.sh list                                          # needs PUSH_CATALOGUE_REGISTRY set
+cd hacks/push-catalog && PATH=$PATH:/usr/local/go/bin make        # build
+bash push-catalog.sh --self-test                                   # offline checks
+bash push-catalog.sh list                                          # needs PUSH_CATALOG_REGISTRY set
 ```
 
-`push-catalogue.sh` is the canonical installer script — `make embed` copies
+`push-catalog.sh` is the canonical installer script — `make embed` copies
 it into `src/` so `go:embed` bakes it into the binary as a single
 self-contained artifact. Edit the root copy; `make build`/`build-local`
 re-embed it automatically.

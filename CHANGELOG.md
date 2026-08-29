@@ -7,6 +7,29 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `push-catalog` (renamed from `push-catalogue`, see below) can now detect
+  when an installed hack is out of date: `/api/catalog` gains
+  `installed_version` (read from the hack's locally installed `hack.json`)
+  and `update_available` (true when it differs from the catalog's live
+  `version`). The web UI shows an "update available" tag and swaps the
+  Install button for Update; push-manager's on-device `CATALOG` tab shows an
+  `[update: vX]` row and relabels its INSTALL soft-button to Update. Update
+  reuses the existing install path (re-extract + restart the service) —
+  no new command.
+
+### Changed
+
+- Renamed `push-catalogue` → `push-catalog` throughout (hack id, binary,
+  service name `push-hack-catalog`, directory `hacks/push-catalog/`, the
+  top-level `catalogue/` folder → `catalog/`, env vars
+  `PUSH_CATALOGUE_REGISTRY`/`PUSH_CATALOGUE_LIB` →
+  `PUSH_CATALOG_REGISTRY`/`PUSH_CATALOG_LIB`, web UI title "Push Hack
+  Catalog"). Fixes the spelling; breaks any unit that already has
+  `push-catalogue` installed — reinstall via `install.sh` or the old
+  binary's own catalog UI pointed at the new registry URL.
+
 ## [0.1.3-alpha] - 2026-08-28
 
 ### Fixed

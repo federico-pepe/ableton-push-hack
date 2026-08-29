@@ -1,11 +1,11 @@
-# Publishing a hack to Push Hack Catalogue
+# Publishing a hack to Push Hack Catalog
 
-This is the step-by-step for getting your hack installable via `push-catalogue`
+This is the step-by-step for getting your hack installable via `push-catalog`
 on any Push. For the field reference, see [`schema.md`](schema.md); for why
 the model looks like this, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 Your hack lives in **your own GitHub repo** — this repo only carries a
-pointer to it (`catalogue/catalog.json`). You keep full control of your code,
+pointer to it (`catalog/catalog.json`). You keep full control of your code,
 your releases, and your version cadence.
 
 ## 1. Repo layout
@@ -54,7 +54,7 @@ Add `.github/workflows/release.yml`, triggered on `v*` tags, that:
    ```
    `released_at` (ISO 8601 UTC, e.g. `date -u +%Y-%m-%dT%H:%M:%SZ` at build
    time) is optional but recommended — it drives the "last updated" date the
-   catalogue's web UI shows for your hack.
+   catalog's web UI shows for your hack.
 
 [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer)
 has a working example of this workflow — copy it as a starting point.
@@ -72,7 +72,7 @@ curl -s https://raw.githubusercontent.com/<you>/<repo>/main/release.json
 
 ## 4. Open the catalog PR
 
-Add one entry to this repo's `catalogue/catalog.json`:
+Add one entry to this repo's `catalog/catalog.json`:
 ```jsonc
 {
   "id": "your-hack",
