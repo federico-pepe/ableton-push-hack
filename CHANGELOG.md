@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.4-alpha] - 2026-08-29
+
 ### Added
 
 - `push-catalog` (renamed from `push-catalogue`, see below) can now detect
