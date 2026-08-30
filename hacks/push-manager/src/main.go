@@ -502,7 +502,6 @@ func main() {
 	mux.HandleFunc("/api/upload", handleUpload)
 	mux.HandleFunc("/api/delete", handleDelete)
 	mux.HandleFunc("/api/status", handleStatus)
-	mux.HandleFunc("/api/hacks/nav", handleHacksNav)
 	mux.HandleFunc("/api/hacks/installed", handleHacksInstalled)
 	mux.HandleFunc("/api/rename", handleRename)
 	mux.HandleFunc("/api/copy", handleCopy)

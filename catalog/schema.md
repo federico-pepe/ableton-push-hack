@@ -113,8 +113,9 @@ Remote Script, which must land in Live's own User Library, not
 
 ## Web UI navigation (`hack.json`'s `web_ui`)
 
-A hack with its own web UI can declare it so Push Manager's header can link
-to it, instead of the user having to know the port and type the URL by hand:
+A hack with its own web UI can declare it so an installed hack's card in
+Push Hack Catalog's own UI shows an "Open" link, instead of the user having
+to know the port and type the URL by hand:
 
 ```jsonc
 {
@@ -123,7 +124,11 @@ to it, instead of the user having to know the port and type the URL by hand:
 }
 ```
 
-Push Manager scans installed hacks' `hack.json` for this field and renders
-a header nav entry per hit, linking to `http://<device-host>:<port><path>`
-in a new tab. Omit `web_ui` entirely for a hack with no UI of its own (e.g.
-a Remote Script, or push-display).
+`GET /api/catalog` (given `hacks_dir`, which `cmd_catalog` always passes)
+reads this straight off the *installed* copy's `hack.json` alongside
+`installed_version`, so the store's own web UI can render the link without
+a second round-trip. Omit `web_ui` entirely for a hack with no UI of its
+own (e.g. a Remote Script, or push-display). This intentionally lives in
+the catalog's UI, not Push Manager's header — a hack picks up its own
+`web_ui` link the moment it's installed/updated through the catalog, and
+Push Manager's header doesn't grow one entry per installed hack.

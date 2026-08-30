@@ -57,8 +57,9 @@ elif op=="catalog":
     # release.json (never cached in the catalog itself, same as install) —
     # a slow/unreachable hack repo degrades to "?" rather than failing the
     # whole listing. Optional a[0] is hacks_dir: when given, each entry is
-    # also enriched with the *installed* copy's own hack.json version, so
-    # callers can flag update_available without a second round-trip.
+    # also enriched with the *installed* copy's own hack.json version/port/
+    # web_ui, so callers can flag update_available and render an "Open" link
+    # for the hack's own web UI without a second round-trip.
     import urllib.request, os
     hacks_dir=a[0] if a else None
     out=[]
@@ -78,15 +79,20 @@ elif op=="catalog":
                 pass
         e["version"]=version
         e["released_at"]=released_at
-        installed_version=None
+        installed_version=None; installed_port=None; installed_web_ui=None
         if hacks_dir:
             hp=os.path.join(hacks_dir,h["id"],"hack.json")
             if os.path.isfile(hp):
                 try:
-                    installed_version=json.load(open(hp)).get("version")
+                    hj=json.load(open(hp))
+                    installed_version=hj.get("version")
+                    installed_port=hj.get("port")
+                    installed_web_ui=hj.get("web_ui")
                 except Exception:
                     pass
         e["installed_version"]=installed_version
+        e["port"]=installed_port
+        e["web_ui"]=installed_web_ui
         e["update_available"]=bool(installed_version and version and installed_version!=version)
         out.append(e)
     print(json.dumps(out))
@@ -379,7 +385,7 @@ self_test() {
   printf '{"catalog_version":2,"hacks":[{"id":"fixture-hack","name":"Fixture Hack","description":"d","author":"tester","homepage":"https://example.invalid","release_url":"file://%s","requires":[]}]}\n' "$rel" > "$cat"
   local fake_hacks_dir; fake_hacks_dir="$(mktemp -d)"
   mkdir -p "$fake_hacks_dir/fixture-hack"
-  printf '{"id":"fixture-hack","version":"0.0.9"}\n' > "$fake_hacks_dir/fixture-hack/hack.json"
+  printf '{"id":"fixture-hack","version":"0.0.9","port":7799,"web_ui":{"label":"Fixture","path":"/"}}\n' > "$fake_hacks_dir/fixture-hack/hack.json"
   local catjson
   catjson="$(q "$cat" catalog "$fake_hacks_dir")"
   rm -f "$rel" "$cat"; rm -rf "$fake_hacks_dir"
@@ -388,6 +394,8 @@ self_test() {
   echo "$catjson" | grep -q '"released_at": "2026-01-01T00:00:00Z"' || die "self-test: catalog missing released_at"
   echo "$catjson" | grep -q '"installed_version": "0.0.9"' || die "self-test: catalog missing installed_version"
   echo "$catjson" | grep -q '"update_available": true' || die "self-test: update_available not flagged"
+  echo "$catjson" | grep -q '"port": 7799' || die "self-test: catalog missing installed port"
+  echo "$catjson" | grep -q '"label": "Fixture"' || die "self-test: catalog missing installed web_ui"
 
   # 3c. dependency-resolution building blocks (is_core_hack, requires
   #     parsing). A full install_with_deps run needs a privileged

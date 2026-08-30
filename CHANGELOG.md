@@ -19,10 +19,11 @@ between minor versions).
   daemon never drives Live's own UI). `push-catalog remove` now cleans up
   `install_path` too. See `catalog/schema.md`'s "Non-service hacks" section.
 - `hack.json` gains an optional `web_ui` field (`{"label", "path"}`). Push
-  Manager scans installed hacks for it and renders a header nav link to
-  each one's own web UI (`GET /api/hacks/nav`), so e.g. Push Hack Catalog
-  is now reachable from Push Manager's header instead of only from the
-  on-device Shadow UI's CATALOG tab or by typing the port manually.
+  Hack Catalog's own web UI reads it off an installed hack's `hack.json`
+  (`push-catalog.sh`'s `catalog` op, alongside `installed_version`/`port`)
+  and shows an "Open" link straight to that hack's UI — e.g. Automation and
+  Keyboard Visualizer are now reachable with one tap from the same place
+  you installed them, no need to know or type their port.
 - Push Manager's web UI hides the preset Browser button when its
   dependency (`browser-bridge`) isn't installed (`GET
   /api/hacks/installed`), and the on-device Shadow UI does the same for its
@@ -32,6 +33,13 @@ between minor versions).
   future optional built-in tab gets the same install-gating for free — and
   both take effect live, without a push-manager restart, when the hack is
   installed/removed via the catalog.
+- Push Manager's header carries a static Catalog link (port 7702 is
+  hardcoded — push-catalog is a core hack, always installed alongside
+  push-manager).
+- Push Hack Catalog's web UI: catalog cards render in a 3-column
+  responsive grid instead of a single stacked column, and Install/Update/
+  Remove's shell output opens in a popup modal instead of a persistent log
+  pane at the bottom of the page.
 
 ### Changed
 
@@ -41,6 +49,19 @@ between minor versions).
   Visualizer — the framework's core install is now exactly three hacks
   (Push Manager, Push Display, Push Hack Catalog); everything else is
   optional.
+- `stats.go`'s CPU breakdown (`watchedProcs`) now includes every currently
+  installed hack with a binary, read live off each `hack.json`, instead of
+  a hardcoded four-entry list (Ableton Index, Live, Push3, push-manager)
+  that silently missed every hack split out of the monorepo (automation,
+  keyboard-visualizer, push-catalog).
+
+### Fixed
+
+- Push Hack Catalog's output modal was visible on page load and couldn't
+  be dismissed — `.modal-backdrop { display:flex }` (an author rule) beat
+  the browser's built-in `[hidden] { display:none }` (a same-specificity
+  user-agent rule always loses to an author rule). Added an explicit
+  `.modal-backdrop[hidden] { display:none }` override.
 
 ## [0.1.5-alpha] - 2026-08-29
 
