@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.6-alpha] - 2026-08-30
+
 ### Added
 
 - `push-catalog` supports non-service hacks via two new optional `hack.json`
