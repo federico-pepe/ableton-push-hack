@@ -256,7 +256,31 @@ install_one() {
   [ -n "$owner" ] && as_root chown -R "$owner" "$dir"
 
   install_service "$id" "$dir"
+  install_payload "$id" "$dir"
   info "installed $id v$version"
+
+  local post_install
+  post_install="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('post_install',''))" "$dir/hack.json" 2>/dev/null || echo "")"
+  [ -n "$post_install" ] && info "NEXT: $post_install"
+}
+
+# Copy a non-service payload to a hack-declared install_path, e.g. an
+# Ableton Live Remote Script that must land in the User Library rather than
+# hacks/<id>/. Convention (documented in catalog/schema.md): the tarball's
+# remote-script/ directory is copied verbatim to install_path. A hack with
+# no install_path is a no-op here — this only exists for the small set of
+# hacks that don't fit the binary+service model at all.
+install_payload() {
+  local id="$1" dir="$2"
+  local install_path; install_path="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('install_path',''))" "$dir/hack.json" 2>/dev/null || echo "")"
+  [ -n "$install_path" ] || return 0
+  [ -d "$dir/remote-script" ] || die "hack '$id' declares install_path but has no remote-script/ payload"
+  as_root mkdir -p "$(dirname "$install_path")"
+  as_root rm -rf "$install_path"
+  as_root cp -r "$dir/remote-script" "$install_path"
+  local owner; owner="$(stat -c '%u:%g' "$dir" 2>/dev/null || stat -f '%u:%g' "$dir" 2>/dev/null || echo "")"
+  [ -n "$owner" ] && as_root chown -R "$owner" "$install_path"
+  info "installed $id payload to $install_path"
 }
 
 # Generate + enable + start an init.d service — same shell-backgrounding
@@ -301,11 +325,17 @@ EOF
 
 cmd_remove() {
   local id="$1"; [ -n "$id" ] || die "usage: push-catalog remove <id>"
-  local svc="push-hack-$id"
+  local svc="push-hack-$id" dir="$PUSH_HACK_DIR/hacks/$id"
   as_root "/etc/init.d/$svc" stop 2>/dev/null || true
   command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
   as_root rm -f "/etc/init.d/$svc" /etc/rc*.d/S99"$svc"
-  as_root rm -rf "$PUSH_HACK_DIR/hacks/$id"
+  # Clean up a non-hacks/<id> install_path (e.g. a Remote Script in Live's
+  # User Library) before the source hack.json that names it is gone.
+  if [ -f "$dir/hack.json" ]; then
+    local install_path; install_path="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('install_path',''))" "$dir/hack.json" 2>/dev/null || echo "")"
+    [ -n "$install_path" ] && as_root rm -rf "$install_path"
+  fi
+  as_root rm -rf "$dir"
   info "removed $id"
 }
 
@@ -394,6 +424,23 @@ JSON
   local bin; bin="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('binary',''))" "$extract_dir/fixture-hack/hack.json")"
   [ "$bin" = "fixture-hack" ] || die "self-test: hack.json binary field misread ($bin)"
   rm -rf "$extract_dir"
+
+  # 5. install_path/post_install field reads (same inline python one-liners
+  #    install_one/install_payload/cmd_remove use) — no as_root/filesystem
+  #    writes here, that needs real root and is covered by a hardware check.
+  local fake_dir; fake_dir="$(mktemp -d)"
+  cat > "$fake_dir/hack.json" <<'JSON'
+{"id":"fixture-remote-script","version":"0.1.0","binary":"","install_path":"/data/Music/Ableton/User Library/Remote Scripts/Fixture","post_install":"Enable Fixture in a control-surface slot and restart Live."}
+JSON
+  local ip; ip="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('install_path',''))" "$fake_dir/hack.json")"
+  [ "$ip" = "/data/Music/Ableton/User Library/Remote Scripts/Fixture" ] || die "self-test: install_path misread"
+  local pi; pi="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('post_install',''))" "$fake_dir/hack.json")"
+  [ "$pi" = "Enable Fixture in a control-surface slot and restart Live." ] || die "self-test: post_install misread"
+  # A hack.json with no install_path/post_install must read back empty, not error.
+  printf '{"id":"no-extras","version":"0.1.0","binary":"x"}\n' > "$fake_dir/hack.json"
+  ip="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('install_path',''))" "$fake_dir/hack.json")"
+  [ -z "$ip" ] || die "self-test: install_path should default empty"
+  rm -rf "$fake_dir"
 
   rm -f "$reg"
   echo "self-test: OK"

@@ -80,3 +80,50 @@ my-hack.tar.gz
     ├── my-hack        # the linux/amd64 binary, executable bit preserved by tar
     └── ...             # any other files the hack needs (remote-script/, etc.)
 ```
+
+## Non-service hacks (`hack.json`'s `install_path`)
+
+Most hacks are a `linux/amd64` binary run as an init.d service. A hack with
+`"binary": ""` has nothing to exec — the store's `install_service` step
+becomes a no-op, same as the framework's own `install.sh` convention for
+no-binary hacks. Two more optional `hack.json` fields cover the one real
+case that doesn't fit the binary+service model at all: an Ableton Live
+Remote Script, which must land in Live's own User Library, not
+`hacks/<id>/`, and needs no running service since it lives inside Live.
+
+```jsonc
+{
+  "binary": "",
+  "install_path": "/data/Music/Ableton/User Library/Remote Scripts/MyScript",
+  "post_install": "Enable MyScript in a free control-surface slot (Input/Output = None) and restart Live."
+}
+```
+
+- `install_path` — absolute path the store copies the tarball's
+  `remote-script/` directory to (convention: that's the only source
+  directory it knows to copy). Present only on hacks that need it; absent
+  by default.
+- `post_install` — a one-time-setup message surfaced to the user (catalog
+  daemon's log output, shown in the web/on-device install log) after a
+  successful install. The store never drives Live's own UI itself — no
+  `post_install` *action*, only a hint pointing at what remains manual.
+- `push-catalog remove` reads `install_path` back off the still-installed
+  `hack.json` before deleting `hacks/<id>/`, and removes it too — the
+  daemon owns the full lifecycle of anything it put on disk.
+
+## Web UI navigation (`hack.json`'s `web_ui`)
+
+A hack with its own web UI can declare it so Push Manager's header can link
+to it, instead of the user having to know the port and type the URL by hand:
+
+```jsonc
+{
+  "port": 7703,
+  "web_ui": { "label": "My Hack", "path": "/" }
+}
+```
+
+Push Manager scans installed hacks' `hack.json` for this field and renders
+a header nav entry per hit, linking to `http://<device-host>:<port><path>`
+in a new tab. Omit `web_ui` entirely for a hack with no UI of its own (e.g.
+a Remote Script, or push-display).

@@ -92,7 +92,12 @@ numbers — every entry is a live pointer at an owner's `release.json`.
    → `{version, download_url}`.
 5. Download the tarball at `download_url`, extract straight into
    `/data/push-hack/hacks/` (its own `<id>/` top-level dir lands correctly).
-6. Read the extracted `hack.json`, register the init.d service, start it.
+6. Read the extracted `hack.json`, register the init.d service, start it —
+   or, for a hack with no `binary` and a `hack.json` `install_path` (e.g. an
+   Ableton Live Remote Script that must land in the User Library, not
+   `hacks/<id>/`), copy its payload there instead and surface any
+   `post_install` one-time-setup hint. See `schema.md`'s "Non-service
+   hacks" section.
 
 There is deliberately **no integrity pin** (no sha256, no signing) — the
 trust boundary is "this repo is on GitHub, served over HTTPS, and its

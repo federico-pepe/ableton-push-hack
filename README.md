@@ -75,6 +75,7 @@ On-device homebrew-style installer. Browse a catalog of community hacks — each
 - **Install/Update/Remove**, one tap, with the shell output shown in a log pane — Update appears once an installed hack falls behind the catalog's live version.
 - No sha256 pinning — the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once," the same model as `go get` or a Homebrew tap. See [`catalog/ARCHITECTURE.md`](catalog/ARCHITECTURE.md).
 - Want to publish your own hack into it? See [`catalog/PUBLISHING.md`](catalog/PUBLISHING.md).
+- Example catalog hacks: Automation (LFO/CC sequencer), Keyboard Visualizer (on-screen piano keyboard), and [Browser Bridge](https://github.com/federico-pepe/push-hack-browser-bridge) (load Live presets onto a track from Push Manager's preset browser — needs a one-time manual activation step in Live's Preferences).
 
 **Port:** 7702 → `http://push.local:7702`
 
@@ -87,14 +88,6 @@ C shared library injected into Push 3's process via `LD_PRELOAD`. Intercepts `li
 - **Mode 1** aka Debug mode — orange bar overlay at top of screen
 - **Mode 2** — full frame takeover (push-manager writes any image here)
 - **Startup splash** — "Push Hack loaded..." text shown a few seconds into each Push boot, then passthrough is restored. The hook stays passive during the USB/hub bring-up window (8s), then briefly takes over to show the splash
-
----
-
-### Browser Bridge — load Live presets onto a track
-
-An Ableton Live **MIDI Remote Script** (`PushHackBrowser`) that loads `.adv`/`.adg` presets onto the selected track via the Live browser API — powering the Shadow UI's BROWSE tab and Push Manager. Only Live's engine can instantiate a preset, so push-manager hands the request to this script over a localhost socket (port 7704); it calls `browser.load_item()` on Live's engine thread.
-
-**Requirements**: Push 2.4+ installed on your Push and some additional setup.
 
 ---
 
@@ -219,7 +212,6 @@ replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
 
 **Per-hack** (folder README):
 - `hacks/push-manager/README.md` — full API reference, features, display control, MIDI monitor
-- `hacks/browser-bridge/README.md` — how preset loading works (PushHackBrowser remote script)
 - `hacks/push-display/README.md` — LD_PRELOAD display/MIDI hook, shared-memory layout, build/deploy
 - `hacks/push-catalog/README.md` — on-device installer API, how the catalog install flow works
 

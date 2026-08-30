@@ -76,7 +76,7 @@ You'll need Live 12.4 or later installed on Push.
 
 ![Screenshot of the MIDI Preferences Tab on Push 3 Standalone. To showcase how to configure the PushHackBrowser remote script](resources/push-hack-browser-bridge-remote-scritp.png)
 
-1. Make sure the **browser-bridge** hack is installed (it's installed by default).
+1. Make sure the **browser-bridge** hack is installed — via Push Hack Catalog, not installed by default.
 2. Open **MIDI Preferences*** on Push
 3. Use the top-left knob to select  `Control Scripts`
 4. Select an empty slot
@@ -89,7 +89,7 @@ To use the **Automation** feature in Push Manager, you need to connect to http:/
 
 You'll need Live 12.4 or later installed on Push.
 
-1. Make sure that **automation** hack is installed (it's installed by default).
+1. Make sure that **automation** hack is installed — via Push Hack Catalog, not installed by default.
 2. Open **MIDI Preferences** on Push
 3. In the **Input** tab, scroll to select **Push Hack Automation** and enable the **Remote** checkbox. Leave Track, Sync and MPE disabled.
 4. In the **Output** tab, scroll to select **Push Hack Clock** and enable the **Sync** checkbox. Leave Track and Remote disabled.

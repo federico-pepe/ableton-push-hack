@@ -7,6 +7,39 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `push-catalog` supports non-service hacks via two new optional `hack.json`
+  fields: `install_path` (copies the tarball's `remote-script/` payload
+  there instead of `hacks/<id>/`, for hacks that don't fit the
+  binary+service model, e.g. an Ableton Live Remote Script) and
+  `post_install` (a one-time-setup hint surfaced in the install log — the
+  daemon never drives Live's own UI). `push-catalog remove` now cleans up
+  `install_path` too. See `catalog/schema.md`'s "Non-service hacks" section.
+- `hack.json` gains an optional `web_ui` field (`{"label", "path"}`). Push
+  Manager scans installed hacks for it and renders a header nav link to
+  each one's own web UI (`GET /api/hacks/nav`), so e.g. Push Hack Catalog
+  is now reachable from Push Manager's header instead of only from the
+  on-device Shadow UI's CATALOG tab or by typing the port manually.
+- Push Manager's web UI hides the preset Browser button when its
+  dependency (`browser-bridge`) isn't installed (`GET
+  /api/hacks/installed`), and the on-device Shadow UI does the same for its
+  own Browse tab. Both are driven by one data-driven table
+  (`ui_shadow.go`'s `panelDefs`, pairing each built-in Shadow UI tab with
+  the hack id it depends on) rather than a hardcoded special case, so a
+  future optional built-in tab gets the same install-gating for free — and
+  both take effect live, without a push-manager restart, when the hack is
+  installed/removed via the catalog.
+
+### Changed
+
+- `browser-bridge` moved out of this monorepo into its own repo,
+  [federico-pepe/push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge),
+  installable via Push Hack Catalog like Automation and Keyboard
+  Visualizer — the framework's core install is now exactly three hacks
+  (Push Manager, Push Display, Push Hack Catalog); everything else is
+  optional.
+
 ## [0.1.5-alpha] - 2026-08-29
 
 ### Added

@@ -1,7 +1,10 @@
 # browser-bridge decoupling — catalog support for non-service hacks
 
-**Status: not started. Written down after decoupling `automation` surfaced
-the gap; `browser-bridge` deliberately left in the monorepo for now.**
+**Status: implemented.** `push-catalog` gained `install_path`/`post_install`
+support (see `catalog/schema.md`'s "Non-service hacks" section), and
+`browser-bridge` moved to its own repo,
+[federico-pepe/push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge),
+installable via the catalog like Automation and Keyboard Visualizer.
 
 ## Context
 
@@ -66,22 +69,74 @@ is about the second option.
    real — right now both documents describe only the binary+service
    contract.
 
-## Open questions to resolve before implementing
+## Resolved decisions
 
-- Does `install_path`/no-service support stay generic (any hack can declare
-  it) or is it scoped narrowly to "Remote Script" as a named, special-cased
-  kind? Generic is more flexible; narrow is less surface to get wrong for a
-  contract that (as of this writing) has exactly one real use case.
-- Should `push-catalog remove` know how to clean up a non-`hacks/<id>/`
-  install path too? `browser-bridge`'s own uninstall today is manual
-  (`scripts/uninstall.sh` doesn't touch Live's Remote Scripts folder either
-  — check current behavior before assuming).
-- Whether `browser-bridge` moving out of the monorepo at all is even
-  desired: it's one of the "core three or four" framework hacks most users
-  get via `install.sh` directly, not really a community/optional hack in
-  the spirit of the catalog model. Worth a deliberate decision, not just
-  "we did it for automation and keyboard-visualizer so let's do it here
-  too."
+- **`install_path` stays generic.** Any hack can declare it, not scoped to
+  a named "Remote Script" kind. Less special-casing, and nothing today
+  suggests a second kind won't show up.
+- **`push-catalog remove` must clean up whatever it installed**, including
+  a non-`hacks/<id>/` `install_path`. Catalog owns the full lifecycle of
+  anything it puts on disk — install without a matching remove path is a
+  half-managed hack.
+- **Core stays minimal and mandatory; everything else is optional via the
+  catalog.** Only push-display, push-manager, and push-catalog are "core" —
+  installed directly via `install.sh`, never through the catalog.
+  `browser-bridge` is **not** core by this definition (Automation and
+  Keyboard Visualizer already left the monorepo the same way) — it moves
+  out and becomes a catalog-installable optional hack, following this
+  plan's `install_path`/no-service/`post_install` work. `install.sh` keeps
+  it as a fallback path for anyone bootstrapping without network access to
+  GitHub releases, same as the other three.
+
+## New: dynamic navigation for installed hacks with a web UI
+
+Raised while reviewing this plan: today a user who installs Keyboard
+Visualizer or Automation via the catalog gets a working service on its own
+port, but nothing links to it — they have to know the port and type the
+URL by hand. Push Manager's header should surface a menu entry for any
+installed hack that has a web UI, pointing at that hack's own URL.
+
+**Where it lives:** in Push Manager, not a separate service. Reasoning:
+
+- Push Manager is the one hack in the mandatory core triad that already
+  serves a web UI (port 7701) and already scans `/data/push-hack/hacks/*/
+  hack.json` for a different purpose (`live_log.go`'s "list all deployed
+  hacks" pass) — the read path for a nav list already exists in spirit.
+- A separate "landing page" service would itself need to be either core
+  (scope creep on the "3 core hacks" decision just made above) or optional
+  (then it's sometimes missing, which defeats the point of a page whose
+  whole job is "always show me what's installed").
+- Push-catalog already exposes `/api/installed`, so Push Manager doesn't
+  even need to re-derive install state — it can hit that endpoint (catalog
+  panel already talks to it at `127.0.0.1:7702`, same pattern), or read
+  `hack.json` directly like `live_log.go` does, no new coupling either way.
+
+**Proposed shape:**
+
+- Extend `hack.json` with an optional `web_ui` object, e.g.
+  `"web_ui": {"label": "Keyboard Visualizer", "path": "/"}` — port is
+  already a top-level `hack.json` field, so the link is just
+  `http://<device-host>:<port><path>`. Absent `web_ui` = no nav entry
+  (covers push-display, which has none).
+- Push Manager scans installed `hack.json` files (own hacks dir, same as
+  `live_log.go`) at startup and re-scans on an interval or right after a
+  catalog install/remove action, and renders the header's nav dynamically
+  from whatever it finds — no hardcoded hack list.
+- `catalog/schema.md` gains the `web_ui` field once shape is agreed.
+
+**Resolved:**
+- Refresh trigger: **polling on an interval**, matching
+  `catalog_panel.go`'s existing 10s self-heal poll. Consistent with the
+  rest of the catalog integration; not correctness-critical enough to
+  justify a push-catalog → push-manager signal path.
+- `web_ui` field shape for v1: **label + path only**. Opens as a normal
+  link/new tab. No icon, no iframe — other hacks' UIs aren't designed to
+  be embedded, and iframing risks CSS/JS collisions for no benefit.
+
+- Nav entries link to `http://push.local:<port>/`, same host, different
+  port — confirmed working, cross-port link already tested.
+
+All open questions for this section resolved. Ready to implement.
 
 ## Non-goals for this plan
 

@@ -12,6 +12,16 @@
       "asset_name": "keyboard-visualizer.tar.gz"
     },
     {
+      "id": "browser-bridge",
+      "name": "Browser Bridge",
+      "description": "Ableton Live MIDI Remote Script (PushHackBrowser) that loads .adv/.adg presets onto the selected track from push-manager's preset browser. Requires a one-time manual activation step in Live's Preferences.",
+      "author": "federico-pepe",
+      "homepage": "https://github.com/federico-pepe/push-hack-browser-bridge",
+      "github_repo": "federico-pepe/push-hack-browser-bridge",
+      "default_branch": "main",
+      "asset_name": "browser-bridge.tar.gz"
+    },
+    {
       "id": "automation",
       "name": "Automation",
       "description": "LFO-style MIDI CC automation sequencer. Draw curves in the web UI, send CC values to Push 3 in real-time so Live can record them as automation.",
