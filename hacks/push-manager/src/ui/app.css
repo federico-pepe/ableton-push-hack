@@ -363,6 +363,17 @@ body {
 #btn-midi:hover { color: rgb(0,180,120); }
 #btn-midi.active { color: rgb(0,180,120); }
 
+/* Nav links to other installed hacks' own web UIs */
+#hacks-nav-sep { color: var(--grey); font-size: 14px; flex-shrink: 0; }
+#hacks-nav { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.hack-nav-link {
+  font-size: 12px; font-weight: 600; color: var(--grey-mid);
+  padding: 6px 0 6px 8px; text-decoration: none;
+  white-space: nowrap; letter-spacing: 0.04em;
+  text-transform: uppercase; transition: color 0.1s;
+}
+.hack-nav-link:hover { color: var(--blue); }
+
 /* ── MIDI view ───────────────────────────────────────────────────────────── */
 #midi-status-bar {
   display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
