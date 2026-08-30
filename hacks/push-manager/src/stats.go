@@ -47,14 +47,40 @@ func (d *DiskStats) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`{"total":%d,"used":%d,"free":%d}`, d.Total, d.Used, d.Free)), nil
 }
 
-// watchedProcs: processes shown under the CPU stat row.
+// watchedProcs returns the processes shown under the CPU stat row: a fixed
+// set of non-push-hack processes worth always watching, plus every
+// currently installed hack with a binary (read live off each hack.json, so
+// a hack installed/removed via the catalog appears/disappears here without
+// a push-manager restart — previously this was a hardcoded four-entry list
+// that silently missed every hack split out of the monorepo).
 // label = display name; match = substring searched in /proc/<pid>/cmdline.
 // Order determines display order. First PID whose cmdline contains match wins.
-var watchedProcs = []struct{ label, match string }{
-	{"Ableton Index", "Ableton Index"},
-	{"Live",          "/opt/push3/Live"},
-	{"Push3",         "/opt/push3/Push3"},
-	{"push-manager",  "push-manager"},
+func watchedProcs() []struct{ label, match string } {
+	procs := []struct{ label, match string }{
+		{"Ableton Index", "Ableton Index"},
+		{"Live", "/opt/push3/Live"},
+		{"Push3", "/opt/push3/Push3"},
+	}
+	matches, _ := filepath.Glob("/data/push-hack/hacks/*/hack.json")
+	for _, p := range matches {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var hc struct {
+			Name   string `json:"name"`
+			Binary string `json:"binary"`
+		}
+		if json.Unmarshal(data, &hc) != nil || hc.Binary == "" {
+			continue
+		}
+		label := hc.Name
+		if label == "" {
+			label = hc.Binary
+		}
+		procs = append(procs, struct{ label, match string }{label, hc.Binary})
+	}
+	return procs
 }
 
 func collectStats(diskPath string) SystemStats {
@@ -91,7 +117,7 @@ func collectStats(diskPath string) SystemStats {
 	if dTotal > 0 {
 		pct := (1 - dIdle/dTotal) * 100
 		s.CPUPercent = float64(int(pct*10+0.5)) / 10
-		for _, wp := range watchedProcs {
+		for _, wp := range watchedProcs() {
 			t1, ok1 := pt1[wp.label]
 			t2, ok2 := pt2[wp.label]
 			if ok1 && ok2 && t2 >= t1 {
@@ -143,6 +169,7 @@ func findWatchedPIDs() map[string]int {
 	if err != nil {
 		return result
 	}
+	wps := watchedProcs()
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -157,7 +184,7 @@ func findWatchedPIDs() map[string]int {
 		}
 		// cmdline is NUL-separated; replace to make matching easy.
 		cmd := strings.ReplaceAll(string(raw), "\x00", " ")
-		for _, wp := range watchedProcs {
+		for _, wp := range wps {
 			if _, found := result[wp.label]; found {
 				continue
 			}

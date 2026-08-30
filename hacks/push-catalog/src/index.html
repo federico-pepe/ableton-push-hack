@@ -13,8 +13,9 @@
   footer { text-align: center; font-size: smaller; }
   h1 { margin:0; font-size:22px; letter-spacing:-.02em; }
   header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
-  main { padding:12px 16px 32px; max-width:640px; margin:0 auto; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:10px 0; }
+  main { padding:12px 16px 32px; max-width:1080px; margin:0 auto; }
+  #list.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; }
   .row { display:flex; align-items:center; gap:12px; }
   .grow { flex:1; min-width:0; }
   .name { font-weight:600; }
@@ -26,11 +27,19 @@
   button:disabled { opacity:.5; cursor:default; }
   .tag { display:inline-block; background:var(--line); color:var(--muted); font-size:11px; padding:1px 7px; border-radius:99px; }
   .tag.update { background:var(--accent); color:var(--accent-fg); font-weight:600; }
+  .open { color:var(--fg); text-decoration:none; font-size:12px; font-weight:600; border:1px solid var(--line); border-radius:99px; padding:3px 10px; white-space:nowrap; }
+  .open:hover { border-color:var(--fg); }
+  .actions { margin-top:12px; flex-wrap:wrap; }
   pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; font-size:12px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
   .empty { color:var(--muted); text-align:center; padding:40px 0; }
-  .log-wrap { margin-top:20px; }
-  .log-wrap h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 8px; }
   .warning { background: #ffc107!important; padding: 1rem!important }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
+  .modal-backdrop[hidden] { display:none; }
+  .modal { background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:16px; max-width:560px; width:100%; max-height:75vh; display:flex; flex-direction:column; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .modal-head h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0; }
+  .modal-close { background:none; border:0; font-size:22px; line-height:1; color:var(--muted); cursor:pointer; padding:0 4px; }
+  .modal pre { margin:0; overflow:auto; }
 </style>
 </head>
 <body>
@@ -41,18 +50,26 @@
 </header>
 <main>
   <div id="list" class="empty">Loading catalog…</div>
-  <div class="log-wrap" hidden id="logwrap">
-    <h2>Output</h2>
+</main>
+<div class="modal-backdrop" hidden id="modal-backdrop">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Output</h2>
+      <button class="modal-close" id="modal-close" aria-label="Close">&times;</button>
+    </div>
     <pre id="log"></pre>
   </div>
-</main>
+</div>
 <footer id="footer">
   <p>This project is not approved, endorsed or supported by Ableton. Use at your own risk.</p>
   <p><a href="https://github.com/federico-pepe/ableton-push-hack">GitHub</a> &bull; <a href="https://discord.gg/8y6aYxy9nU" target="_blank">Join the Discord server</a></p>
 </footer>
 <script>
 const $ = s => document.querySelector(s);
-const log = t => { $("#logwrap").hidden = false; $("#log").textContent = t; };
+const openModal = t => { $("#log").textContent = t; $("#modal-backdrop").hidden = false; };
+const closeModal = () => { $("#modal-backdrop").hidden = true; };
+$("#modal-close").onclick = closeModal;
+$("#modal-backdrop").onclick = e => { if (e.target.id === "modal-backdrop") closeModal(); };
 
 async function load() {
   let catalog = [], installed = [];
@@ -66,7 +83,7 @@ async function load() {
   const inst = new Set(installed);
   if (!catalog.length) { $("#list").className = "empty"; $("#list").textContent = "Catalog is empty."; return; }
 
-  const el = $("#list"); el.className = ""; el.innerHTML = "";
+  const el = $("#list"); el.className = "grid"; el.innerHTML = "";
   for (const h of catalog) {
     const on = inst.has(h.id);
     const update = on && h.update_available;
@@ -79,6 +96,9 @@ async function load() {
              : `v${esc(h.version || "?")}`,
       `updated ${fmtDate(h.released_at)}`,
     ].filter(Boolean).join(" · ");
+    const openLink = (on && h.web_ui && h.port)
+      ? `<a class="open" href="//${location.hostname}:${h.port}${h.web_ui.path || "/"}" target="_blank" rel="noopener">${esc(h.web_ui.label || "Open")} &#8599;</a>`
+      : "";
     const buttons = update
       ? `<button class="install" data-id="${esc(h.id)}" data-verb="install">Update</button>
          <button class="remove" data-id="${esc(h.id)}" data-verb="remove">Remove</button>`
@@ -86,15 +106,13 @@ async function load() {
            ${on ? "Remove" : "Install"}
          </button>`;
     card.innerHTML = `
-      <div class="row">
-        <div class="grow">
-          <div class="name">${esc(h.name)} ${update ? '<span class="tag update">update available</span>' : ""}</div>
-          <div class="desc">${esc(h.description || "")}</div>
-          <div class="meta">${meta}</div>
-          <div style="margin-top:6px">${req}</div>
-        </div>
-        <div class="row" style="gap:8px">${buttons}</div>
-      </div>`;
+      <div class="grow">
+        <div class="name">${esc(h.name)} ${update ? '<span class="tag update">update available</span>' : ""}</div>
+        <div class="desc">${esc(h.description || "")}</div>
+        <div class="meta">${meta}</div>
+        <div style="margin-top:6px">${req}</div>
+      </div>
+      <div class="row actions" style="gap:8px">${buttons}${openLink}</div>`;
     el.appendChild(card);
   }
   el.querySelectorAll("button").forEach(b => b.onclick = () => act(b));
@@ -103,11 +121,11 @@ async function load() {
 async function act(btn) {
   const { id, verb } = btn.dataset;
   btn.disabled = true; btn.textContent = verb === "install" ? "Installing…" : "Removing…";
-  log(`$ push-catalog ${verb} ${id}\n`);
+  openModal(`$ push-catalog ${verb} ${id}\n`);
   try {
     const res = await fetch(`/api/${verb}?id=${encodeURIComponent(id)}`, { method: "POST" }).then(r => r.json());
-    log(res.output || (res.ok ? "done" : "failed"));
-  } catch (e) { log("request failed: " + e); }
+    $("#log").textContent = res.output || (res.ok ? "done" : "failed");
+  } catch (e) { $("#log").textContent = "request failed: " + e; }
   load();
 }
 

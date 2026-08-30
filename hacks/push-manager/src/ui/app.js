@@ -1913,24 +1913,6 @@ async function brRefresh() {
   } catch(e) { toast('Refresh failed: '+e.message, 'error'); }
 }
 
-// ── Other installed hacks' web UIs (header nav) ─────────────────────────────
-async function refreshHacksNav() {
-  let entries = [];
-  try { entries = await api('GET', '/api/hacks/nav'); } catch (e) { return; }
-  const nav = $('hacks-nav');
-  nav.innerHTML = '';
-  entries.forEach(h => {
-    const a = document.createElement('a');
-    a.className = 'hack-nav-link';
-    a.textContent = h.label;
-    a.href = `//${location.hostname}:${h.port}${h.path}`;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    nav.appendChild(a);
-  });
-  $('hacks-nav-sep').style.display = entries.length ? '' : 'none';
-}
-
 // Features gated on an optional hack being installed (e.g. the preset
 // Browser tab needs browser-bridge) — hide their button until the catalog
 // install shows up, same live-checked model as the Shadow UI's own tabs.
@@ -1943,10 +1925,9 @@ async function refreshOptionalFeatures() {
 // ── Boot ───────────────────────────────────────────────────────────────────
 history.replaceState({view:'home'}, '');
 loadRoots(false);
-refreshHacksNav();
 refreshOptionalFeatures();
-setInterval(refreshHacksNav, 10000);
 setInterval(refreshOptionalFeatures, 10000);
+$('btn-catalog').href = `//${location.hostname}:7702/`;
 
 // Stop all streaming when tab hides or page unloads — prevents orphaned
 // streams that keep mode=2 locked and fight against "Off" mode changes.
