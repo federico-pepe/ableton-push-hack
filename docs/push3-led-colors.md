@@ -201,6 +201,42 @@ R/G/B = 8-bit. W = white balance (0–1024). Palette queried live from Push 3 ha
 
 ---
 
+## Curated subsets for user-facing color pickers
+
+The 128-entry table above is the full verified hardware palette — every
+index a pad/button LED can be set to. It is **not** the set a user should
+actually be offered when an app lets them pick "this track/clip's color"
+from the pad grid or a swatch list. Two narrower, non-hardware-sourced
+observations feed into that kind of picker, worth recording here even
+though they aren't SysEx-verified the way the table above is:
+
+- **Live itself only uses a subset of this palette for track/clip
+  colors** — around 70 of the 128 entries, not all of them (Live's own
+  color picker is a fixed swatch grid, not a full 128-index chooser).
+- **Push's own official color-choose UI narrows further, to around 26
+  entries** — evidently curated for what actually reads as distinct on
+  the small, low-res pad LEDs (muddy/dark/near-duplicate hardware
+  entries dropped). This 26-ish count was confirmed independently by
+  hand-testing colors on real Push hardware while building a pad-grid
+  track-color picker for the `gridseq` process module (see
+  `push-tethered-app`'s catalog) — its `engine.py` `TRACK_COLORS` list is
+  one concrete instance of such a subset, and its Shift-held /
+  border-pads-light-up picker (`Engine.enter_color_picker`,
+  `color_picker_grid`) mirrors what Push's own hardware color-choose flow
+  does.
+
+**Suggestion, not a rule:** if this repo's `core/push3` package ever grows
+a shared "assignable item color" concept (a `TrackColors`/`ClipColors`-
+style curated index list, or a reusable color-picker helper for process
+modules), the `gridseq` module is worth pulling in as reference prior art
+before inventing the subset from scratch again. Until then, any app
+offering a track/clip-style color choice should stick to a *hand-tested-
+on-hardware* subset around this size rather than exposing the raw 128 —
+that's a design recommendation for readability on Push's pad LEDs, not a
+hardware constraint.
+
+---
+
 ## How to Test a Value
 
 ```bash
