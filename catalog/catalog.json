@@ -43,6 +43,16 @@
       "requires": [
         "browser-bridge"
       ]
+    },
+    {
+      "id": "screensaver",
+      "name": "Screensaver",
+      "description": "Idle screensaver: after a timeout it takes over the display with animations (Rainbow / Twinkle / Starfield); pads and buttons glow along. Any input wakes it. Configured on-device via push-manager's Shadow UI.",
+      "author": "itsrave",
+      "homepage": "https://github.com/itsrave/push-hack-screensaver",
+      "github_repo": "itsrave/push-hack-screensaver",
+      "default_branch": "main",
+      "asset_name": "screensaver.tar.gz"
     }
   ]
 }
