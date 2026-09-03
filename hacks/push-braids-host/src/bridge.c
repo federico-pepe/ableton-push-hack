@@ -119,6 +119,11 @@ void bridge_plugin_set_param(bridge_plugin_t *p, const char *key, const char *va
     p->api->set_param(p->instance, key, val);
 }
 
+int bridge_plugin_get_param(bridge_plugin_t *p, const char *key, char *buf, int buf_len) {
+    if (!p || !p->api || !p->api->get_param) return -1;
+    return p->api->get_param(p->instance, key, buf, buf_len);
+}
+
 void bridge_plugin_on_midi(bridge_plugin_t *p, const uint8_t *msg, int len) {
     if (!p || !p->api) return;
     p->api->on_midi(p->instance, msg, len, /* MOVE_MIDI_SOURCE_INTERNAL */ 0);

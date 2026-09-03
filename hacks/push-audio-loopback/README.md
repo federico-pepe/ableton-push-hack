@@ -75,7 +75,7 @@ ssh root@push.local 'strings /lib/modules/$(uname -r)/kernel/sound/usb/snd-usb-a
 scp ksrc/kernel-source/sound/drivers/snd-aloop.ko root@push.local:/tmp/
 ssh root@push.local '
   rmmod snd_aloop 2>/dev/null   # if a previous (e.g. stock-named) load is present
-  insmod /tmp/snd-aloop.ko id=PHVAudio
+  insmod /tmp/snd-aloop.ko id=PHVAudio timer_source=A3.0.0
   cat /proc/asound/cards
 '
 ```
@@ -85,6 +85,12 @@ ssh root@push.local '
 patch's freeform `shortname`/`longname` strings. This is not persistent
 — it does not survive a reboot, and does not touch `/etc/init.d/push3`
 or anything else Ableton ships. `rmmod`/reboot fully reverts it.
+
+`timer_source=A3.0.0` points Loopback at Push 3's own USB audio card
+(`hw:0`, ID `A3`, PCM device 0, subdevice 0) instead of its own default
+jiffies clock. Use it every time you load this module. Without it, audio
+through this card glitches at Live's default 128-frame buffer — see
+`docs/push3-dsp-hosting.md` for why.
 
 Select "Push Hack Virtual Audio" as an input or output device on a
 track in Live's own audio preferences (visible directly on Push3's

@@ -105,6 +105,32 @@ func (c *Client) DisplayStatus() (Status, error) {
 	return status, nil
 }
 
+// SetMidiFilter enables or disables push-manager's MIDI intercept
+// (POST /api/midi/filter) — while enabled, push-display's hook drops pad/
+// button MIDI before it reaches Live, the same mechanism push-manager's own
+// Shadow UI uses so its own chord-driven UI doesn't also play notes into
+// Live. A hack that takes over the display to read pad MIDI as its own
+// control surface (not as notes for Live) should enable this alongside its
+// own takeover, and disable it when it lets go.
+func (c *Client) SetMidiFilter(enabled bool) error {
+	req, err := http.NewRequest(http.MethodPost, c.Base+"/api/midi/filter",
+		bytes.NewBufferString(fmt.Sprintf(`{"enabled":%t}`, enabled)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("midi/filter: unexpected status %s", resp.Status)
+	}
+	return nil
+}
+
 // Tempo returns the current Live song BPM via GET /api/live/tempo.
 func (c *Client) Tempo() (float64, error) {
 	resp, err := c.HTTP.Get(c.Base + "/api/live/tempo")

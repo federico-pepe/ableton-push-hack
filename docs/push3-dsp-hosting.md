@@ -61,21 +61,31 @@ separate ALSA device, so Live can have both open — the real hardware
 for its own audio, and the virtual card for an outside process — at
 the same time.
 
-## A real timing detail: match the buffer size
+## A real timing detail: point Loopback at a real hardware timer
 
-The Loopback driver's internal clock ticks every 4 milliseconds on
-this kernel (`CONFIG_HZ=250`). Live's own default audio buffer (128
-frames, about 3 milliseconds) is shorter than this tick, so audio
-arrives in uneven bursts and sounds glitchy — with no error reported
-anywhere in the audio stack. Raising Live's own audio buffer to 512
-frames (about 11.6 milliseconds — set in Live's own audio settings,
-visible on Push3's screen) fixed this for a plain test tone.
+By default, the Loopback driver paces itself with the kernel's jiffies
+clock, which ticks every 4 milliseconds on this kernel (`CONFIG_HZ=250`).
+This tick is coarser than Live's own audio buffer (128 frames, about 3
+milliseconds), so audio arrives in uneven bursts and sounds glitchy — with
+no error anywhere in the audio stack.
+
+The fix is the driver's own `timer_source` module parameter. It makes
+Loopback follow the real hardware clock of another sound card instead of
+jiffies. Push 3's own USB audio card (`hw:0`, ID `A3`) already runs a real
+clock while Live uses it, so `insmod snd-aloop.ko timer_source=A3.0.0` ties
+Loopback to that clock. See `hacks/push-audio-loopback/README.md` for the
+full `insmod` command.
+
+With this fix, Live's default 128-frame buffer works with no audible
+glitches. You do not need a larger buffer, and you do not need to patch or
+rebuild the kernel.
 
 Any process that plays audio through this virtual card must match
 whatever buffer size and channel count Live has already negotiated on
-the other side of the card — check
+the other side of the card. Check
 `/proc/asound/PHVAudio/pcm0c/sub0/hw_params` for the live values, and
-match them exactly, or the second side fails to open.
+match them exactly. If you do not match them, the second side fails to
+open.
 
 ## Two real bugs found while building the DSP host
 
@@ -116,83 +126,34 @@ Calling `runtime.LockOSThread()` at the very start of `main()`, before
 the `sched_setscheduler` call, measurably improved this on real
 hardware.
 
-## Known open issue: a fixed ~10ms write-latency floor (2026-08-28)
+## Chords used to glitch: the fix was the same jiffies clock
 
-After both fixes above, playing more than one note at once still
-glitches sometimes, though far less than before. This is not a
-Braids polyphony problem and not a CPU problem — instrumenting the
-render loop's own per-block wall-clock time settled that directly:
+Before the `timer_source` fix above, held chords glitched even after the
+two bug fixes above, at every period size tried (256, 512, 1024 frames).
+Measurement showed that `bridge_pcm_writei`, the blocking ALSA write call,
+added a fixed ~10ms on top of the nominal period time, no matter the
+period size. A fixed cost, not a cost proportional to the period, pointed
+at one-time overhead per write call rather than per-frame processing.
 
-- `bridge_pcm_render` plus the stereo-to-wide-channel expansion
-  (`hacks/push-braids-host/src/main.go`'s producer-side work) takes
-  100–330 microseconds per block, against an 11.6 millisecond budget
-  at a 512-frame period. This is nowhere near the budget, with or
-  without several notes held at once — Go's garbage collector is
-  disabled (`debug.SetGCPercent(-1)`) and the render loop is
-  allocation-free, so this number is stable.
-- `bridge_pcm_writei` — the blocking ALSA write call — is a different
-  story: it consistently takes about **10 milliseconds longer than
-  the nominal period time, not proportional to the period itself**:
-
-  | Period | Nominal budget | Observed `writei` time | Excess |
-  |---|---|---|---|
-  | 512 frames | 11.6 ms | ~22 ms | ~10.4 ms |
-  | 256 frames | 5.8 ms | ~16 ms | ~10.2 ms |
-
-  Halving the period roughly halved the nominal budget, but the
-  excess over budget stayed flat. A cost that scales with period
-  would point at real per-frame processing; a **fixed** cost points
-  at some overhead paid once per write call, independent of how much
-  audio that call carries.
-
-**Working theory:** ~10ms lines up closely with 2–3 ticks of the
-kernel's 4-millisecond jiffies clock (`CONFIG_HZ=250`) — the same
-clock granularity already responsible for the original jiffies-tick
-glitch above, now showing up as a quantized, roughly fixed floor on
-how promptly the Loopback driver's timer-driven cable actually frees
-buffer space for a blocking writer, rather than as burst delivery.
-
-**Practical implication:** a larger buffer helps because it shrinks
-this fixed ~10ms floor's *share* of each block — this is why 128→512
-frames measurably improved things. It does not remove the floor.
-Shrinking the period (tried above, to help isolate the cause) makes
-the floor's relative share *worse*, not better — don't do that as a
-fix. The only way to remove the floor itself is raising the kernel's
-`CONFIG_HZ`, which means a full custom kernel build — a much bigger,
-riskier step than anything else in this hack, and not recommended
-without a specific reason strong enough to justify it. An untried,
-lower-risk mitigation: an even larger buffer (1024 frames or more,
-trading latency for headroom) to shrink the floor's relative share
-further.
-
-**Confirmed at 1024 frames (2026-08-28):** subjectively, noticeably
-fewer/less-frequent glitches on real hardware, chords included —
-this mitigation works. One caveat on the "~10ms flat floor" framing
-above: a long 1024-frame run (84,331 blocks, several minutes) hit a
-`maxWrite` of **47.98ms** once — a single outlier, not the typical
-case, but well above the ~10ms figure from the earlier 256/512 tests.
-Those earlier tests only ran ~10 seconds each (a couple thousand
-blocks), so they likely never sampled long enough to catch a
-comparable rare tail spike. Read "~10ms" above as a lower bound /
-typical figure from short sampling, not a hard ceiling — occasional
-larger outliers exist at any period, this kernel's coarse timer being
-the likely reason. 1024 frames is the current best-known default for
-this reason: it doesn't eliminate outliers, it just makes each of
-them a smaller fraction of the block they land in, which is
-apparently enough to be perceptually much better even if not
-perfect.
+This fixed cost came from the same jiffies clock described above: the
+Loopback driver's default timer only frees buffer space for a blocking
+writer once every 4 milliseconds, in a small number of ticks. Pointing
+Loopback at a real hardware timer with `timer_source` removes this cost.
+Confirmed on real hardware: with `timer_source` set, `push-braids-host`
+runs with zero missed deadlines at Live's default 128-frame buffer, chords
+included. `hacks/push-braids-host/README.md` gives the current recommended
+period and buffer values.
 
 ## Running a test
 
-1. Build and load `hacks/push-audio-loopback`'s virtual card — see
-   that hack's own README.
-2. In Live's own audio settings on Push3's screen, set the buffer size
-   to at least 512 samples.
-3. Route an audio track's input to "Push Hack Virtual Audio" 1/2, with
+1. Build and load `hacks/push-audio-loopback`'s virtual card with
+   `timer_source` set — see that hack's own README for the exact
+   `insmod` command.
+2. Route an audio track's input to "Push Hack Virtual Audio" 1/2, with
    Monitor set to In.
-4. Build and run `hacks/push-braids-host` — see that hack's own
+3. Build and run `hacks/push-braids-host` — see that hack's own
    README for the exact command.
-5. Press a pad. Real audio should come out Push 3's speaker or
+4. Press a pad. Real audio should come out Push 3's speaker or
    headphone jack.
 
 ## Where the code lives

@@ -22,6 +22,11 @@ bridge_plugin_t *bridge_plugin_load(const char *so_path, const char *module_dir,
                                      int sample_rate, int frames_per_block);
 void bridge_plugin_unload(bridge_plugin_t *p);
 void bridge_plugin_set_param(bridge_plugin_t *p, const char *key, const char *val);
+/* Writes key's current value/metadata into buf (NUL-terminated) and returns
+ * the length written, or -1 if key is unknown or buf is too small. "engine",
+ * "engine_name", and "chain_params" (full JSON param list: key/name/type/
+ * min/max/options per param) are the keys this host reads. */
+int bridge_plugin_get_param(bridge_plugin_t *p, const char *key, char *buf, int buf_len);
 /* msg is a raw 1-3 byte MIDI message (status, data1, data2); source=0
  * (MOVE_MIDI_SOURCE_INTERNAL) matches what braids_plugin.cpp expects for a
  * directly-played note. */

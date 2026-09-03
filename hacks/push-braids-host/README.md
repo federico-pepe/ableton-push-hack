@@ -93,17 +93,14 @@ scp ~/Developer/schwung-braids-main/src/presets/*.braids root@push.local:/tmp/br
 
 ssh root@push.local
 cd /tmp
-./push-braids-host ./dsp.so ./braids-module hw:PHVAudio,1,0 32 44100 1024 3072
+./push-braids-host ./dsp.so ./braids-module hw:PHVAudio,1,0 32 44100 128 384
 #                   ^dsp.so  ^module dir     ^PCM device      ^ch ^rate ^period ^buffer
 ```
 
-1024/3072 (not 512/1536) is the current recommended default — see
-`docs/push3-dsp-hosting.md`'s "Known open issue" section for why:
-this kernel's coarse timer causes an occasional write-latency spike
-regardless of period size, and a 1024-frame period is confirmed
-(2026-08-28, on real hardware) to make each spike's effect much less
-audible than 512 frames does, at the cost of extra latency (~23ms vs.
-~11.6ms per block).
+128/384 matches Live's own default buffer and works with no missed
+deadlines, as long as `hacks/push-audio-loopback`'s virtual card is
+loaded with `timer_source` set. See `docs/push3-dsp-hosting.md` for why
+`timer_source` matters.
 
 Device/channel/rate/period/buffer must match whatever Live has
 currently negotiated on the *other* side of the Loopback pair — check

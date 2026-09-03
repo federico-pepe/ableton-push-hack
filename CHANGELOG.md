@@ -19,6 +19,23 @@ between minor versions).
   `plugin_api_v2` module) and reach Push 3's real speaker through
   `push-audio-loopback`'s virtual card — confirmed live on hardware.
   See `docs/push3-dsp-hosting.md`.
+- `push-braids-host`: an on-screen control UI for Braids' own parameters
+  (algorithm, timbre, color, amp/filter envelopes, volume), driven by
+  Push 3's 8 encoders and paged with D-Pad Left/Right. Toggled by
+  Shift+Device, which also enables push-manager's MIDI intercept so
+  pad hits drive Braids without also reaching Live. Param metadata
+  (name/range/enum options) is read from the plugin itself via a new
+  `bridge_plugin_get_param` binding, not hardcoded. `core/pmclient`
+  gained `SetMidiFilter` for this.
+
+### Fixed
+
+- `push-audio-loopback`'s virtual card no longer needs a large audio
+  buffer to avoid glitches. Loading it with `timer_source=A3.0.0`
+  ties it to Push 3's own hardware clock instead of the kernel's
+  coarse jiffies clock, so Live's default 128-frame buffer now works
+  with no audible glitches, chords included. See
+  `docs/push3-dsp-hosting.md`.
 
 ## [0.1.6-alpha] - 2026-08-30
 
