@@ -12,8 +12,8 @@ Background and the plan this implements:
 `push-tethered-app`'s `plans/2026-08-27-schwung-on-push3-feasibility.md`
 ("Next steps", step 3).
 
-No display output yet — that's the next step, once this proves the
-core loop.
+Has an on-screen control UI for Braids' own parameters (algorithm,
+timbre, color, envelopes, volume) — see "On-screen controls" below.
 
 ## Confirmed working (2026-08-28)
 
@@ -114,14 +114,60 @@ already validated for `push-audio-loopback`. Pressing a pad on Push3
 should now trigger Braids and come out the real speaker/headphone
 output.
 
+## On-screen controls
+
+Hold **Shift + Device** to toggle a param UI on Push's own screen: a
+gauge knob per parameter on the current page (Algorithm, Timbre, Color,
+Attack/Decay/Sustain/Release, Volume on page 1; the filter envelope on
+page 2), driven by the 8 encoders above the screen. **D-Pad Left/Right**
+switches pages. Turning the UI on also enables push-manager's MIDI
+intercept, so pad hits drive Braids only — they stop reaching Live for
+as long as the UI is on. Toggling it off (same chord) hands the screen
+and MIDI back to normal.
+
+Requires `push-manager` + `push-display` also running (they already are
+if you followed `install.sh`) — see CLAUDE.md's "Display-owning hacks".
+Param names/ranges/enum options are read from the plugin itself
+(`bridge_plugin_get_param("chain_params")`), not hardcoded here.
+
+## Redeploying after a reboot
+
+Nothing in this chain is installed as a persistent service — a Push
+reboot loses the loopback card (kernel module), everything under `/tmp`
+(the DSP plugin, presets, this binary), and of course the running
+process. `push-manager`/`push-display` come back on their own (real
+sysvinit services); the rest needs redeploying by hand:
+
+```bash
+# 1. Reload the loopback card — same .ko as before, no rebuild needed
+#    unless the device's `uname -r` changed (compare against
+#    hacks/push-audio-loopback/README.md's vermagic check).
+scp <path-to>/snd-aloop.ko root@push.local:/tmp/
+ssh root@push.local 'insmod /tmp/snd-aloop.ko id=PHVAudio timer_source=A3.0.0'
+
+# 2. Re-copy the DSP plugin + presets (wiped along with the rest of /tmp)
+scp ~/Developer/schwung-braids-main/build/dsp.so root@push.local:/tmp/
+ssh root@push.local 'mkdir -p /tmp/braids-module/presets'
+scp ~/Developer/schwung-braids-main/src/presets/*.braids root@push.local:/tmp/braids-module/presets/
+
+# 3. Check what Live actually negotiated this time — its own buffer
+#    setting can reset across a reboot/Live Set reload — and match it:
+ssh ableton@push.local 'cat /proc/asound/card1/pcm0c/sub0/hw_params'
+
+scp push-braids-host root@push.local:/tmp/
+ssh root@push.local 'cd /tmp && nohup ./push-braids-host ./dsp.so ./braids-module hw:PHVAudio,1,0 32 44100 <period> <buffer> >/tmp/braids.log 2>&1 < /dev/null &'
+```
+
+Live's own track routing (Input = "Push Hack Virtual Audio", Monitor =
+In) is saved in the Live Set and typically survives on its own — check
+`/proc/asound/card1/pcm0c/sub0/hw_params` isn't `closed` before assuming
+step 3 needs a manual re-route in Live's audio preferences too.
+
 ## Known limits
 
-- No display output. Adding it is the next step in the plan this
-  implements — via `hacks/push-display`'s `push_hook.c` pattern.
 - Not an installable hack yet (no `deploy.sh`/`service.initd`) — a
   manually-run test binary, same status as `push-audio-loopback`'s
-  `loopback_feed`.
-- Only Note On/Off are wired up. CC (mod wheel → FM amount per Braids'
-  own param list), pitch bend, and aftertouch are ignored for now.
-- The virtual sound card does not survive a reboot (see
-  `push-audio-loopback`'s own README) — reload it before running this.
+  `loopback_feed`. See "Redeploying after a reboot" above.
+- Beyond the 8 encoders and D-Pad Left/Right (param UI) and Note
+  On/Off (pad grid), no other MIDI is wired up — pitch bend and
+  aftertouch are ignored.
