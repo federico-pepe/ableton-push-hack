@@ -19,6 +19,13 @@ hacks/*/automation
 hacks/*/src/push-manager
 hacks/*/src/automation
 hacks/*/src/keyboard-visualizer
+hacks/push-audio-loopback/push-audio-loopback
+hacks/push-braids-host/push-braids-host
+
+# Prebuilt kernel modules (one per Push kernel version, built offline from
+# Ableton's GPL source release — see hacks/push-audio-loopback/README.md).
+# Large, kernel-specific binaries; not meant to be git-tracked.
+hacks/push-audio-loopback/ko/
 
 # Logs
 *.log

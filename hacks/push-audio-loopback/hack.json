@@ -1,0 +1,9 @@
+{
+  "id": "push-audio-loopback",
+  "name": "Audio Loopback",
+  "description": "Virtual sound card (\"Push Hack Virtual Audio\") for sending audio to Live, or reading audio from it, without opening the real hardware device. Loads its kernel module on every boot. If the running kernel does not match a bundled module build, it logs a clear warning and does not load anything.",
+  "version": "0.1.0",
+  "author": "federico-pepe",
+  "binary": "push-audio-loopback",
+  "enabled": true
+}

@@ -19,7 +19,10 @@ the working path) live in `push-tethered-app`'s
   firmware v2.4.2) that renames the card from generic "Loopback" to
   "Push Hack Virtual Audio", so it's identifiable in Live's device
   pickers. Functionally identical to stock `snd-aloop` otherwise.
-- `src/loopback_feed.c` / `Makefile` — a small low-jitter test-tone
+- `src/main.go` — the installable service (`push-audio-loopback`). Loads
+  the kernel module on boot and keeps checking it stays loaded. See
+  "Persistent install" below.
+- `src/loopback_feed/loopback_feed.c` / `Makefile` — a small low-jitter test-tone
   writer for the resulting Loopback device. A generic tool like
   `speaker-test` works but produces audible glitches: it shares the
   Loopback ring buffer with Live's own real-time audio engine with no
@@ -82,9 +85,9 @@ ssh root@push.local '
 
 `id=PHVAudio` sets the short bracketed card ID (`[PHVAudio]` in
 `/proc/asound/cards`); it has to be a plain alnum token, unlike the
-patch's freeform `shortname`/`longname` strings. This is not persistent
-— it does not survive a reboot, and does not touch `/etc/init.d/push3`
-or anything else Ableton ships. `rmmod`/reboot fully reverts it.
+patch's freeform `shortname`/`longname` strings. `rmmod`/reboot fully
+reverts a manual `insmod` like the one above. For a load that survives
+reboot, see "Persistent install" below.
 
 `timer_source=A3.0.0` points Loopback at Push 3's own USB audio card
 (`hw:0`, ID `A3`, PCM device 0, subdevice 0) instead of its own default
@@ -115,3 +118,33 @@ scp loopback_feed root@push.local:/tmp/
 ssh root@push.local '/tmp/loopback_feed hw:PHVAudio,1,0 32 44100 440 10'
 #                                        ^device          ^ch ^rate ^Hz ^secs (0=infinite)
 ```
+
+## Persistent install
+
+`push-audio-loopback` (a Go binary, built by `make` alongside
+`loopback_feed`) is this hack's real installable service. It loads the
+module for you on every boot and checks it stays loaded. It does not
+need any manual `insmod` step once installed.
+
+It needs one `.ko` file per Push kernel version, placed at
+`ko/<uname -r>/snd-aloop.ko` next to the binary (e.g.
+`/data/push-hack/hacks/push-audio-loopback/ko/linux-push3-5.15.48+gitAUTOINC+4ec79de9ce-r0/snd-aloop.ko`).
+Build the `.ko` with the recipe above, then copy it there:
+
+```bash
+ssh root@push.local 'mkdir -p /data/push-hack/hacks/push-audio-loopback/ko/$(uname -r)'
+scp ksrc/kernel-source/sound/drivers/snd-aloop.ko \
+  root@push.local:/data/push-hack/hacks/push-audio-loopback/ko/$(ssh root@push.local uname -r)/
+```
+
+Deploy the service itself with the framework installer:
+
+```bash
+./scripts/install.sh --hack push-audio-loopback --build
+```
+
+If the running kernel has no matching `.ko` file, or the `.ko`'s
+`vermagic` does not match the running kernel, the service logs one clear
+line and does not load anything — it will not force a mismatched module.
+This happens after a Push firmware update changes the kernel; build and
+copy a new `.ko` for the new kernel to fix it.

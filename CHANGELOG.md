@@ -9,6 +9,12 @@ between minor versions).
 
 ### Added
 
+- `hacks/push-audio-loopback` gains an installable service
+  (`push-audio-loopback`, a Go binary): loads the Loopback kernel module
+  on boot and keeps checking it stays loaded, replacing the manual
+  `insmod` step after every reboot. Refuses to load a `.ko` that does not
+  match the running kernel's `vermagic` instead of forcing it. See
+  `plans/2026-09-05-persist-catalog-split-braids-loopback.md`.
 - `core/alsapcm`: enumerates ALSA sound cards (`/proc/asound/cards`) and
   their playback-capable PCM devices, for hacks that let a user pick an
   audio output device. First consumer: `push-braids-host`'s on-screen I/O

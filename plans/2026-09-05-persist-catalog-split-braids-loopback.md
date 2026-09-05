@@ -48,8 +48,9 @@ start() { nice -n 19 "$BIN" -config "$CFG" >>"$LOG" 2>&1 & echo $! >"$PIDF"; }
 Consequences:
 - **All persistence/self-healing logic must live inside the Go binaries
   themselves** — a bundled `service.initd` is never read by catalog installs.
-  (Still add one for parity with `scripts/install.sh`-style manual deploys,
-  clearly commented as non-load-bearing for catalog installs.)
+  Neither hack needs one at all: `scripts/install.sh` already falls back to
+  the same generic `-config hack.json` init.d generator when none is shipped
+  (see Part A below).
 - **No crash respawn exists.** Each binary must supervise itself.
 - **No CLI args** — the binary only ever gets `-config <hack.json path>`.
   Everything currently passed as positional args (`dsp.so` path, PCM device,
@@ -109,8 +110,11 @@ not fixable within this plan.
 **New `hacks/push-audio-loopback/hack.json`**: id/name/description/version/
 binary `push-audio-loopback`, no `port` (no HTTP server).
 
-**`service.initd`**: still add for `scripts/install.sh`-style manual deploy
-parity, header comment states plainly it's unused by catalog installs.
+**No `service.initd` needed**: `scripts/install.sh` (`generate_initd_script`,
+`lib/common.sh:308`) already falls back to the exact same generic
+`-config hack.json` init.d generator catalog's `install_service` uses when a
+hack ships no custom `service.initd` (confirmed at `scripts/install.sh:319-333`).
+Both install paths behave identically without one — skip it entirely.
 
 **Dependency call**: depend on `core/alsaseq` for `WaitForBootSettle()` rather
 than inlining a copy — small, tagged, avoids the exact divergence risk
