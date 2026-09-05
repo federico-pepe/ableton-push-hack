@@ -1,0 +1,9 @@
+{
+  "id": "push-braids-host",
+  "name": "Braids Host",
+  "description": "Standalone Move Anything DSP host: reads Push 3's own pad MIDI and drives a Braids macro-oscillator, rendering audio into push-audio-loopback's virtual card. Needs push-audio-loopback (waits for it at startup and after every restart) and push-manager + push-display for its on-screen controls.",
+  "version": "0.1.0",
+  "author": "federico-pepe",
+  "binary": "push-braids-host",
+  "enabled": true
+}

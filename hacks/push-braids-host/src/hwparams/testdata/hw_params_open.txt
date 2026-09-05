@@ -1,0 +1,8 @@
+access: MMAP_INTERLEAVED
+format: S16_LE
+subformat: STD
+channels: 32
+rate: 44100 (44100/1)
+period_size: 128
+buffer_size: 384
+tick_time: 0

@@ -81,32 +81,33 @@ docker run --rm --platform linux/amd64 -v "$PWD":/build -w /build debian:bullsey
 
 ## Deploy and run
 
+This hack is a normal installable service. It reads no command-line
+arguments — only `-config <hack.json path>`, the same as every other
+catalog-installed hack. It picks its own channel count, sample rate,
+and buffer size live from whatever Live actually negotiated, instead of
+a fixed value passed in. See "Persistent install" below for the full
+picture.
+
+First, install push-audio-loopback (its virtual card must exist first)
+and build this hack:
+
 ```bash
-# From this directory, after `make`:
-scp push-braids-host root@push.local:/tmp/
-scp ~/Developer/schwung-braids-main/build/dsp.so root@push.local:/tmp/
-ssh root@push.local 'mkdir -p /tmp/braids-module/presets'
-scp ~/Developer/schwung-braids-main/src/presets/*.braids root@push.local:/tmp/braids-module/presets/
-
-# hacks/push-audio-loopback's virtual card must be loaded first — see
-# that hack's own README for building/loading snd-aloop.ko.
-
-ssh root@push.local
-cd /tmp
-./push-braids-host ./dsp.so ./braids-module hw:PHVAudio,1,0 32 44100 128 384
-#                   ^dsp.so  ^module dir     ^PCM device      ^ch ^rate ^period ^buffer
+cd hacks/push-braids-host
+make
+./scripts/install.sh --hack push-braids-host
 ```
 
-128/384 matches Live's own default buffer and works with no missed
-deadlines, as long as `hacks/push-audio-loopback`'s virtual card is
-loaded with `timer_source` set. See `docs/push3-dsp-hosting.md` for why
-`timer_source` matters.
+Then copy the DSP plugin and its presets into the install directory —
+`install.sh` does not know about these extra files yet:
 
-Device/channel/rate/period/buffer must match whatever Live has
-currently negotiated on the *other* side of the Loopback pair — check
-`/proc/asound/card1/pcm0c/sub0/hw_params` (or whichever subdevice Live
-has selected) the same way documented in
-`hacks/push-audio-loopback/README.md`.
+```bash
+ssh root@push.local 'mkdir -p /data/push-hack/hacks/push-braids-host/module/presets'
+scp ~/Developer/schwung-braids-main/build/dsp.so \
+  root@push.local:/data/push-hack/hacks/push-braids-host/dsp.so
+scp ~/Developer/schwung-braids-main/src/presets/*.braids \
+  root@push.local:/data/push-hack/hacks/push-braids-host/module/presets/
+ssh root@push.local '/etc/init.d/push-hack-push-braids-host restart'
+```
 
 To actually hear it: an audio track in Live's own Set, Input =
 "Push Hack Virtual Audio", Monitor = In, routed to Master — same setup
@@ -130,44 +131,35 @@ if you followed `install.sh`) — see CLAUDE.md's "Display-owning hacks".
 Param names/ranges/enum options are read from the plugin itself
 (`bridge_plugin_get_param("chain_params")`), not hardcoded here.
 
-## Redeploying after a reboot
+## Persistent install
 
-Nothing in this chain is installed as a persistent service — a Push
-reboot loses the loopback card (kernel module), everything under `/tmp`
-(the DSP plugin, presets, this binary), and of course the running
-process. `push-manager`/`push-display` come back on their own (real
-sysvinit services); the rest needs redeploying by hand:
+`push-braids-host` runs as a real sysvinit service, installed like any
+other catalog hack, and needs no manual steps after a reboot:
 
-```bash
-# 1. Reload the loopback card — same .ko as before, no rebuild needed
-#    unless the device's `uname -r` changed (compare against
-#    hacks/push-audio-loopback/README.md's vermagic check).
-scp <path-to>/snd-aloop.ko root@push.local:/tmp/
-ssh root@push.local 'insmod /tmp/snd-aloop.ko id=PHVAudio timer_source=A3.0.0'
-
-# 2. Re-copy the DSP plugin + presets (wiped along with the rest of /tmp)
-scp ~/Developer/schwung-braids-main/build/dsp.so root@push.local:/tmp/
-ssh root@push.local 'mkdir -p /tmp/braids-module/presets'
-scp ~/Developer/schwung-braids-main/src/presets/*.braids root@push.local:/tmp/braids-module/presets/
-
-# 3. Check what Live actually negotiated this time — its own buffer
-#    setting can reset across a reboot/Live Set reload — and match it:
-ssh ableton@push.local 'cat /proc/asound/card1/pcm0c/sub0/hw_params'
-
-scp push-braids-host root@push.local:/tmp/
-ssh root@push.local 'cd /tmp && nohup ./push-braids-host ./dsp.so ./braids-module hw:PHVAudio,1,0 32 44100 <period> <buffer> >/tmp/braids.log 2>&1 < /dev/null &'
-```
-
-Live's own track routing (Input = "Push Hack Virtual Audio", Monitor =
-In) is saved in the Live Set and typically survives on its own — check
-`/proc/asound/card1/pcm0c/sub0/hw_params` isn't `closed` before assuming
-step 3 needs a manual re-route in Live's audio preferences too.
+- It waits for `push-audio-loopback`'s virtual card to appear, then
+  waits for Live to actually open its side, before it opens any audio
+  device. This works even if the two services start in any order.
+- It reads channels, sample rate, period, and buffer size straight from
+  what Live negotiated (`/proc/asound/PHVAudio/pcm0c/sub0/hw_params`),
+  every few seconds, for as long as it runs — so if Live restarts with
+  a different buffer size, this hack reopens its audio device to match,
+  with no restart needed.
+- If it crashes (a DSP plugin bug, an ALSA error), a small supervisor
+  built into the same binary restarts it on its own, with a short
+  growing delay between tries.
+- Its own settings (which MIDI port to read, which audio device to
+  write to) live in `braids-config.json`, next to `hack.json`, so they
+  survive a reboot and a catalog update. Defaults match this hack's
+  original hardcoded values — nothing changes for you unless you pick
+  different values yourself. (There is no on-screen picker for this
+  yet — edit the file directly and restart the service.)
 
 ## Known limits
 
-- Not an installable hack yet (no `deploy.sh`/`service.initd`) — a
-  manually-run test binary, same status as `push-audio-loopback`'s
-  `loopback_feed`. See "Redeploying after a reboot" above.
+- The DSP plugin (`dsp.so`) and its presets are not installed by
+  `install.sh` or the catalog yet — copy them in by hand once, per
+  "Deploy and run" above. They live under this hack's own install
+  directory, so they survive a reboot like everything else here.
 - Beyond the 8 encoders and D-Pad Left/Right (param UI) and Note
   On/Off (pad grid), no other MIDI is wired up — pitch bend and
   aftertouch are ignored.

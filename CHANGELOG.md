@@ -9,6 +9,14 @@ between minor versions).
 
 ### Added
 
+- `hacks/push-braids-host` gains an installable service: it waits for
+  `push-audio-loopback`'s virtual card and for Live to open its side
+  before opening any audio device, reopens its audio session whenever
+  Live's negotiated buffer changes (no restart needed), and restarts
+  itself if it crashes. Its own settings (MIDI port, audio device) now
+  persist in `braids-config.json`. Replaces the old CLI-argument,
+  manual-redeploy-after-reboot workflow. See
+  `plans/2026-09-05-persist-catalog-split-braids-loopback.md`.
 - `hacks/push-audio-loopback` gains an installable service
   (`push-audio-loopback`, a Go binary): loads the Loopback kernel module
   on boot and keeps checking it stays loaded, replacing the manual
