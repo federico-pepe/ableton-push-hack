@@ -88,14 +88,19 @@ type midiHandler struct {
 	ctl    chan<- controlEvent
 	pmURL  string
 	params *paramState
+	io     *ioState
 }
 
-// controlEvent is a CC-derived UI action — an encoder turn or a page
-// change — decoded on the ALSA read-loop goroutine and applied on the
-// render goroutine, the same split as note messages and for the same
-// reason: every bridge_plugin_* call must happen from the one goroutine
-// that owns the plugin instance (see midiHandler's doc comment above).
-// encoderIdx is -1 for a page-change event.
+// controlEvent is a CC-derived UI action decoded on the ALSA read-loop
+// goroutine and applied on the render goroutine (audiosession.go's
+// drainCtl), the same split as note messages and for the same reason:
+// every bridge_plugin_* call must happen from the one goroutine that owns
+// the plugin instance (see midiHandler's doc comment above).
+//
+// encoderIdx encodes the kind of event: >=0 is an encoder turn (delta is
+// the tick count); -1 is a page change (delta is ±1); -2 is an I/O-picker
+// cursor move, only acted on while that page is showing (delta is ±1);
+// -3 is an I/O-picker commit (Select pressed), delta unused.
 type controlEvent struct {
 	encoderIdx int
 	delta      int
@@ -122,7 +127,7 @@ func (h *midiHandler) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
 		val := uint8(binary.LittleEndian.Uint32(data[8:]) & 0x7F)
 
 		if cc == ccShift || cc == ccDevice {
-			onChordCC(cc, val, h.pmURL, h.params)
+			onChordCC(cc, val, h.pmURL, h.params, h.io)
 			return
 		}
 
@@ -134,6 +139,12 @@ func (h *midiHandler) Fixed(evType uint8, src alsaseq.Addr, data []byte) {
 			ev = controlEvent{encoderIdx: -1, delta: -1}
 		case cc == push3.CCDPadRight && val == 127:
 			ev = controlEvent{encoderIdx: -1, delta: 1}
+		case cc == push3.CCDPadUp && val == 127:
+			ev = controlEvent{encoderIdx: -2, delta: -1}
+		case cc == push3.CCDPadDown && val == 127:
+			ev = controlEvent{encoderIdx: -2, delta: 1}
+		case cc == push3.CCSelect && val == 127:
+			ev = controlEvent{encoderIdx: -3}
 		default:
 			return
 		}
@@ -197,6 +208,16 @@ func main() {
 }
 
 func runSupervisor() {
+	// The init.d service only ever signals this top-level PID — it has no
+	// idea a child process exists. Without forwarding the signal, "stop"
+	// kills only this parent and leaves the child running as an orphan:
+	// the service looks stopped but audio/MIDI keep running, and the next
+	// deploy's scp fails with ETXTBSY because the orphan still has the
+	// binary open for execution. Forward SIGINT/SIGTERM to the child and
+	// wait for it to actually exit before this process does too.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
 	backoff := time.Second
 	const maxBackoff = 30 * time.Second
 	for {
@@ -204,9 +225,27 @@ func runSupervisor() {
 		cmd.Env = append(os.Environ(), "PBH_SUPERVISED=1")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			log.Printf("starting supervised child: %v — retrying in %v", err, backoff)
+			time.Sleep(backoff)
+			continue
+		}
+
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+
+		var err error
+		var ran time.Duration
 		start := time.Now()
-		err := cmd.Run()
-		ran := time.Since(start)
+		select {
+		case sig := <-sigCh:
+			log.Printf("received %v, forwarding to child and exiting", sig)
+			_ = cmd.Process.Signal(sig)
+			<-done
+			return
+		case err = <-done:
+			ran = time.Since(start)
+		}
 		log.Printf("supervised child exited after %v: %v", ran, err)
 
 		// A child that ran a good while before dying gets a fast retry —
@@ -287,36 +326,20 @@ func runSupervised() {
 	}
 	params := newParamState(metas)
 
+	// rt is persistedConfig's live counterpart: watchMIDI/watchHWParams act
+	// on it, and the on-screen I/O page (page 3, Shift+Device then D-Pad
+	// Right twice) writes to it when the user picks a different port or
+	// device — no process restart needed, and it's saved back to
+	// braids-config.json right after (see iopage.go's commit).
+	rt := newSharedConfig(cfg)
+	io := newIOState(hackDir, rt)
+
 	go runDependencyWatcher(pmURL)
-	go runDisplayLoop(pmURL, params)
-
-	// MIDI: subscribe to the configured source (Push3's own Live Port by
-	// default), same pattern as push-manager/automation/keyboard-visualizer
-	// via core/alsaseq.
-	seq, err := alsaseq.Open()
-	if err != nil {
-		log.Fatalf("alsaseq.Open: %v", err)
-	}
-	defer seq.Close()
-
-	if _, err := seq.CreatePort("Push Braids Host In",
-		alsaseq.CapWrite|alsaseq.CapSubsWrite, alsaseq.PortTypeMidi|alsaseq.PortTypeApp); err != nil {
-		log.Fatalf("CreatePort: %v", err)
-	}
-	midiSrc := alsaseq.Addr{Client: cfg.MidiClient, Port: cfg.MidiPort}
-	if err := seq.Subscribe(midiSrc); err != nil {
-		log.Fatalf("Subscribe to %d:%d: %v", midiSrc.Client, midiSrc.Port, err)
-	}
-	log.Printf("subscribed to MIDI source %d:%d for pad/button input", midiSrc.Client, midiSrc.Port)
+	go runDisplayLoop(pmURL, params, io)
 
 	midiCh := make(chan [3]byte, 256)
 	ctlCh := make(chan controlEvent, 64)
-	handler := &midiHandler{out: midiCh, ctl: ctlCh, pmURL: pmURL, params: params}
-	go func() {
-		if err := seq.ReadLoop(handler); err != nil {
-			log.Printf("MIDI read loop ended: %v", err)
-		}
-	}()
+	handler := &midiHandler{out: midiCh, ctl: ctlCh, pmURL: pmURL, params: params, io: io}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -327,13 +350,17 @@ func runSupervised() {
 		close(shutdown)
 	}()
 
+	// MIDI: subscribes to whatever rt's current source is and re-subscribes
+	// whenever the I/O picker changes it — see midisession.go.
+	go watchMIDI(rt, handler, shutdown)
+
 	// The audio session itself — PCM open/close, channels/rate/period —
-	// is fully owned by this supervisor loop, which blocks until
-	// shutdown fires. It negotiates live off Live's own hw_params instead
-	// of a value someone guessed and hardcoded, and reopens whenever
-	// those params (or the user's chosen PCM device) change. See
+	// is fully owned by this supervisor loop, which blocks until shutdown
+	// fires. It negotiates live off Live's own hw_params instead of a
+	// value someone guessed and hardcoded, and reopens whenever those
+	// params (or the user's chosen PCM device, via rt) change. See
 	// audiosession.go.
-	watchHWParams(cardID, cfg.PCMDevice, plugin, midiCh, ctlCh, params, shutdown)
+	watchHWParams(cardID, rt, plugin, midiCh, ctlCh, params, io, shutdown)
 
 	// Best-effort: leaving push-manager's MIDI intercept or display
 	// takeover stuck on after this process exits would silently block pad

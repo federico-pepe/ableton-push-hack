@@ -25,6 +25,11 @@ type persistedConfig struct {
 	MidiClient byte   `json:"midi_client"`
 	MidiPort   byte   `json:"midi_port"`
 	PCMDevice  string `json:"pcm_device"`
+	// ChannelOffset is the 0-indexed channel the stereo signal is written
+	// to within PCMDevice's negotiated channel count (e.g. 2 means
+	// channels 3-4). Defaults to 0 (channels 1-2), this hack's original
+	// hardcoded behavior.
+	ChannelOffset int `json:"channel_offset"`
 	// PushManagerURL overrides the default http://localhost:7701 — for
 	// development only; never set by the on-screen picker.
 	PushManagerURL string `json:"push_manager_url,omitempty"`
@@ -32,9 +37,10 @@ type persistedConfig struct {
 
 func defaultConfig() persistedConfig {
 	return persistedConfig{
-		MidiClient: alsaseq.Push3ClientDefault,
-		MidiPort:   alsaseq.Push3PortDefault,
-		PCMDevice:  "hw:PHVAudio,1,0",
+		MidiClient:    alsaseq.Push3ClientDefault,
+		MidiPort:      alsaseq.Push3PortDefault,
+		PCMDevice:     "hw:PHVAudio,1,0",
+		ChannelOffset: 0,
 	}
 }
 

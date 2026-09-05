@@ -131,6 +131,26 @@ if you followed `install.sh`) — see CLAUDE.md's "Display-owning hacks".
 Param names/ranges/enum options are read from the plugin itself
 (`bridge_plugin_get_param("chain_params")`), not hardcoded here.
 
+### I/O picker (page 3)
+
+**D-Pad Right** twice from page 1 reaches a third page, "I/O" — a
+scrollable list to pick:
+
+- **MIDI INPUT** — which of Push3's own three MIDI ports to read
+  pad/button presses from (normally "Live Port", the default).
+- **AUDIO OUTPUT** — which playback device on the system to render to.
+- **AUDIO CHANNEL** — which channel pair of that device (1-2, 3-4, ...)
+  the stereo signal lands on, so it can line up with whatever channel
+  pair Live's own track is set to read from.
+
+**D-Pad Up/Down** moves the list cursor, **Select** confirms the
+highlighted row. A change applies immediately (MIDI resubscribes, the
+audio device reopens if needed) and is saved to `braids-config.json`, so
+it survives a restart. Picking the wrong MIDI port breaks Shift+Device
+itself (no pad/button events reach this hack at all) — if that happens,
+edit `braids-config.json` directly over SSH and restart the service; see
+"Persistent install" below for where that file lives.
+
 ## Persistent install
 
 `push-braids-host` runs as a real sysvinit service, installed like any
@@ -147,12 +167,11 @@ other catalog hack, and needs no manual steps after a reboot:
 - If it crashes (a DSP plugin bug, an ALSA error), a small supervisor
   built into the same binary restarts it on its own, with a short
   growing delay between tries.
-- Its own settings (which MIDI port to read, which audio device to
-  write to) live in `braids-config.json`, next to `hack.json`, so they
-  survive a reboot and a catalog update. Defaults match this hack's
-  original hardcoded values — nothing changes for you unless you pick
-  different values yourself. (There is no on-screen picker for this
-  yet — edit the file directly and restart the service.)
+- Its own settings (MIDI port, audio device, channel pair) live in
+  `braids-config.json`, next to `hack.json`, so they survive a reboot
+  and a catalog update. Defaults match this hack's original hardcoded
+  values — nothing changes for you unless you pick different values on
+  the I/O picker page (see "On-screen controls" above).
 
 ## Known limits
 

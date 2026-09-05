@@ -9,6 +9,14 @@ between minor versions).
 
 ### Added
 
+- `hacks/push-braids-host`'s on-screen UI gains a third page, "I/O": pick
+  which of Push3's own MIDI ports to read pad/button input from, which
+  audio device to render to, and which channel pair (1-2, 3-4, ...) of
+  that device the stereo signal lands on. Changes apply immediately (no
+  restart) and persist to `braids-config.json`. New `core/alsapcm`-based
+  device enumeration and an `alsaseq`-based MIDI port list, filtered to
+  Push3's own client so a wrong pick can't silently break the
+  Shift+Device chord the way an unfiltered list did in testing.
 - `hacks/push-braids-host` gains an installable service: it waits for
   `push-audio-loopback`'s virtual card and for Live to open its side
   before opening any audio device, reopens its audio session whenever
@@ -48,6 +56,13 @@ between minor versions).
 
 ### Fixed
 
+- `push-braids-host`'s crash-respawn supervisor now forwards SIGINT/SIGTERM
+  to its supervised child and waits for it to exit, instead of only
+  killing itself. Before this fix, stopping the service left the child
+  running as an orphan — the service looked stopped but audio/MIDI kept
+  running, and the next deploy's `scp` failed with `ETXTBSY` because the
+  orphan still had the binary open for execution. Found via a real
+  redeploy on hardware, not by reading the code.
 - `push-audio-loopback`'s virtual card no longer needs a large audio
   buffer to avoid glitches. Loading it with `timer_source=A3.0.0`
   ties it to Push 3's own hardware clock instead of the kernel's

@@ -41,17 +41,22 @@ var (
 	uiOn bool
 )
 
-// renderParamPage draws the header plus one cell per encoder slot (0-7) on
-// the current page: a knob for a plain 0-1 float param, or a plain
-// centered readout for an enum ("engine") — DrawKnob's numeric center
-// doesn't fit a shape name, so that one slot draws differently.
-func renderParamPage(st *paramState) *image.NRGBA {
+// renderParamPage draws the current page: the I/O picker (iopage.go) if
+// that's what's selected, otherwise one cell per encoder slot (0-7) — a
+// knob for a plain 0-1 float param, or a plain centered readout for an
+// enum ("engine") — DrawKnob's numeric center doesn't fit a shape name, so
+// that one slot draws differently.
+func renderParamPage(st *paramState, io *ioState) *image.NRGBA {
+	if st.IsIOPage() {
+		return io.render()
+	}
+
 	img := image.NewNRGBA(image.Rect(0, 0, screenW, screenH))
 	gfx.FillRect(img, 0, 0, screenW, screenH, widgets.Default.Black)
 
 	st.mu.Lock()
 	page := paramPages[st.page]
-	title := fmt.Sprintf("BRAIDS - PAGE %d/%d - %s", st.page+1, len(paramPages), pageNames[st.page])
+	title := fmt.Sprintf("BRAIDS - PAGE %d/%d - %s", st.page+1, len(pageNames), pageNames[st.page])
 	type cell struct {
 		slot *paramSlot
 	}
@@ -89,7 +94,7 @@ func renderParamPage(st *paramState) *image.NRGBA {
 // push-manager's MIDI intercept (so pad hits stop reaching Live while this
 // UI reads them as controls, not notes), and forcing an immediate frame —
 // or releasing both back to the native Push UI / normal Live routing.
-func toggleUI(pmURL string, st *paramState) {
+func toggleUI(pmURL string, st *paramState, io *ioState) {
 	uiMu.Lock()
 	uiOn = !uiOn
 	on := uiOn
@@ -103,7 +108,7 @@ func toggleUI(pmURL string, st *paramState) {
 		if err := client.SetMidiFilter(true); err != nil {
 			log.Printf("display: enable midi filter: %v", err)
 		}
-		if err := client.PushImage(renderParamPage(st)); err != nil {
+		if err := client.PushImage(renderParamPage(st, io)); err != nil {
 			log.Printf("display: push frame: %v", err)
 		}
 		log.Printf("push-braids-host: UI ON (Shift+Device) — MIDI intercept enabled")
@@ -131,7 +136,7 @@ func shutdownUI(pmURL string) {
 // runDisplayLoop redraws only when the UI is on and an encoder turn or
 // page flip marked the state dirty — polled at ~30fps, the same rate
 // keyboard-visualizer's own render loop uses.
-func runDisplayLoop(pmURL string, st *paramState) {
+func runDisplayLoop(pmURL string, st *paramState, io *ioState) {
 	client := pmclient.New(pmURL)
 	ticker := time.NewTicker(33 * time.Millisecond)
 	defer ticker.Stop()
@@ -148,7 +153,7 @@ func runDisplayLoop(pmURL string, st *paramState) {
 		if !on || !dirty {
 			continue
 		}
-		if err := client.PushImage(renderParamPage(st)); err != nil {
+		if err := client.PushImage(renderParamPage(st, io)); err != nil {
 			log.Printf("display: push frame: %v", err)
 		}
 	}

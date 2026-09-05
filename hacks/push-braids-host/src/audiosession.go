@@ -33,7 +33,7 @@ type audioSession struct {
 // goroutine. rate is passed separately from hp because the caller decides
 // which rate to request; in practice it is always hp.Rate.
 func startAudioSession(plugin *C.bridge_plugin_t, device string, hp hwparams.Params,
-	midiCh <-chan [3]byte, ctlCh <-chan controlEvent, params *paramState) (*audioSession, error) {
+	midiCh <-chan [3]byte, ctlCh <-chan controlEvent, params *paramState, io *ioState, rt *sharedConfig) (*audioSession, error) {
 
 	cDev := C.CString(device)
 	defer C.free(unsafe.Pointer(cDev))
@@ -52,7 +52,7 @@ func startAudioSession(plugin *C.bridge_plugin_t, device string, hp hwparams.Par
 	log.Printf("audio session opened: device=%s channels=%d rate=%d period=%d (requested period=%d buffer=%d)",
 		device, s.channels, hp.Rate, s.period, hp.Period, hp.Buffer)
 
-	go s.run(plugin, midiCh, ctlCh, params, hp.Rate)
+	go s.run(plugin, midiCh, ctlCh, params, io, rt, hp.Rate)
 	return s, nil
 }
 
@@ -72,7 +72,7 @@ func (s *audioSession) stop() {
 // would silently reintroduce the "clean short taps, glitches on held
 // notes" bug already fixed once (see main.go's history / CHANGELOG).
 func (s *audioSession) run(plugin *C.bridge_plugin_t, midiCh <-chan [3]byte, ctlCh <-chan controlEvent,
-	params *paramState, rate int) {
+	params *paramState, io *ioState, rt *sharedConfig, rate int) {
 	defer close(s.doneCh)
 	defer C.bridge_pcm_close(s.pcm)
 
@@ -117,16 +117,32 @@ func (s *audioSession) run(plugin *C.bridge_plugin_t, midiCh <-chan [3]byte, ctl
 			}
 		}
 
-		// Drain any encoder turns / page changes the same way — applying
-		// them here keeps every bridge_plugin_* call on this one
-		// goroutine, same reasoning as the MIDI drain above.
+		// Drain any encoder turns / page changes / I/O-picker actions the
+		// same way — applying them here keeps every bridge_plugin_* call
+		// on this one goroutine, same reasoning as the MIDI drain above.
 	drainCtl:
 		for {
 			select {
 			case ev := <-ctlCh:
-				if ev.encoderIdx < 0 {
+				switch ev.encoderIdx {
+				case -1:
 					params.changePage(ev.delta)
 					continue
+				case -2:
+					if params.IsIOPage() {
+						io.moveCursor(ev.delta)
+						params.MarkDirty()
+					}
+					continue
+				case -3:
+					if params.IsIOPage() {
+						io.commit()
+						params.MarkDirty()
+					}
+					continue
+				}
+				if params.IsIOPage() {
+					continue // encoders are inert on the I/O page
 				}
 				key, val, ok := params.applyEncoder(ev.encoderIdx, ev.delta)
 				if !ok {
@@ -147,10 +163,19 @@ func (s *audioSession) run(plugin *C.bridge_plugin_t, midiCh <-chan [3]byte, ctl
 		for i := range wide {
 			wide[i] = 0
 		}
+		// Which channel pair the stereo signal lands on is user-selectable
+		// (I/O picker's "AUDIO CHANNEL" section) and read fresh every
+		// block — applying it needs no PCM reopen, unlike a device or
+		// hw_params change, since the channel count itself doesn't change.
+		offset := rt.getChannelOffset()
+		if offset < 0 || offset+1 >= s.channels {
+			offset = 0 // defensive: picker only ever offers valid pairs for s.channels
+		}
 		for f := 0; f < s.period; f++ {
-			wide[f*s.channels+0] = stereo[f*2+0]
-			if s.channels > 1 {
-				wide[f*s.channels+1] = stereo[f*2+1]
+			base := f*s.channels + offset
+			wide[base] = stereo[f*2+0]
+			if offset+1 < s.channels {
+				wide[base+1] = stereo[f*2+1]
 			}
 		}
 
@@ -208,11 +233,12 @@ func (e *bridgeError) Error() string { return e.what + ": " + e.msg }
 // push-audio-loopback's effect on kernel/ALSA state here, not on its
 // process, because catalog's `requires` only orders installation, not
 // boot-time service start order (see catalog/schema.md).
-func watchHWParams(cardID string, device string, plugin *C.bridge_plugin_t,
-	midiCh <-chan [3]byte, ctlCh <-chan controlEvent, params *paramState, shutdown <-chan struct{}) {
+func watchHWParams(cardID string, rt *sharedConfig, plugin *C.bridge_plugin_t,
+	midiCh <-chan [3]byte, ctlCh <-chan controlEvent, params *paramState, io *ioState, shutdown <-chan struct{}) {
 
 	var sess *audioSession
 	var lastParams hwparams.Params
+	var lastDevice string
 	haveSess := false
 	lastState := ""
 
@@ -267,9 +293,10 @@ func watchHWParams(cardID string, device string, plugin *C.bridge_plugin_t,
 			continue
 		}
 
-		if !haveSess || hp != lastParams {
+		device := rt.getPCM()
+		if !haveSess || hp != lastParams || device != lastDevice {
 			stopSession()
-			newSess, err := startAudioSession(plugin, device, hp, midiCh, ctlCh, params)
+			newSess, err := startAudioSession(plugin, device, hp, midiCh, ctlCh, params, io, rt)
 			if err != nil {
 				log.Printf("opening PCM %s: %v — will retry", device, err)
 				if !sleepOrStop(waitPollInterval, shutdown) {
@@ -280,6 +307,7 @@ func watchHWParams(cardID string, device string, plugin *C.bridge_plugin_t,
 			sess = newSess
 			haveSess = true
 			lastParams = hp
+			lastDevice = device
 			logTransition("running")
 		}
 

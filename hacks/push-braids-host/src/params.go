@@ -41,7 +41,9 @@ var paramPages = [][]string{
 	{"f_attack", "f_decay", "f_sustain", "f_release"},
 }
 
-var pageNames = []string{"OSC / AMP", "FILTER ENV"}
+// pageNames has one more entry than paramPages: the last page is the I/O
+// picker (iopage.go), not a param page — see IsIOPage.
+var pageNames = []string{"OSC / AMP", "FILTER ENV", "I/O"}
 
 // paramSlot is one parameter's live state: its metadata plus the Go-side
 // value driving the plugin. The plugin's get_param has no "current value"
@@ -183,7 +185,9 @@ func (st *paramState) applyEncoder(idx, delta int) (key, val string, ok bool) {
 	return page[idx], fmt.Sprintf("%d", int(slot.value+0.5)), true
 }
 
-// changePage moves by delta pages, clamped to the available pages.
+// changePage moves by delta pages, clamped to the available pages —
+// including the I/O picker page, which is one past the last param page
+// (see pageNames and IsIOPage).
 func (st *paramState) changePage(delta int) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -191,13 +195,35 @@ func (st *paramState) changePage(delta int) {
 	if p < 0 {
 		p = 0
 	}
-	if p > len(paramPages)-1 {
-		p = len(paramPages) - 1
+	if p > len(pageNames)-1 {
+		p = len(pageNames) - 1
 	}
 	if p != st.page {
 		st.page = p
 		st.dirty = true
 	}
+}
+
+// Page returns the current page index.
+func (st *paramState) Page() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.page
+}
+
+// IsIOPage reports whether the current page is the I/O picker (iopage.go)
+// rather than a param page.
+func (st *paramState) IsIOPage() bool {
+	return st.Page() == len(paramPages)
+}
+
+// MarkDirty flags the display loop to redraw on its next tick — used by
+// the I/O picker (iopage.go), which changes its own state outside of
+// applyEncoder/changePage.
+func (st *paramState) MarkDirty() {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.dirty = true
 }
 
 // formatValue renders a slot's current value as a short, human string: the
