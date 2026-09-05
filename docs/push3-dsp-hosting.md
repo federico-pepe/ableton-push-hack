@@ -10,6 +10,17 @@ Full background and the plan this implements:
 `push-tethered-app`. Reasoning trail only — this file is the settled
 reference.
 
+**The two hacks this file describes were later split out of this
+monorepo** into their own catalog-installable repos:
+[federico-pepe/push-hack-audio-loopback](https://github.com/federico-pepe/push-hack-audio-loopback)
+and
+[federico-pepe/push-hack-braids](https://github.com/federico-pepe/push-hack-braids)
+(renamed from `push-braids-host` in the split). Every `hacks/
+push-audio-loopback/` and `hacks/push-braids-host/` path below is
+historical — read this file for the technical reasoning (the timer
+source fix, the plugin thread-safety bug, the buffer sizing), not as a
+map of where the code lives now.
+
 ## The two hacks
 
 1. **`hacks/push-audio-loopback`** gives Live a selectable virtual

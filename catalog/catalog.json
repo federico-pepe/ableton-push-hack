@@ -45,6 +45,29 @@
       ]
     },
     {
+      "id": "push-audio-loopback",
+      "name": "Audio Loopback",
+      "description": "Persistent virtual sound card (\"Push Hack Virtual Audio\") for routing audio between Live and another process, without opening the real hardware device.",
+      "author": "federico-pepe",
+      "homepage": "https://github.com/federico-pepe/push-hack-audio-loopback",
+      "github_repo": "federico-pepe/push-hack-audio-loopback",
+      "default_branch": "main",
+      "asset_name": "push-audio-loopback.tar.gz"
+    },
+    {
+      "id": "push-braids",
+      "name": "Braids",
+      "description": "Macro oscillator module based on Mutable Instruments Braids by Emilie Gillet, ported from Schwung DSP. Reads Push 3's own pad MIDI and renders audio through the Audio Loopback virtual card. On-screen MIDI/audio device picker.",
+      "author": "federico-pepe",
+      "homepage": "https://github.com/federico-pepe/push-hack-braids",
+      "github_repo": "federico-pepe/push-hack-braids",
+      "default_branch": "main",
+      "asset_name": "push-braids.tar.gz",
+      "requires": [
+        "push-audio-loopback"
+      ]
+    },
+    {
       "id": "screensaver",
       "name": "Screensaver",
       "description": "Idle screensaver: after a timeout it takes over the display with animations (Rainbow / Twinkle / Starfield); pads and buttons glow along. Any input wakes it. Configured on-device via push-manager's Shadow UI.",

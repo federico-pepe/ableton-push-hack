@@ -468,12 +468,13 @@ on Push 3's screen, the same way any real audio device does. A small
 patch renames it from the generic "Loopback" to "Push Hack Virtual
 Audio", so a user can tell it apart from the real hardware. Full build
 and deploy steps, plus a small test tool for feeding audio into it,
-are in `hacks/push-audio-loopback/`.
+are at [federico-pepe/push-hack-audio-loopback](https://github.com/federico-pepe/push-hack-audio-loopback)
+(a catalog-installable module split out of this repo).
 
 This card is also how a third-party DSP plugin gets its audio out of
 Push 3's real speaker — see
 [`push3-dsp-hosting.md`](push3-dsp-hosting.md) for the full working
-chain, built on `hacks/push-braids-host`.
+chain, built on [federico-pepe/push-hack-braids](https://github.com/federico-pepe/push-hack-braids).
 
 One timing detail matters for clean audio through this virtual card.
 Push 3's kernel updates its clock every 4 milliseconds

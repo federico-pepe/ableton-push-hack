@@ -9,6 +9,16 @@ between minor versions).
 
 ### Added
 
+- `catalog/catalog.json` gains entries for `push-audio-loopback` and
+  `push-braids`, both now installable via Push Hack Catalog from their
+  own repos:
+  [federico-pepe/push-hack-audio-loopback](https://github.com/federico-pepe/push-hack-audio-loopback),
+  [federico-pepe/push-hack-braids](https://github.com/federico-pepe/push-hack-braids)
+  (renamed from `push-braids-host` when split out). `push-braids`
+  declares `push-audio-loopback` as a `requires`. `hacks/push-audio-loopback/`
+  and `hacks/push-braids-host/` are removed from this monorepo — same as
+  keyboard-visualizer/automation/browser-bridge before them, development
+  now happens in the split repos directly.
 - `hacks/push-braids-host`'s on-screen UI gains a third page, "I/O": pick
   which of Push3's own MIDI ports to read pad/button input from, which
   audio device to render to, and which channel pair (1-2, 3-4, ...) of

@@ -277,6 +277,33 @@ reproduces cold) — after that cold cycle, with zero manual SSH steps, Live's
 loopback track should route real audio through Braids again. This is the
 entire point of Parts A/B.
 
+## Status (2026-09-05)
+
+All phases done and hardware-validated:
+
+- **Part A** (push-audio-loopback persistence): done, cold-reboot tested.
+- **Part B** (push-braids-host persistence, B1-B3/B7/B8): done, cold-reboot
+  tested alongside Part A.
+- **B4-B6** (on-screen I/O picker): done, tested live — MIDI port switch,
+  audio device, and an added channel-pair picker (not in the original
+  plan, requested after testing revealed the render loop always wrote to
+  channels 1-2 regardless of what Live's track was set to read).
+- **Part C** (repo split + catalog entries): done —
+  [federico-pepe/push-hack-audio-loopback](https://github.com/federico-pepe/push-hack-audio-loopback),
+  [federico-pepe/push-hack-braids](https://github.com/federico-pepe/push-hack-braids)
+  (renamed from `push-braids-host` at the user's request when splitting
+  out — monorepo copies under `hacks/` keep the old id, dev-only).
+  `catalog/catalog.json` updated.
+
+Two fixes found only through real hardware use, not in the original plan:
+- The crash-respawn supervisor didn't forward signals to its child,
+  leaving it orphaned on a service "stop" (`ETXTBSY` on the next deploy).
+- push-audio-loopback's two PCM devices read as identical entries in
+  Live's own device picker; `aloop-rename.patch` now names them distinctly.
+
+Not done / deferred: the Enable/Disable toggle for Push Hack Catalog
+(discussed, judged small and self-contained, deferred to a later session).
+
 ## Critical files
 
 - `hacks/push-catalog/push-catalog.sh` (`install_service`, confirms the
