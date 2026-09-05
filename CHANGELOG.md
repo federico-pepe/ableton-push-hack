@@ -7,6 +7,89 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `catalog/catalog.json` gains entries for `push-audio-loopback` and
+  `push-braids`, both now installable via Push Hack Catalog from their
+  own repos:
+  [federico-pepe/push-hack-audio-loopback](https://github.com/federico-pepe/push-hack-audio-loopback),
+  [federico-pepe/push-hack-braids](https://github.com/federico-pepe/push-hack-braids)
+  (renamed from `push-braids-host` when split out). `push-braids`
+  declares `push-audio-loopback` as a `requires`. `hacks/push-audio-loopback/`
+  and `hacks/push-braids-host/` are removed from this monorepo — same as
+  keyboard-visualizer/automation/browser-bridge before them, development
+  now happens in the split repos directly.
+- `hacks/push-braids-host`'s on-screen UI gains a third page, "I/O": pick
+  which of Push3's own MIDI ports to read pad/button input from, which
+  audio device to render to, and which channel pair (1-2, 3-4, ...) of
+  that device the stereo signal lands on. Changes apply immediately (no
+  restart) and persist to `braids-config.json`. New `core/alsapcm`-based
+  device enumeration and an `alsaseq`-based MIDI port list, filtered to
+  Push3's own client so a wrong pick can't silently break the
+  Shift+Device chord the way an unfiltered list did in testing.
+- `hacks/push-braids-host` gains an installable service: it waits for
+  `push-audio-loopback`'s virtual card and for Live to open its side
+  before opening any audio device, reopens its audio session whenever
+  Live's negotiated buffer changes (no restart needed), and restarts
+  itself if it crashes. Its own settings (MIDI port, audio device) now
+  persist in `braids-config.json`. Replaces the old CLI-argument,
+  manual-redeploy-after-reboot workflow. See
+  `plans/2026-09-05-persist-catalog-split-braids-loopback.md`.
+- `hacks/push-audio-loopback` gains an installable service
+  (`push-audio-loopback`, a Go binary): loads the Loopback kernel module
+  on boot and keeps checking it stays loaded, replacing the manual
+  `insmod` step after every reboot. Refuses to load a `.ko` that does not
+  match the running kernel's `vermagic` instead of forcing it. See
+  `plans/2026-09-05-persist-catalog-split-braids-loopback.md`.
+- `core/alsapcm`: enumerates ALSA sound cards (`/proc/asound/cards`) and
+  their playback-capable PCM devices, for hacks that let a user pick an
+  audio output device. First consumer: `push-braids-host`'s on-screen I/O
+  picker (see `plans/2026-09-05-persist-catalog-split-braids-loopback.md`).
+- `hacks/push-audio-loopback`: a virtual sound card ("Push Hack Virtual
+  Audio") that lets an outside process send audio to Live, or receive
+  audio from it, without opening the real hardware device. Built from
+  the Linux kernel's own ALSA Loopback driver, with a small rename
+  patch. See `plans/2026-08-27-push-audio-virtual-device.md`.
+- `hacks/push-braids-host`: a minimal Push3 host proving pad presses
+  can drive a third-party DSP plugin (Braids, a Move Anything
+  `plugin_api_v2` module) and reach Push 3's real speaker through
+  `push-audio-loopback`'s virtual card — confirmed live on hardware.
+  See `docs/push3-dsp-hosting.md`.
+- `push-braids-host`: an on-screen control UI for Braids' own parameters
+  (algorithm, timbre, color, amp/filter envelopes, volume), driven by
+  Push 3's 8 encoders and paged with D-Pad Left/Right. Toggled by
+  Shift+Device, which also enables push-manager's MIDI intercept so
+  pad hits drive Braids without also reaching Live. Param metadata
+  (name/range/enum options) is read from the plugin itself via a new
+  `bridge_plugin_get_param` binding, not hardcoded. `core/pmclient`
+  gained `SetMidiFilter` for this.
+
+### Fixed
+
+- `push-audio-loopback`'s two PCM devices (device 0, for Live; device 1,
+  the "feed" side other hacks write to directly) read as identical
+  entries in Live's own device picker — confirmed live, both said
+  "Push Hack Virtual Audio" with no way to tell them apart.
+  `aloop-rename.patch` now names device 1 distinctly ("PCM - feed, do
+  not select"), and the service locks device 1's raw device nodes to
+  root-only right after every load so picking it by mistake fails
+  cleanly instead of two processes fighting over the same device
+  (this does not hide it from Live's device list — that list comes
+  from the driver's own ALSA hint data, not filesystem permissions).
+- `push-braids-host`'s crash-respawn supervisor now forwards SIGINT/SIGTERM
+  to its supervised child and waits for it to exit, instead of only
+  killing itself. Before this fix, stopping the service left the child
+  running as an orphan — the service looked stopped but audio/MIDI kept
+  running, and the next deploy's `scp` failed with `ETXTBSY` because the
+  orphan still had the binary open for execution. Found via a real
+  redeploy on hardware, not by reading the code.
+- `push-audio-loopback`'s virtual card no longer needs a large audio
+  buffer to avoid glitches. Loading it with `timer_source=A3.0.0`
+  ties it to Push 3's own hardware clock instead of the kernel's
+  coarse jiffies clock, so Live's default 128-frame buffer now works
+  with no audible glitches, chords included. See
+  `docs/push3-dsp-hosting.md`.
+
 ## [0.1.6-alpha] - 2026-08-30
 
 ### Added
