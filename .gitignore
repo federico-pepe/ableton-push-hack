@@ -20,6 +20,7 @@ hacks/*/src/push-manager
 hacks/*/src/automation
 hacks/*/src/keyboard-visualizer
 hacks/push-audio-loopback/push-audio-loopback
+hacks/push-audio-loopback/src/push-audio-loopback
 hacks/push-braids-host/push-braids-host
 
 # Prebuilt kernel modules (one per Push kernel version, built offline from

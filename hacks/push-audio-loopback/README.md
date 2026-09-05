@@ -106,6 +106,21 @@ e.g. if Live is capturing from device 0, feed test audio into
 (check `/proc/asound/card1/pcm0c/sub0/hw_params` for what Live actually
 opened it with) or the paired open will fail with `EINVAL`.
 
+Both devices always show up in Live's own device list — the Loopback
+driver always creates exactly two, and that pairing is the whole
+mechanism, not a redundant duplicate; a single device can't loop
+audio to itself. Device 1 is meant to be opened directly, by `hw:`
+address, by whatever process feeds it (`push-braids-host`, or
+`loopback_feed` below) — never picked by a human in Live. Confirmed
+live that both entries otherwise read as identical in Live's picker
+(no separator between the card name and each PCM's own name), so
+`aloop-rename.patch` names device 1 clearly ("PCM - feed, do not
+select") and this hack's own service locks its raw device nodes
+(`/dev/snd/pcmC*D1{p,c}`) to root-only right after every load — not to
+hide it from Live's list (filesystem permissions don't affect that),
+but so picking it by mistake fails cleanly instead of two processes
+fighting over the same device.
+
 ## Building `loopback_feed`
 
 ```bash

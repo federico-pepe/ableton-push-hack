@@ -56,6 +56,16 @@ between minor versions).
 
 ### Fixed
 
+- `push-audio-loopback`'s two PCM devices (device 0, for Live; device 1,
+  the "feed" side other hacks write to directly) read as identical
+  entries in Live's own device picker — confirmed live, both said
+  "Push Hack Virtual Audio" with no way to tell them apart.
+  `aloop-rename.patch` now names device 1 distinctly ("PCM - feed, do
+  not select"), and the service locks device 1's raw device nodes to
+  root-only right after every load so picking it by mistake fails
+  cleanly instead of two processes fighting over the same device
+  (this does not hide it from Live's device list — that list comes
+  from the driver's own ALSA hint data, not filesystem permissions).
 - `push-braids-host`'s crash-respawn supervisor now forwards SIGINT/SIGTERM
   to its supervised child and waits for it to exit, instead of only
   killing itself. Before this fix, stopping the service left the child
