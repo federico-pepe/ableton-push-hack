@@ -9,6 +9,10 @@ between minor versions).
 
 ### Added
 
+- `core/alsapcm`: enumerates ALSA sound cards (`/proc/asound/cards`) and
+  their playback-capable PCM devices, for hacks that let a user pick an
+  audio output device. First consumer: `push-braids-host`'s on-screen I/O
+  picker (see `plans/2026-09-05-persist-catalog-split-braids-loopback.md`).
 - `hacks/push-audio-loopback`: a virtual sound card ("Push Hack Virtual
   Audio") that lets an outside process send audio to Live, or receive
   audio from it, without opening the real hardware device. Built from

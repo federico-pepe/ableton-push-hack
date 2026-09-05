@@ -1,0 +1,11 @@
+card: 1
+device: 1
+subdevice: 0
+stream: PLAYBACK
+id: Loopback PCM
+name: Loopback PCM
+subname: subdevice #0
+class: 0
+subclass: 0
+subdevices_count: 8
+subdevices_avail: 8
