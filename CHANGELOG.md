@@ -5,7 +5,7 @@ All notable changes to this project are documented here. Format follows
 [Semantic Versioning](https://semver.org/) (pre-1.0: expect breaking changes
 between minor versions).
 
-## [Unreleased]
+## [0.1.8-alpha] - 2026-09-06
 
 ### Added
 
