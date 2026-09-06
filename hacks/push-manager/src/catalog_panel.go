@@ -20,7 +20,13 @@ import (
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/widgets"
 )
 
-const catalogAPIBase = "http://127.0.0.1:7702"
+// push-catalog is one of the three core hacks, so its port is a fixed fact
+// of the device rather than something to discover — same reasoning that lets
+// ui_tabs.go hand the built-in CATALOG entry a menu-bar link without the
+// installed hack having to declare web_ui.
+const catalogPort = 7702
+
+var catalogAPIBase = fmt.Sprintf("http://127.0.0.1:%d", catalogPort)
 
 // Rows visible in the content area: (suiContentBot-suiContentY - breadcrumb 13)
 // / rowH(18) ≈ 6. Kept as a const so cursor/scroll math needs no render pass.

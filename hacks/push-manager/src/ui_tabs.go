@@ -19,8 +19,10 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -43,6 +45,11 @@ type uiEntry struct {
 	WebLabel string `json:"web_label,omitempty"`
 	WebPath  string `json:"web_path,omitempty"`
 	Port     int    `json:"port,omitempty"`
+
+	// PortConflict names the other installed hacks claiming this entry's
+	// port. Non-empty means at most one of them is actually reachable —
+	// see portConflicts.
+	PortConflict []string `json:"port_conflict,omitempty"`
 
 	shadowPath string       // remote tabs only
 	new        func() Panel // built-in tabs only
@@ -75,6 +82,15 @@ func loadUITabs() {
 	uiTabsMu.Unlock()
 }
 
+// warnPortConflicts logs any port claimed by more than one installed hack.
+// Cheap, once, at startup — a hack that silently never answers because a
+// sibling took its port is otherwise a miserable thing to diagnose.
+func warnPortConflicts() {
+	for port, ids := range portConflicts() {
+		log.Printf("ui_tabs: port %d claimed by %v - only one of them can be running", port, ids)
+	}
+}
+
 func saveUITabs(prefs []uiPref) error {
 	data, err := json.MarshalIndent(prefs, "", "  ")
 	if err != nil {
@@ -90,11 +106,19 @@ func saveUITabs(prefs []uiPref) error {
 func candidateEntries() []uiEntry {
 	out := make([]uiEntry, 0, len(panelDefs)+4)
 	for _, d := range panelDefs {
-		out = append(out, uiEntry{
+		e := uiEntry{
 			ID: d.id, Label: d.label, Source: "builtin",
 			HasShadow: true, Available: d.requires == "" || hackInstalled(d.requires),
 			Requires: d.requires, new: d.new,
-		})
+		}
+		// The CATALOG entry is the one built-in with a web side too: Push
+		// Hack Catalog is a core hack on a fixed port, so the menu-bar link
+		// does not depend on the installed copy declaring web_ui (an older
+		// one, or one installed under a different id, does not).
+		if d.id == "catalog" {
+			e.HasWeb, e.Port, e.WebLabel, e.WebPath = true, catalogPort, "Catalog", "/"
+		}
+		out = append(out, e)
 	}
 	for _, h := range installedHacks() {
 		if h.Port == 0 || (h.WebUI == nil && h.ShadowUI == nil) {
@@ -156,7 +180,50 @@ func resolveUIEntries() []uiEntry {
 			out = append(out, byID[e.ID])
 		}
 	}
+	annotatePortConflicts(out)
 	return out
+}
+
+// portConflicts groups installed hacks by port, keeping only the ports more
+// than one hack claims. Only one process can bind a port, so a conflict
+// means at least one of those hacks is not running — a link or a remote tab
+// pointing at it reaches the wrong hack, or nothing. Two hacks are not
+// checked for whether they are actually up: that would be a poller, and the
+// hack.json on disk is enough to tell the user what to fix.
+func portConflicts() map[int][]string {
+	byPort := map[int][]string{}
+	for _, h := range installedHacks() {
+		if h.Port != 0 {
+			byPort[h.Port] = append(byPort[h.Port], h.ID)
+		}
+	}
+	for port, ids := range byPort {
+		if len(ids) < 2 {
+			delete(byPort, port)
+		}
+	}
+	return byPort
+}
+
+// annotatePortConflicts tags each hack-backed entry with the other hacks on
+// its port. Built-ins are skipped: they bind nothing, they only point at a
+// port, so the CATALOG entry sharing 7702 with the catalog hack itself is
+// the normal case rather than a clash.
+func annotatePortConflicts(entries []uiEntry) {
+	conf := portConflicts()
+	if len(conf) == 0 {
+		return
+	}
+	for i, e := range entries {
+		if e.Source != "hack" || e.Port == 0 {
+			continue
+		}
+		for _, id := range conf[e.Port] {
+			if id != e.ID {
+				entries[i].PortConflict = append(entries[i].PortConflict, id)
+			}
+		}
+	}
 }
 
 // activeShadowTabs is the subset the hardware actually shows: switched on,
@@ -186,10 +253,26 @@ func (e uiEntry) newPanel() Panel {
 
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 
+// uiTabsResponse is what both verbs return. port_conflicts is keyed by port
+// (as a string, since JSON object keys are) and covers *every* installed
+// hack, including ones with no nav hooks — a clash there is still worth
+// showing on the one page that lists what is installed.
+func uiTabsResponse() map[string]any {
+	conf := map[string][]string{}
+	for port, ids := range portConflicts() {
+		conf[strconv.Itoa(port)] = ids
+	}
+	return map[string]any{
+		"entries":        resolveUIEntries(),
+		"max":            maxShadowTabs,
+		"port_conflicts": conf,
+	}
+}
+
 func handleUITabs(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		jsonResponse(w, map[string]any{"entries": resolveUIEntries(), "max": maxShadowTabs})
+		jsonResponse(w, uiTabsResponse())
 	case http.MethodPost:
 		var prefs []uiPref
 		if err := json.NewDecoder(r.Body).Decode(&prefs); err != nil {
@@ -204,7 +287,7 @@ func handleUITabs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		shadowUIReload()
-		jsonResponse(w, map[string]any{"entries": resolveUIEntries(), "max": maxShadowTabs})
+		jsonResponse(w, uiTabsResponse())
 	default:
 		http.Error(w, "GET or POST only", http.StatusMethodNotAllowed)
 	}

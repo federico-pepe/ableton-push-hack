@@ -380,6 +380,13 @@ body {
   color: var(--grey-mid); text-transform: uppercase; letter-spacing: 0.04em; }
 .tabs-sw input { width: 16px; height: 16px; }
 .tabs-sw.na { opacity: 0.3; }
+.tabs-clash { color: rgb(200,60,60); }
+.tabs-warn-row {
+  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid rgb(220,60,60); color: rgb(180,40,40);
+  background: rgba(220,60,60,0.07); font-size: 12px; line-height: 1.5;
+}
+.tabs-warn-row code { font-family: monospace; font-size: 11px; }
 .tabs-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .tabs-msg { font-size: 12px; color: var(--grey-mid); }
 

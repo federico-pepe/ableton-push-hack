@@ -71,6 +71,13 @@ func TestResolveUIEntries(t *testing.T) {
 		t.Error("browser tab should be unavailable without browser-bridge installed")
 	}
 
+	// The built-in CATALOG entry carries the menu-bar link itself, so the
+	// link survives an installed catalog that never declared web_ui.
+	cat := byID["catalog"]
+	if !cat.HasWeb || cat.Port != catalogPort || cat.WebLabel != "Catalog" {
+		t.Errorf("catalog entry should carry its own web link: %+v", cat)
+	}
+
 	// Only enabled + available entries reach the hardware, capped at 8.
 	for _, e := range activeShadowTabs() {
 		if e.ID == "files" || e.ID == "browser" {
@@ -79,5 +86,50 @@ func TestResolveUIEntries(t *testing.T) {
 	}
 	if n := len(activeShadowTabs()); n > maxShadowTabs {
 		t.Errorf("got %d active tabs, max is %d", n, maxShadowTabs)
+	}
+}
+
+// Two hacks on one port: only one can bind it, so both get flagged and the
+// full map is reported. A built-in pointing at the same port is not a clash
+// — it binds nothing.
+func TestPortConflicts(t *testing.T) {
+	dir := t.TempDir()
+	writeHack(t, dir, "keyboard-visualizer", `{"id":"keyboard-visualizer","name":"KV","port":7705,
+		"web_ui":{"label":"KV","path":"/"}}`)
+	writeHack(t, dir, "push-store", `{"id":"push-store","name":"Store","port":7705,
+		"web_ui":{"label":"Store","path":"/"}}`)
+	writeHack(t, dir, "screensaver", `{"id":"screensaver","name":"Saver","port":7706,
+		"web_ui":{"label":"Saver","path":"/"}}`)
+	// Same port as the built-in CATALOG entry points at — not a conflict.
+	writeHack(t, dir, "push-catalog", `{"id":"push-catalog","name":"Catalog","port":7702,
+		"web_ui":{"label":"Catalog","path":"/"}}`)
+
+	hacksDir = dir
+	uiTabsPath = filepath.Join(dir, "ui_tabs.json")
+	defer func() { hacksDir = "/data/push-hack/hacks" }()
+
+	conf := portConflicts()
+	if len(conf) != 1 || len(conf[7705]) != 2 {
+		t.Fatalf("want exactly one conflict on 7705, got %v", conf)
+	}
+
+	byID := map[string]uiEntry{}
+	for _, e := range resolveUIEntries() {
+		byID[e.ID] = e
+	}
+	if got := byID["keyboard-visualizer"].PortConflict; len(got) != 1 || got[0] != "push-store" {
+		t.Errorf("keyboard-visualizer should name its rival, got %v", got)
+	}
+	if got := byID["push-store"].PortConflict; len(got) != 1 || got[0] != "keyboard-visualizer" {
+		t.Errorf("conflict should be reported on both sides, got %v", got)
+	}
+	if got := byID["screensaver"].PortConflict; len(got) != 0 {
+		t.Errorf("screensaver is alone on 7706, got %v", got)
+	}
+	if got := byID["push-catalog"].PortConflict; len(got) != 0 {
+		t.Errorf("a built-in pointing at 7702 binds nothing, got %v", got)
+	}
+	if !byID["catalog"].HasWeb {
+		t.Error("built-in catalog entry lost its web link")
 	}
 }

@@ -172,5 +172,16 @@ Omit a hook entirely for a hack that has no such UI (a Remote Script, or
 push-display). That is how a hack opts out — it then never appears in that
 navigation or in the settings list for it.
 
+### Ports must be unique
+
+Both hooks build their URL from the hack's own `port`, and only one process
+can bind a port. Two installed hacks declaring the same one means at least
+one is not running, and a link or tab pointing there reaches the wrong hack.
+Push Manager reports the clash rather than guessing — a banner on its
+Display -> Tabs page, a note on each affected row, and a line in its log at
+startup. Pick a free port: the assigned ones are listed in `CLAUDE.md`.
+
 Neither reader checks whether the hack is actually running. Push Manager's
-own entry has no `web_ui`: you are already looking at it.
+own entry has no `web_ui`: you are already looking at it, and its Catalog
+entry is built in rather than read from push-catalog's `hack.json`, so the
+link survives a catalog installed under a different id.

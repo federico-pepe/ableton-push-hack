@@ -1930,7 +1930,7 @@ async function refreshOptionalFeatures() {
 // One ordered list, two switches per entry, served by /api/ui/tabs. The same
 // list drives the header links here and the tab strip on Push's screen — see
 // src/ui_tabs.go.
-let UITABS = { entries: [], max: 8 };
+let UITABS = { entries: [], max: 8, port_conflicts: {} };
 let uiTabsDirty = false; // unsaved edits — the 10s poll must not clobber them
 
 async function loadUITabs() {
@@ -1968,6 +1968,14 @@ function moveUITab(i, delta) {
 
 function renderUITabs() {
   const max = UITABS.max || 8;
+  const conflicts = Object.entries(UITABS.port_conflicts || {});
+  $('tabs-warn').innerHTML = conflicts.length
+    ? conflicts.map(([port, ids]) =>
+        `<div class="tabs-warn-row">Port ${esc(port)} is claimed by ` +
+        `${ids.map(esc).join(', ')} — only one of them can be running. ` +
+        `Fix the <code>port</code> in one hack's <code>hack.json</code>, or remove it.</div>`
+      ).join('')
+    : '';
   let shadowCount = 0;
   $('tabs-list').innerHTML = UITABS.entries.map((e, i) => {
     // An entry past the 8th switched-on Shadow tab is config the hardware
@@ -1977,10 +1985,14 @@ function renderUITabs() {
       shadowCount++;
       over = shadowCount > max;
     }
+    const clash = (e.port_conflict || []).length
+      ? `port ${e.port} also claimed by ${e.port_conflict.map(esc).join(', ')}`
+      : '';
     const sub = [
       e.source === 'builtin' ? 'built in' : 'hack',
       e.requires && !e.shadow_available ? `needs ${esc(e.requires)}` : '',
       over ? `over the ${max}-tab limit` : '',
+      clash ? `<span class="tabs-clash">${clash}</span>` : '',
     ].filter(Boolean).join(' · ');
     const sw = (kind, has, on) => has
       ? `<label class="tabs-sw"><input type="checkbox" data-i="${i}" data-k="${kind}"` +
@@ -2009,7 +2021,15 @@ function renderUITabs() {
 // changes, so the 10s poll doesn't kill a hover or a mid-click.
 let hackLinksKey = '';
 function renderHackLinks() {
-  const links = (UITABS.entries || []).filter(e => e.has_web && e.web && e.port);
+  // One link per port. Two entries on the same port would be two links to
+  // the same server, and only one of them can be right — the earlier one in
+  // the user's own order wins, which is a rule they can change.
+  const seen = new Set();
+  const links = (UITABS.entries || []).filter(e => {
+    if (!e.has_web || !e.web || !e.port || seen.has(e.port)) return false;
+    seen.add(e.port);
+    return true;
+  });
   const key = links.map(e => `${e.port}${e.web_path}${e.web_label}`).join('|');
   if (key === hackLinksKey) return;
   hackLinksKey = key;

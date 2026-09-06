@@ -29,6 +29,19 @@ between minor versions).
   to the hardware. Saving applies to a running Shadow UI immediately, and a
   tab that survives the change keeps its state. Persisted to
   `<hackdir>/ui_tabs.json`. New routes `GET`/`POST /api/ui/tabs`.
+- Push Hack Catalog always has a menu-bar entry in Push Manager. The built-in
+  **Catalog** entry carries the link itself (core hack, fixed port 7702), so
+  it no longer depends on the installed copy declaring `web_ui` — an older
+  build, or one installed under a different id, still gets a link. It stays
+  an ordinary entry: switchable and movable like any other.
+- Port-conflict reporting. Two installed hacks declaring the same `port`
+  means only one of them can be running, and anything pointing at that port
+  reaches the wrong hack or nothing. push-manager now flags it: a banner on
+  Display → Tabs naming the port and every hack claiming it, a note on each
+  affected row, and one line in `push-manager.log` at startup. The menu bar
+  renders one link per port, earliest in the user's order winning. Nothing is
+  probed over the network — the `hack.json` files say enough, and a liveness
+  poller would be a running cost for a problem you fix once.
 - Push Hack Catalog shows who maintains each hack and which repo it installs
   from: `github_repo` on the web cards (linked to `homepage`), and on the
   Shadow UI's CATALOG tab as the selected hack's breadcrumb. The author is
