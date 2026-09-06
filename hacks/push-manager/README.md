@@ -53,6 +53,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/live/play` | Starts Live's transport. Sends `play` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `POST` | `/api/live/stop` | Stops Live's transport. Sends `stop` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `GET` | `/api/presets/facets` | Distinct facet values for the Browser filter UI: `{categories, devices, sources, tags}`. |
+| `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?}]` sorted by `id`. The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
 | `POST` | `/api/presets/meta` | Set per-preset metadata. Body `{"path":"…","favourite":true,"tags":["warm"]}` — `favourite` and `tags` are independent (omit to leave unchanged). Persisted to `<hackdir>/preset_meta.json`; shared with the on-device Shadow UI Favourites filter. Returns `{ok, favourite, tags}`. `GET /api/presets` accepts `filter,q,fav,tag,device,source,rack` query params. |
 
 ### Entry JSON shape
@@ -151,6 +152,37 @@ CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall
 - Browser back/forward button works (History API `pushState`/`popstate`)
 - "‹ Back" button in header
 - "SYSTEM" button → stats page
+
+### Menu bar links for other hacks
+
+Any hack installed on the device can put its own link in Push Manager's menu
+bar. There is no API to call and no code to add here — the hack just declares
+`web_ui` next to its `port` in its own `hack.json`:
+
+```jsonc
+{
+  "id": "automation",
+  "port": 7703,
+  "web_ui": { "label": "Automation", "path": "/" }
+}
+```
+
+Push Manager links it as `http://<this-host>:<port><path>`, opening in a new
+tab. This is the same field Push Hack Catalog reads for its "Open" links, so a
+hack that already works there needs no change. Full field reference:
+[catalog/schema.md](../../catalog/schema.md#web-ui-navigation-hackjsons-web_ui).
+
+Notes:
+
+- A hack with no `web_ui` (a Remote Script, `push-display`, Push Manager
+  itself) gets no link. That is the intended way to opt out.
+- Links are rebuilt from `GET /api/hacks/installed` every 10 seconds, so one
+  appears or disappears within 10s of an install or removal — no restart.
+- Links are sorted by hack `id`, so the order is stable.
+- Push Hack Catalog's own link comes from this same mechanism (its `hack.json`
+  declares `{"label": "Catalog", "path": "/"}`), not from a hardcoded entry.
+- The link only points at the hack's UI. It does not embed it, and Push
+  Manager never checks whether the hack is actually running.
 
 ### Root cards
 - Regular roots use `Sidebar_Folder.png`

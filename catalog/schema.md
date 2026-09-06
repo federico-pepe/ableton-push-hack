@@ -113,9 +113,8 @@ Remote Script, which must land in Live's own User Library, not
 
 ## Web UI navigation (`hack.json`'s `web_ui`)
 
-A hack with its own web UI can declare it so an installed hack's card in
-Push Hack Catalog's own UI shows an "Open" link, instead of the user having
-to know the port and type the URL by hand:
+A hack with its own web UI declares it once, so the user never has to know
+the port and type the URL by hand:
 
 ```jsonc
 {
@@ -124,11 +123,28 @@ to know the port and type the URL by hand:
 }
 ```
 
-`GET /api/catalog` (given `hacks_dir`, which `cmd_catalog` always passes)
-reads this straight off the *installed* copy's `hack.json` alongside
-`installed_version`, so the store's own web UI can render the link without
-a second round-trip. Omit `web_ui` entirely for a hack with no UI of its
-own (e.g. a Remote Script, or push-display). This intentionally lives in
-the catalog's UI, not Push Manager's header — a hack picks up its own
-`web_ui` link the moment it's installed/updated through the catalog, and
-Push Manager's header doesn't grow one entry per installed hack.
+| Field | Meaning |
+|-------|---------|
+| `label` | Link text. Keep it short — it sits in a menu bar. |
+| `path` | Path on the hack's own port, e.g. `/`. Defaults to `/` if empty. |
+
+The port is not repeated here; the hack's own `port` field is used. The URL
+built is `http://<device-host>:<port><path>`, opened in a new tab.
+
+One declaration, two places read it:
+
+- **Push Hack Catalog** puts an "Open" link on the installed hack's card.
+  `GET /api/catalog` (given `hacks_dir`, which `cmd_catalog` always passes)
+  reads it straight off the *installed* copy's `hack.json` alongside
+  `installed_version`, so the card needs no second round-trip.
+- **Push Manager** puts a link in its own menu bar, from
+  `GET /api/hacks/installed` (`[{id, name, port, web_ui?}]`, sorted by `id`),
+  polled every 10s. A hack installed or removed through the catalog shows up
+  or drops out within 10s, with no push-manager restart.
+
+Omit `web_ui` entirely for a hack with no UI of its own (a Remote Script, or
+push-display). That is how a hack opts out of both.
+
+Neither reader checks whether the hack is actually running — the link is
+built from what is on disk. Push Manager's own entry is absent by design:
+its `hack.json` declares no `web_ui`, since you are already looking at it.
