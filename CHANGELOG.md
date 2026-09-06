@@ -13,7 +13,18 @@ between minor versions).
   /api/disable`/`/api/enable` stop+remove (or re-add+restart) boot-autostart
   while keeping the installed files and config, for saving CPU/RAM on a
   hack you're not using right now without a full remove+reinstall.
-  `/api/installed` now reports `{id, enabled}` instead of a bare id list.
+  `/api/installed` now reports `{id, enabled}` instead of a bare id list,
+  determined by the hack's `/etc/rc*.d` boot-autostart link (number-agnostic
+  glob — real hardware uses Debian-style `update-rc.d`, which picked `S20`,
+  not the `S99` this script's own manual-symlink fallback assumes) rather
+  than a running-process check: `push-display`'s own "service" patches
+  `push3`'s init.d and exits, so it never has a pidfile to check, by
+  design — found live, it reported "disabled" unconditionally under an
+  earlier version of this check. Disabling any of the three base hacks
+  (`push-manager`/`push-display`/`push-catalog`) is refused outright —
+  also found live: disabling `push-catalog` from its own web UI kills the
+  server the request came in on before it can respond, and recovery
+  needed SSH, not something a phone-only user has.
 - `catalog/catalog.json` gains entries for `push-audio-loopback` and
   `push-braids`, both now installable via Push Hack Catalog from their
   own repos:

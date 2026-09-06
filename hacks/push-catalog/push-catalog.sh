@@ -179,28 +179,33 @@ cmd_catalog() { # machine-readable catalog for the web/screen UI
   local reg; reg="$(load_registry)"; q "$reg" catalog "$PUSH_HACK_DIR/hacks"; rm -f "$reg"
 }
 
-# One "<id>\t<running: true|false>" line per installed hack. A hack with no
+# One "<id>\t<enabled: true|false>" line per installed hack. A hack with no
 # service (binary-less, e.g. a Remote Script) has nothing to be "disabled"
 # and always reports true.
 #
-# Checks the pidfile directly rather than the init.d script's own `status`
-# action: this repo has two different init.d generators (this script's own
-# install_service, and the framework's scripts/install.sh via
-# lib/common.sh, used for push-manager/push-display/push-catalog itself)
-# with two different status wordings ("active"/"inactive" vs "<svc> is
-# running"/"is not running") and, for this script's own generated status,
-# an exit code that's always 0 either way (an `echo` as the last command
-# of each branch) — parsing either text format is fragile where checking
-# the one thing they actually agree on (the /var/run/<svc>.pid convention)
-# is not. Found live: core hacks all reported "disabled" despite running.
+# "Enabled" means "has a boot-autostart link" (an /etc/rc<N>.d/S<NN><svc>
+# symlink) — the one thing disable/enable actually add or remove — rather
+# than "is currently running". Two reasons that's the right signal, not a
+# shortcut: (1) push-display's own "service" patches push3's init.d and
+# exits — it never backgrounds a process under its own name, so it has no
+# pidfile to check, ever, by design; a running-process check reports it
+# "disabled" unconditionally, confirmed live. (2) the init.d `status`
+# action isn't reliable either: this repo has two different generators
+# (this script's own install_service, and the framework's own
+# scripts/install.sh via lib/common.sh) with two different wordings
+# ("active"/"inactive" vs "<svc> is running") and, for this script's own
+# generated status, an exit code that's always 0 regardless (an `echo` as
+# the last command of each branch). The rc.d link's *priority number*
+# varies too — real hardware uses Debian-style update-rc.d, which picked
+# S20 here, not the S99 this script's own manual-symlink fallback uses —
+# so the glob below matches any priority, not a specific one.
 cmd_installed() {
   [ -d "$PUSH_HACK_DIR/hacks" ] || return 0
-  local id svc pidfile
+  local id svc
   for id in $(ls -1 "$PUSH_HACK_DIR/hacks" 2>/dev/null || true); do
     svc="push-hack-$id"
     if [ -f "/etc/init.d/$svc" ]; then
-      pidfile="/var/run/$svc.pid"
-      if [ -f "$pidfile" ] && as_root kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
+      if ls /etc/rc*.d/S*"$svc" >/dev/null 2>&1; then
         printf '%s\ttrue\n' "$id"
       else
         printf '%s\tfalse\n' "$id"
@@ -372,7 +377,7 @@ cmd_remove() {
   local svc="push-hack-$id" dir="$PUSH_HACK_DIR/hacks/$id"
   as_root "/etc/init.d/$svc" stop 2>/dev/null || true
   command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
-  as_root rm -f "/etc/init.d/$svc" /etc/rc*.d/S99"$svc"
+  as_root rm -f "/etc/init.d/$svc" /etc/rc*.d/S*"$svc"
   # Clean up a non-hacks/<id> install_path (e.g. a Remote Script in Live's
   # User Library) before the source hack.json that names it is gone.
   if [ -f "$dir/hack.json" ]; then
@@ -391,12 +396,19 @@ cmd_remove() {
 # re-download to bring it back.
 cmd_disable() {
   local id="$1"; [ -n "$id" ] || die "usage: push-catalog disable <id>"
+  # Disabling push-catalog from its own web UI kills the very server the
+  # request came in on before it can respond — confirmed live: the HTTP
+  # call itself failed, and recovery needed SSH (scripts/install.sh),
+  # not something a phone-only user has. push-manager/push-display are
+  # the same story once push-manager's web UI grows an equivalent
+  # toggle — refuse all three now rather than after a second incident.
+  is_core_hack "$id" && die "'$id' is part of the base install — disabling it from here could lock you out; use scripts/uninstall.sh if you really want it gone"
   local svc="push-hack-$id"
   [ -d "$PUSH_HACK_DIR/hacks/$id" ] || die "hack '$id' is not installed"
   [ -f "/etc/init.d/$svc" ] || die "hack '$id' has no service to disable"
   as_root "/etc/init.d/$svc" stop 2>/dev/null || true
   command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
-  as_root rm -f /etc/rc*.d/S99"$svc"
+  as_root rm -f /etc/rc*.d/S*"$svc"
   info "disabled $id"
   return 0
 }
