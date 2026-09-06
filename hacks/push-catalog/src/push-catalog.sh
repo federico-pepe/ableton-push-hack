@@ -267,7 +267,15 @@ install_one() {
 
   local post_install
   post_install="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('post_install',''))" "$dir/hack.json" 2>/dev/null || echo "")"
+  # A hack with no post_install hits the false branch of this test, and
+  # since it's the function's last statement, that exit status (1) would
+  # otherwise become install_one's own return value — cmd_install's HTTP
+  # caller (main.go's action()) reports "ok": err == nil, so a completely
+  # successful install with no post_install message was reporting failure.
+  # Found live: both push-audio-loopback and push-braids installed and ran
+  # correctly but every /api/install call for them came back ok:false.
   [ -n "$post_install" ] && info "NEXT: $post_install"
+  return 0
 }
 
 # Copy a non-service payload to a hack-declared install_path, e.g. an

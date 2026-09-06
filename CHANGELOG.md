@@ -66,6 +66,13 @@ between minor versions).
 
 ### Fixed
 
+- `push-catalog`'s `install_one` reported `"ok": false` on the HTTP API for
+  a completely successful install whenever the hack had no `post_install`
+  message — a `[ -n "$post_install" ] && info ...` test as the function's
+  last statement, with no `post_install` set, made that test's own exit
+  status (1) become the function's return value. Found live: both
+  `push-audio-loopback` and `push-braids` installed and ran correctly but
+  every `/api/install` call for them came back `ok:false`.
 - `push-audio-loopback`'s two PCM devices (device 0, for Live; device 1,
   the "feed" side other hacks write to directly) read as identical
   entries in Live's own device picker — confirmed live, both said
