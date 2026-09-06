@@ -42,6 +42,7 @@ type CatalogPanel struct {
 	mu        sync.Mutex
 	hacks     []catalogHack
 	installed map[string]bool
+	enabled   map[string]bool
 	cursor    int
 	scroll    int
 	status      string    // transient line shown in the breadcrumb (errors, progress)
@@ -50,7 +51,7 @@ type CatalogPanel struct {
 }
 
 func newCatalogPanel() *CatalogPanel {
-	p := &CatalogPanel{installed: map[string]bool{}, status: "loading..."}
+	p := &CatalogPanel{installed: map[string]bool{}, enabled: map[string]bool{}, status: "loading..."}
 	go p.refresh()
 	return p
 }
@@ -65,8 +66,11 @@ var catalogActClient = &http.Client{Timeout: 3 * time.Minute} // installs downlo
 func (p *CatalogPanel) refresh() {
 	var cat []catalogHack
 	catErr := catalogGetJSON("/api/catalog", &cat)
-	var inst []string
-	_ = catalogGetJSON("/api/installed", &inst) // best-effort
+	var inst []struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+	}
+	instErr := catalogGetJSON("/api/installed", &inst) // best-effort
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -75,7 +79,7 @@ func (p *CatalogPanel) refresh() {
 		// Distinguish daemon-down from an empty/unreachable catalog: if
 		// /api/installed answered, the daemon is fine and the registry is the
 		// problem, not the daemon.
-		if inst != nil {
+		if instErr == nil {
 			p.status = "catalog unavailable - set registry URL"
 		} else {
 			p.status = "catalog daemon offline?"
@@ -84,8 +88,10 @@ func (p *CatalogPanel) refresh() {
 	}
 	p.hacks = cat
 	p.installed = make(map[string]bool, len(inst))
-	for _, id := range inst {
-		p.installed[id] = true
+	p.enabled = make(map[string]bool, len(inst))
+	for _, h := range inst {
+		p.installed[h.ID] = true
+		p.enabled[h.ID] = h.Enabled
 	}
 	if p.cursor >= len(cat) {
 		p.cursor = 0
@@ -107,8 +113,8 @@ func catalogGetJSON(path string, v any) error {
 	return json.NewDecoder(resp.Body).Decode(v)
 }
 
-// act runs install/remove on the selected hack, asynchronously so the render
-// loop and MIDI thread never block on a multi-second download.
+// act runs install/remove/enable/disable on the selected hack, asynchronously
+// so the render loop and MIDI thread never block on a multi-second download.
 func (p *CatalogPanel) act(verb, id string) {
 	p.mu.Lock()
 	if p.busy || id == "" {
@@ -223,6 +229,18 @@ func (p *CatalogPanel) HandleCC(cc, val uint8) {
 		if ok && on {
 			p.act("remove", h.ID)
 		}
+	case CCScreenBot3: // ENABLE/DISABLE (only acts if installed)
+		h, ok := p.selected()
+		on := ok && p.installed[h.ID]
+		en := ok && p.enabled[h.ID]
+		p.mu.Unlock()
+		if ok && on {
+			if en {
+				p.act("disable", h.ID)
+			} else {
+				p.act("enable", h.ID)
+			}
+		}
 	default:
 		p.mu.Unlock()
 	}
@@ -254,6 +272,10 @@ func (p *CatalogPanel) Render(img *image.NRGBA) {
 				text += "  [installed]"
 				tc = widgets.Default.OnColor // green
 			}
+			if !p.enabled[h.ID] {
+				text += " [disabled]"
+				tc = widgets.Default.White // disabled overrides the green/accent installed tint
+			}
 		}
 		rows[i] = widgets.ListRow{Text: text, TextCol: tc}
 	}
@@ -277,6 +299,7 @@ func (p *CatalogPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	var b [8]widgets.SoftButton
 	h, ok := p.selected()
 	on := ok && p.installed[h.ID]
+	en := ok && p.enabled[h.ID]
 	update := ok && on && h.UpdateAvailable
 
 	installLabel := "Install"
@@ -295,6 +318,18 @@ func (p *CatalogPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	b[0] = widgets.SoftButton{Label: installLabel, State: installState}
 	b[1] = widgets.SoftButton{Label: "Remove", State: removeState}
 
+	toggleLabel := "Enable"
+	toggleState := widgets.SoftNeutral
+	if on {
+		if en {
+			toggleLabel = "Disable"
+			toggleState = widgets.SoftOff
+		} else {
+			toggleState = widgets.SoftOn
+		}
+	}
+	b[2] = widgets.SoftButton{Label: toggleLabel, State: toggleState}
+
 	hint := "jog / up-down move, press to install"
 	if p.busy {
 		hint = "working..."
@@ -307,6 +342,7 @@ func (p *CatalogPanel) BotLEDColors() [8]uint8 {
 	defer p.mu.Unlock()
 	h, ok := p.selected()
 	on := ok && p.installed[h.ID]
+	en := ok && p.enabled[h.ID]
 	update := ok && on && h.UpdateAvailable
 	var c [8]uint8
 	if ok && (!on || update) {
@@ -314,6 +350,11 @@ func (p *CatalogPanel) BotLEDColors() [8]uint8 {
 	}
 	if on {
 		c[1] = suiBotWhite // Remove lit when installed
+		if en {
+			c[2] = suiBotWhite // Disable lit when currently enabled
+		} else {
+			c[2] = suiBotGreen // Enable lit when currently disabled
+		}
 	}
 	return c
 }

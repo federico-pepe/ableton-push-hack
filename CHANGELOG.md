@@ -5,6 +5,24 @@ All notable changes to this project are documented here. Format follows
 [Semantic Versioning](https://semver.org/) (pre-1.0: expect breaking changes
 between minor versions).
 
+## [Unreleased]
+
+### Added
+
+- Shadow UI's CATALOG tab gains an Enable/Disable soft-button (Bot3), matching
+  the web UI's per-hack toggle — posts `/api/enable`/`/api/disable` for the
+  selected hack. An installed-but-disabled hack now also shows a `[disabled]`
+  tag in the on-device list.
+
+### Fixed
+
+- Shadow UI's CATALOG tab no longer shows every hack as not-installed. The
+  0.1.7-alpha change to `/api/installed` (bare id list to `{id, enabled}`
+  objects) broke `catalog_panel.go`'s decoder, which still expected a
+  `[]string` and failed silently, leaving the installed set empty — so no
+  hack ever rendered green or offered Remove/Update on-device, even though
+  the web UI (already reading the object shape) was unaffected.
+
 ## [0.1.7-alpha] - 2026-09-06
 
 ### Added
