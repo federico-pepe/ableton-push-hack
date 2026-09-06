@@ -473,6 +473,10 @@ func main() {
 	// Register MIDI chord bindings (in-memory; no device access)
 	initMidiChords()
 
+	// Shadow UI tab order + web/shadow visibility switches (see ui_tabs.go)
+	uiTabsPath = filepath.Join(filepath.Dir(*configPath), "ui_tabs.json")
+	loadUITabs()
+
 	// Browser Bridge preset index — filesystem scan, off Live's audio thread.
 	// Warm-load the cache for an instant UI, then rescan fresh in the background.
 	presetIndexPath = filepath.Join(filepath.Dir(*configPath), "presets.json")
@@ -503,6 +507,7 @@ func main() {
 	mux.HandleFunc("/api/delete", handleDelete)
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/hacks/installed", handleHacksInstalled)
+	mux.HandleFunc("/api/ui/tabs", handleUITabs)
 	mux.HandleFunc("/api/rename", handleRename)
 	mux.HandleFunc("/api/copy", handleCopy)
 	mux.HandleFunc("/api/unmount", handleUnmount)

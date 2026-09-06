@@ -1210,8 +1210,10 @@ function clearMidiLog() {
 function showDispTab(tab) {
   $('dtab-control').style.display = tab === 'control' ? '' : 'none';
   $('dtab-draw').style.display    = tab === 'draw'    ? '' : 'none';
+  $('dtab-tabs').style.display    = tab === 'tabs'    ? '' : 'none';
   document.querySelectorAll('.disp-tab').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'tabs') { uiTabsDirty = false; loadUITabs(); }
   if (tab === 'draw') {
     initDrawCanvas();
     startDrawStream();
@@ -1921,23 +1923,100 @@ async function refreshOptionalFeatures() {
   try { hacks = await api('GET', '/api/hacks/installed'); } catch (e) { return; }
   $('btn-browser').style.display =
     hacks.some(h => h.id === 'browser-bridge') ? '' : 'none';
-  renderHackLinks(hacks);
+  loadUITabs();
 }
 
-// Menu-bar hook: every installed hack that declares web_ui + port in its own
+// ── UI entries: Shadow UI tabs + web menu bar ──────────────────────────────
+// One ordered list, two switches per entry, served by /api/ui/tabs. The same
+// list drives the header links here and the tab strip on Push's screen — see
+// src/ui_tabs.go.
+let UITABS = { entries: [], max: 8 };
+let uiTabsDirty = false; // unsaved edits — the 10s poll must not clobber them
+
+async function loadUITabs() {
+  if (uiTabsDirty) return;
+  try { UITABS = await api('GET', '/api/ui/tabs'); } catch (e) { return; }
+  renderUITabs();
+  renderHackLinks();
+}
+
+async function saveUITabs() {
+  const body = UITABS.entries.map(e => ({id: e.id, shadow: !!e.shadow, web: !!e.web}));
+  $('tabs-msg').textContent = 'Saving…';
+  try {
+    UITABS = await api('POST', '/api/ui/tabs', body);
+    uiTabsDirty = false;
+    $('tabs-msg').textContent = 'Saved — Push updates immediately.';
+  } catch (e) {
+    $('tabs-msg').textContent = 'Save failed: ' + e.message;
+    return;
+  }
+  renderUITabs();
+  renderHackLinks();
+}
+
+// Move an entry one slot up or down. Reordering is a pair of buttons rather
+// than drag-and-drop: this page gets used on a phone next to the hardware.
+function moveUITab(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= UITABS.entries.length) return;
+  const e = UITABS.entries;
+  [e[i], e[j]] = [e[j], e[i]];
+  uiTabsDirty = true;
+  renderUITabs();
+}
+
+function renderUITabs() {
+  const max = UITABS.max || 8;
+  let shadowCount = 0;
+  $('tabs-list').innerHTML = UITABS.entries.map((e, i) => {
+    // An entry past the 8th switched-on Shadow tab is config the hardware
+    // cannot show — say so instead of letting it silently do nothing.
+    let over = false;
+    if (e.has_shadow && e.shadow && e.shadow_available) {
+      shadowCount++;
+      over = shadowCount > max;
+    }
+    const sub = [
+      e.source === 'builtin' ? 'built in' : 'hack',
+      e.requires && !e.shadow_available ? `needs ${esc(e.requires)}` : '',
+      over ? `over the ${max}-tab limit` : '',
+    ].filter(Boolean).join(' · ');
+    const sw = (kind, has, on) => has
+      ? `<label class="tabs-sw"><input type="checkbox" data-i="${i}" data-k="${kind}"` +
+        `${on ? ' checked' : ''}>${kind}</label>`
+      : `<label class="tabs-sw na">${kind} —</label>`;
+    return `<div class="tabs-row${over ? ' overflow' : ''}">
+      <button class="tabs-move" onclick="moveUITab(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="tabs-move" onclick="moveUITab(${i},1)" ${i === UITABS.entries.length - 1 ? 'disabled' : ''}>↓</button>
+      <span class="tabs-name">${esc(e.label || e.id)}<br><span class="tabs-sub">${sub}</span></span>
+      ${sw('shadow', e.has_shadow, e.shadow)}
+      ${sw('web', e.has_web, e.web)}
+    </div>`;
+  }).join('');
+  $('tabs-list').querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.onchange = () => {
+      UITABS.entries[+cb.dataset.i][cb.dataset.k] = cb.checked;
+      uiTabsDirty = true;
+      renderUITabs();
+    };
+  });
+}
+
+// Menu-bar hook: an installed hack that declares web_ui + port in its own
 // hack.json gets a header link, Push Hack Catalog included — no per-hack code
-// here. Only rebuilt when the set actually changes, so the 10s poll doesn't
-// kill a hover or a mid-click.
+// here — unless its Web switch is off. Only rebuilt when the set actually
+// changes, so the 10s poll doesn't kill a hover or a mid-click.
 let hackLinksKey = '';
-function renderHackLinks(hacks) {
-  const links = hacks.filter(h => h.web_ui && h.port);
-  const key = links.map(h => `${h.port}${h.web_ui.path}${h.web_ui.label}`).join('|');
+function renderHackLinks() {
+  const links = (UITABS.entries || []).filter(e => e.has_web && e.web && e.port);
+  const key = links.map(e => `${e.port}${e.web_path}${e.web_label}`).join('|');
   if (key === hackLinksKey) return;
   hackLinksKey = key;
-  $('hack-links').innerHTML = links.map(h =>
+  $('hack-links').innerHTML = links.map(e =>
     `<a class="header-link" target="_blank" rel="noopener" ` +
-    `href="//${location.hostname}:${h.port}${esc(h.web_ui.path || '/')}">` +
-    `${esc(h.web_ui.label || h.name || h.id)}</a>`
+    `href="//${location.hostname}:${e.port}${esc(e.web_path || '/')}">` +
+    `${esc(e.web_label || e.label || e.id)}</a>`
   ).join('');
 }
 

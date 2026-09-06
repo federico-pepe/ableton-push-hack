@@ -54,6 +54,8 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/live/stop` | Stops Live's transport. Sends `stop` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `GET` | `/api/presets/facets` | Distinct facet values for the Browser filter UI: `{categories, devices, sources, tags}`. |
 | `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?}]` sorted by `id`. The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
+| `GET` | `/api/ui/tabs` | The one ordered list behind both navigations: `{max: 8, entries: [{id, label, source, has_shadow, shadow, shadow_available, requires, has_web, web, web_label, web_path, port}]}`. Built-in Shadow panels plus every installed hack declaring `web_ui` or `shadow_ui`, with the user's saved order and switches applied. |
+| `POST` | `/api/ui/tabs` | Save that list. Body is the new order: `[{id, shadow, web}]`. Persisted to `<hackdir>/ui_tabs.json` and applied to a running Shadow UI immediately (panels for tabs that survive the change keep their state). Returns the same shape as `GET`. |
 | `POST` | `/api/presets/meta` | Set per-preset metadata. Body `{"path":"…","favourite":true,"tags":["warm"]}` — `favourite` and `tags` are independent (omit to leave unchanged). Persisted to `<hackdir>/preset_meta.json`; shared with the on-device Shadow UI Favourites filter. Returns `{ok, favourite, tags}`. `GET /api/presets` accepts `filter,q,fav,tag,device,source,rack` query params. |
 
 ### Entry JSON shape
@@ -156,7 +158,7 @@ CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall
 ### Menu bar links for other hacks
 
 Any hack installed on the device can put its own link in Push Manager's menu
-bar. There is no API to call and no code to add here — the hack just declares
+bar. There is no API to call and no code to add here — the hack declares
 `web_ui` next to its `port` in its own `hack.json`:
 
 ```jsonc
@@ -168,21 +170,105 @@ bar. There is no API to call and no code to add here — the hack just declares
 ```
 
 Push Manager links it as `http://<this-host>:<port><path>`, opening in a new
-tab. This is the same field Push Hack Catalog reads for its "Open" links, so a
-hack that already works there needs no change. Full field reference:
-[catalog/schema.md](../../catalog/schema.md#web-ui-navigation-hackjsons-web_ui).
+tab. This is the same field Push Hack Catalog reads for its "Open" links, so
+a hack that already works there needs no change. Full field reference:
+[catalog/schema.md](../../catalog/schema.md#navigation-hooks-hackjsons-web_ui-and-shadow_ui).
 
 Notes:
 
 - A hack with no `web_ui` (a Remote Script, `push-display`, Push Manager
   itself) gets no link. That is the intended way to opt out.
-- Links are rebuilt from `GET /api/hacks/installed` every 10 seconds, so one
-  appears or disappears within 10s of an install or removal — no restart.
-- Links are sorted by hack `id`, so the order is stable.
-- Push Hack Catalog's own link comes from this same mechanism (its `hack.json`
-  declares `{"label": "Catalog", "path": "/"}`), not from a hardcoded entry.
+- Links come from `GET /api/ui/tabs`, polled every 10 seconds, so one appears
+  or disappears within 10s of an install or removal — no restart.
+- The user can turn any link off and reorder them (see below).
+- Push Hack Catalog's own link comes from this same mechanism (its
+  `hack.json` declares `{"label": "Catalog", "path": "/"}`), not from a
+  hardcoded entry.
 - The link only points at the hack's UI. It does not embed it, and Push
   Manager never checks whether the hack is actually running.
+
+### Tab settings (Display → Tabs)
+
+One ordered list drives both navigations: the Shadow UI's tab strip on
+Push's screen, and the web menu bar above. Each entry has two switches —
+**Shadow** and **Web** — and a switch is only shown for a navigation the
+entry can actually appear in (a built-in panel is Shadow-only; a hack that
+declares just `web_ui` is Web-only).
+
+Reordering is a pair of ↑ / ↓ buttons rather than drag-and-drop: this page
+gets used on a phone, next to the hardware.
+
+- Order and switches persist to `<hackdir>/ui_tabs.json` and apply to a
+  running Shadow UI the moment you hit Save — no restart, and a tab that
+  survives the change keeps its state (a browser cursor, a fetched catalog).
+- Push 3 has 8 top buttons, so only the first 8 switched-on Shadow tabs are
+  drawn. Anything past that is greyed out and labelled, rather than silently
+  doing nothing.
+- An entry whose dependency is missing (the Browser tab needs
+  `browser-bridge`) shows as unavailable and is skipped on the hardware.
+- A hack the config has never seen — one just installed — is appended at the
+  end with both switches on, so new things show up rather than going missing.
+- Turning every Shadow tab off leaves the last frame on screen. The Shadow UI
+  is still reachable; give it at least one tab to get a usable screen back.
+
+### Shadow UI tabs from other hacks
+
+A hack can own a Shadow UI tab without any Go code landing in push-manager.
+It declares `shadow_ui` in its `hack.json`:
+
+```jsonc
+{
+  "id": "automation",
+  "port": 7703,
+  "shadow_ui": { "label": "AUTO", "path": "/api/shadow" }
+}
+```
+
+push-manager then treats `http://127.0.0.1:<port><path>` as the tab. It is a
+dumb terminal: the hack owns every piece of state (cursor, sub-views, what a
+button does), push-manager owns the pixels.
+
+**GET** that path, roughly every 300ms while the tab is on screen. Answer
+with JSON — every field optional:
+
+```jsonc
+{
+  "title":   "LFO 1",                    // breadcrumb line
+  "status":  "",                         // overrides title when set (errors, progress)
+  "rows":    ["rate  1/4", "depth  64"], // the list body
+  "cursor":  0,                          // which row is highlighted
+  "buttons": ["Start", "Stop"],          // up to 8 under-screen labels, "" = unused
+  "hint":    "jog to move"               // right-hand nav hint
+}
+```
+
+**POST** to the same path on every press, with the raw control:
+
+```json
+{"cc": 20, "value": 127}
+```
+
+CC numbers are the standard Push 3 map (`docs/push3-button-map.md`, also in
+`core/push3`) — under-screen buttons are CC 20–27, the jog wheel is CC 14
+with value 127 = clockwise / 1 = counter-clockwise. push-manager re-polls
+immediately after a POST, so a press shows its result on the next frame.
+
+Notes:
+
+- **Everything in `rows`, `title`, `hint` and `buttons` must be ASCII.** The
+  on-device font has no glyph past it — an em-dash or an accent draws as an
+  empty box. See the "Drawing text" rule in `CLAUDE.md`.
+- push-manager scrolls the list to keep your `cursor` visible. You do not get
+  told the window size; move the cursor and the window follows.
+- A soft-button with a non-empty label is lit; an empty one is dark.
+- If the hack does not answer, the tab shows "hack not responding" rather
+  than disappearing.
+- This is deliberately **not** a pixel protocol. A PNG per frame would cost an
+  encode plus a decode 30 times a second on a device whose whole point is not
+  stealing CPU from Live.
+- A `shadow_ui` tab does not touch the display shm, so it is not a
+  "display-owning hack" — no push-display dependency. It does need
+  push-manager running, since push-manager is what draws it.
 
 ### Root cards
 - Regular roots use `Sidebar_Folder.png`

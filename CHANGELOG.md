@@ -13,15 +13,38 @@ between minor versions).
   declares `web_ui` (`{"label", "path"}`) next to its `port` in its own
   `hack.json` gets a header link to its UI — no push-manager code per hack.
   This is the same field Push Hack Catalog already reads for its "Open"
-  links, so a hack that works there needs no change. Links refresh on the
-  existing 10s `/api/hacks/installed` poll, so an install or removal shows
-  up without a restart. Docs: `catalog/schema.md`, push-manager's README.
+  links, so a hack that works there needs no change.
+- A hack can now own a **Shadow UI tab** the same way, by declaring
+  `shadow_ui` (`{"label", "path"}`). push-manager polls
+  `http://127.0.0.1:<port><path>` for a small JSON view (title, rows,
+  cursor, soft-button labels) and POSTs every press back as `{cc, value}`.
+  The hack owns all the state; push-manager only draws. Not a pixel
+  protocol — a PNG per frame would cost an encode plus a decode 30 times a
+  second on a device whose job is not stealing CPU from Live. Contract:
+  push-manager's README, "Shadow UI tabs from other hacks".
+- **Display → Tabs** settings page in Push Manager's web UI. One ordered
+  list drives both navigations, with two switches per entry: **Shadow**
+  (a tab on Push's screen) and **Web** (a link in the menu bar). Reorder
+  with ↑/↓ — not drag-and-drop, since this page gets used on a phone next
+  to the hardware. Saving applies to a running Shadow UI immediately, and a
+  tab that survives the change keeps its state. Persisted to
+  `<hackdir>/ui_tabs.json`. New routes `GET`/`POST /api/ui/tabs`.
+- Push Hack Catalog shows who maintains each hack and which repo it installs
+  from: `github_repo` on the web cards (linked to `homepage`), and on the
+  Shadow UI's CATALOG tab as the selected hack's breadcrumb. The author is
+  dropped when it is just the repo owner again, so the common case reads as
+  one thing rather than the same name twice.
 
 ### Changed
 
-- `GET /api/hacks/installed` returns `[{id, name, port, web_ui?}]` instead of
-  a bare array of ids. Breaking for anything that consumed the old shape;
-  in-repo the only caller was Push Manager's own `app.js`.
+- Shadow UI tab positions are no longer hardcoded. A tab's top-strip button
+  is its position in the user's resolved list, so tabs can be reordered or
+  switched off — including the built-in ones. `browsePanelIdx` is gone; the
+  Shift+Set chord looks the Browse tab up by id and does nothing if the user
+  switched it off.
+- `GET /api/hacks/installed` returns `[{id, name, port, web_ui?, shadow_ui?}]`
+  instead of a bare array of ids. Breaking for anything that consumed the old
+  shape; in-repo the only caller was Push Manager's own `app.js`.
 - Push Manager's hardcoded `Catalog` header link is gone. The link is now
   built from push-catalog's own `hack.json`, like every other hack's.
 

@@ -54,7 +54,8 @@ if op=="schema": print(D.get("catalog_version"))
 elif op=="list":
     for h in D["hacks"]: print(f'{h["id"]}\t{h["name"]} — {h["description"]}')
 elif op=="catalog":
-    # Author/name/description come straight from the catalog entry; version
+    # Author/name/description/github_repo come straight from the catalog
+    # entry (github_repo is who maintains the hack, shown in both faces); version
     # and released_at are always fetched live from the hack's own
     # release.json (never cached in the catalog itself, same as install) —
     # a slow/unreachable hack repo degrades to "?" rather than failing the
@@ -66,7 +67,7 @@ elif op=="catalog":
     hacks_dir=a[0] if a else None
     out=[]
     for h in D["hacks"]:
-        e={k:h.get(k) for k in ("id","name","description","author","homepage","requires")}
+        e={k:h.get(k) for k in ("id","name","description","author","homepage","github_repo","requires")}
         rel_url=h.get("release_url") or (
             f"https://raw.githubusercontent.com/{h['github_repo']}/{h.get('default_branch','main')}/release.json"
             if h.get("github_repo") else None)

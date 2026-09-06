@@ -13,6 +13,7 @@ import (
 	"image"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,7 @@ type catalogHack struct {
 	UpdateAvailable  bool     `json:"update_available"`
 	Description      string   `json:"description"`
 	Author           string   `json:"author"`
+	GithubRepo       string   `json:"github_repo"`
 	Requires         []string `json:"requires"`
 }
 
@@ -280,7 +282,13 @@ func (p *CatalogPanel) Render(img *image.NRGBA) {
 		rows[i] = widgets.ListRow{Text: text, TextCol: tc}
 	}
 
+	// Breadcrumb doubles as the detail line for whatever is under the
+	// cursor: who maintains this hack and which repo it installs from. The
+	// hack count was the same number the list already shows.
 	crumb := fmt.Sprintf("Catalog - %d hacks", len(p.hacks))
+	if h, ok := p.selected(); ok {
+		crumb = catalogOrigin(h)
+	}
 	widgets.RenderList(img, widgets.Default, widgets.ListView{
 		Rows:       rows,
 		Cursor:     p.cursor,
@@ -289,6 +297,22 @@ func (p *CatalogPanel) Render(img *image.NRGBA) {
 		Status:     p.status, // when non-empty, overrides breadcrumb
 		EmptyText:  "No hacks - is the push-catalog daemon running?",
 	}, suiContentY, suiW, catalogRowH, suiContentBot)
+}
+
+// catalogOrigin is the "who made this / where does it come from" line.
+// Author is dropped when it is just the repo owner again, so the common case
+// reads as one thing rather than the same name twice.
+func catalogOrigin(h catalogHack) string {
+	owner, _, _ := strings.Cut(h.GithubRepo, "/")
+	switch {
+	case h.GithubRepo != "" && (h.Author == "" || h.Author == owner):
+		return h.GithubRepo
+	case h.GithubRepo != "":
+		return fmt.Sprintf("%s - by %s", h.GithubRepo, h.Author)
+	case h.Author != "":
+		return "by " + h.Author
+	}
+	return "Catalog"
 }
 
 // ── bottom strip ──────────────────────────────────────────────────────────────
