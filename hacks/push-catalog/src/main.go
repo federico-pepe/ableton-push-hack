@@ -89,16 +89,26 @@ func main() {
 		w.Write([]byte(out))
 	})
 
-	// installed: one id per line -> JSON array.
+	// installed: "<id>\t<true|false>" per line -> [{id, enabled}].
 	mux.HandleFunc("/api/installed", func(w http.ResponseWriter, r *http.Request) {
 		out, _ := runStore(registry, "installed")
-		ids := []string{}
-		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-			if line = strings.TrimSpace(line); line != "" {
-				ids = append(ids, line)
-			}
+		type installedHack struct {
+			ID      string `json:"id"`
+			Enabled bool   `json:"enabled"`
 		}
-		writeJSON(w, ids)
+		hacks := []installedHack{}
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			if line = strings.TrimSpace(line); line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, "\t", 2)
+			h := installedHack{ID: parts[0], Enabled: true}
+			if len(parts) == 2 {
+				h.Enabled = parts[1] == "true"
+			}
+			hacks = append(hacks, h)
+		}
+		writeJSON(w, hacks)
 	})
 
 	// install / remove: POST, id validated, output returned for the log pane.
@@ -119,6 +129,8 @@ func main() {
 	}
 	mux.HandleFunc("/api/install", action("install"))
 	mux.HandleFunc("/api/remove", action("remove"))
+	mux.HandleFunc("/api/disable", action("disable"))
+	mux.HandleFunc("/api/enable", action("enable"))
 
 	listen := *addr
 	if listen == "" {

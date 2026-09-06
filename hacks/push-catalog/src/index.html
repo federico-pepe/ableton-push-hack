@@ -27,6 +27,8 @@
   button:disabled { opacity:.5; cursor:default; }
   .tag { display:inline-block; background:var(--line); color:var(--muted); font-size:11px; padding:1px 7px; border-radius:99px; }
   .tag.update { background:var(--accent); color:var(--accent-fg); font-weight:600; }
+  .tag.off { background:var(--danger); color:#fff; font-weight:600; }
+  .disable, .enable { background:transparent; border:1px solid var(--line); color:var(--fg); }
   .open { color:var(--fg); text-decoration:none; font-size:12px; font-weight:600; border:1px solid var(--line); border-radius:99px; padding:3px 10px; white-space:nowrap; }
   .open:hover { border-color:var(--fg); }
   .actions { margin-top:12px; flex-wrap:wrap; }
@@ -80,12 +82,13 @@ async function load() {
     ]);
   } catch (e) { $("#list").textContent = "Could not reach the catalog: " + e; return; }
 
-  const inst = new Set(installed);
+  const inst = new Map(installed.map(h => [h.id, h.enabled]));
   if (!catalog.length) { $("#list").className = "empty"; $("#list").textContent = "Catalog is empty."; return; }
 
   const el = $("#list"); el.className = "grid"; el.innerHTML = "";
   for (const h of catalog) {
     const on = inst.has(h.id);
+    const enabled = on && inst.get(h.id);
     const update = on && h.update_available;
     const card = document.createElement("div");
     card.className = "card";
@@ -96,8 +99,13 @@ async function load() {
              : `v${esc(h.version || "?")}`,
       `updated ${fmtDate(h.released_at)}`,
     ].filter(Boolean).join(" · ");
-    const openLink = (on && h.web_ui && h.port)
+    const openLink = (on && enabled && h.web_ui && h.port)
       ? `<a class="open" href="//${location.hostname}:${h.port}${h.web_ui.path || "/"}" target="_blank" rel="noopener">${esc(h.web_ui.label || "Open")} &#8599;</a>`
+      : "";
+    const toggleBtn = on
+      ? (enabled
+          ? `<button class="disable" data-id="${esc(h.id)}" data-verb="disable">Disable</button>`
+          : `<button class="enable" data-id="${esc(h.id)}" data-verb="enable">Enable</button>`)
       : "";
     const buttons = update
       ? `<button class="install" data-id="${esc(h.id)}" data-verb="install">Update</button>
@@ -107,12 +115,15 @@ async function load() {
          </button>`;
     card.innerHTML = `
       <div class="grow">
-        <div class="name">${esc(h.name)} ${update ? '<span class="tag update">update available</span>' : ""}</div>
+        <div class="name">${esc(h.name)}
+          ${update ? '<span class="tag update">update available</span>' : ""}
+          ${on && !enabled ? '<span class="tag off">disabled</span>' : ""}
+        </div>
         <div class="desc">${esc(h.description || "")}</div>
         <div class="meta">${meta}</div>
         <div style="margin-top:6px">${req}</div>
       </div>
-      <div class="row actions" style="gap:8px">${buttons}${openLink}</div>`;
+      <div class="row actions" style="gap:8px">${buttons}${toggleBtn}${openLink}</div>`;
     el.appendChild(card);
   }
   el.querySelectorAll("button").forEach(b => b.onclick = () => act(b));
@@ -120,7 +131,8 @@ async function load() {
 
 async function act(btn) {
   const { id, verb } = btn.dataset;
-  btn.disabled = true; btn.textContent = verb === "install" ? "Installing…" : "Removing…";
+  const labels = { install: "Installing…", remove: "Removing…", disable: "Disabling…", enable: "Enabling…" };
+  btn.disabled = true; btn.textContent = labels[verb] || "Working…";
   openModal(`$ push-catalog ${verb} ${id}\n`);
   try {
     const res = await fetch(`/api/${verb}?id=${encodeURIComponent(id)}`, { method: "POST" }).then(r => r.json());

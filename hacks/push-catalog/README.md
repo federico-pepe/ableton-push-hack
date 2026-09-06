@@ -16,11 +16,13 @@ for how to get your own hack into the catalog.
 
 | Route | Method | Description |
 |---|---|---|
-| `/` | GET | Web UI — lists the catalog (name, author, live version, last-update date), Install/Update/Remove per hack (Update replaces Install when an installed hack's version is behind the catalog's), output log pane. |
+| `/` | GET | Web UI — lists the catalog (name, author, live version, last-update date), Install/Update/Remove/Disable/Enable per hack (Update replaces Install when an installed hack's version is behind the catalog's), output log pane. |
 | `/api/catalog` | GET | The catalog as JSON: `id`, `name`, `description`, `author`, `homepage`, `requires` from the catalog entry, plus `version` and `released_at` fetched live from each hack's own `release.json` (`null` if that hack's repo is unreachable — degrades per-entry, never fails the whole listing). Also `installed_version` (read from that hack's locally installed `hack.json`, `null` if not installed) and `update_available` (`true` when `installed_version` differs from the live `version`). |
-| `/api/installed` | GET | JSON array of hack ids currently present under `/data/push-hack/hacks/`. |
+| `/api/installed` | GET | JSON array of `{id, enabled}` for every hack currently present under `/data/push-hack/hacks/` — `enabled` reflects the init.d service's actual running state (`true` for a binary-less hack, which has nothing to disable). |
 | `/api/install?id=<id>` | POST | Fetches the hack's `release.json`, downloads + extracts its release tarball, registers and starts its init.d service. Returns `{ok, output}` (the shell output, for the log pane). |
 | `/api/remove?id=<id>` | POST | Stops the service, removes it from init.d, deletes the hack's directory. |
+| `/api/disable?id=<id>` | POST | Stops the service and removes its boot-autostart links, but keeps the installed files — reversible via `/api/enable`, unlike remove. For saving CPU/RAM on a hack you want to keep around but aren't using right now. |
+| `/api/enable?id=<id>` | POST | Re-adds boot-autostart links and restarts the service — the inverse of disable. |
 
 `id` is validated against `^[a-z0-9][a-z0-9-]{0,63}$` before it ever reaches
 the shell.

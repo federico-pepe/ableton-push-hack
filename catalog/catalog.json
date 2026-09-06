@@ -46,7 +46,7 @@
     },
     {
       "id": "push-audio-loopback",
-      "name": "Audio Loopback",
+      "name": "Audio Loopback (alpha)",
       "description": "Persistent virtual sound card (\"Push Hack Virtual Audio\") for routing audio between Live and another process, without opening the real hardware device.",
       "author": "federico-pepe",
       "homepage": "https://github.com/federico-pepe/push-hack-audio-loopback",
@@ -56,7 +56,7 @@
     },
     {
       "id": "push-braids",
-      "name": "Braids",
+      "name": "Braids (alpha)",
       "description": "Macro oscillator module based on Mutable Instruments Braids by Emilie Gillet, ported from Schwung DSP. Reads Push 3's own pad MIDI and renders audio through the Audio Loopback virtual card. On-screen MIDI/audio device picker.",
       "author": "federico-pepe",
       "homepage": "https://github.com/federico-pepe/push-hack-braids",

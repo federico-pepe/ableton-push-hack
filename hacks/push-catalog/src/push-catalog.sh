@@ -4,7 +4,9 @@
 #   push-catalog list                 # show catalog
 #   push-catalog install <id>         # fetch release, extract, register, start
 #   push-catalog remove  <id>         # stop, disable, delete
-#   push-catalog installed            # what's installed now
+#   push-catalog disable <id>         # stop + remove boot-autostart, keep files
+#   push-catalog enable  <id>         # re-add boot-autostart + start
+#   push-catalog installed            # what's installed now (id + running state)
 #   push-catalog --self-test          # offline checks (runs anywhere)
 #
 # Mirrors the framework's install.sh, but runs ON the Push. Needs root for the
@@ -177,9 +179,37 @@ cmd_catalog() { # machine-readable catalog for the web/screen UI
   local reg; reg="$(load_registry)"; q "$reg" catalog "$PUSH_HACK_DIR/hacks"; rm -f "$reg"
 }
 
+# One "<id>\t<running: true|false>" line per installed hack. A hack with no
+# service (binary-less, e.g. a Remote Script) has nothing to be "disabled"
+# and always reports true.
+#
+# Checks the pidfile directly rather than the init.d script's own `status`
+# action: this repo has two different init.d generators (this script's own
+# install_service, and the framework's scripts/install.sh via
+# lib/common.sh, used for push-manager/push-display/push-catalog itself)
+# with two different status wordings ("active"/"inactive" vs "<svc> is
+# running"/"is not running") and, for this script's own generated status,
+# an exit code that's always 0 either way (an `echo` as the last command
+# of each branch) — parsing either text format is fragile where checking
+# the one thing they actually agree on (the /var/run/<svc>.pid convention)
+# is not. Found live: core hacks all reported "disabled" despite running.
 cmd_installed() {
   [ -d "$PUSH_HACK_DIR/hacks" ] || return 0
-  ls -1 "$PUSH_HACK_DIR/hacks" 2>/dev/null || true
+  local id svc pidfile
+  for id in $(ls -1 "$PUSH_HACK_DIR/hacks" 2>/dev/null || true); do
+    svc="push-hack-$id"
+    if [ -f "/etc/init.d/$svc" ]; then
+      pidfile="/var/run/$svc.pid"
+      if [ -f "$pidfile" ] && as_root kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
+        printf '%s\ttrue\n' "$id"
+      else
+        printf '%s\tfalse\n' "$id"
+      fi
+    else
+      printf '%s\ttrue\n' "$id"
+    fi
+  done
+  return 0
 }
 
 cmd_install() {
@@ -208,7 +238,7 @@ install_with_deps() {
 
   local reqn; reqn="$(q "$reg" len "$id" 'requires' 2>/dev/null || echo 0)"
   if [ "$reqn" -gt 0 ]; then
-    local installed_now; installed_now="$(cmd_installed)"
+    local installed_now; installed_now="$(cmd_installed | cut -f1)"
     local i dep
     for ((i=0; i<reqn; i++)); do
       dep="$(q "$reg" field "$id" "requires[$i]")"
@@ -353,6 +383,41 @@ cmd_remove() {
   info "removed $id"
 }
 
+# Stops the service and removes its boot-autostart links, but keeps the
+# installed files and the /etc/init.d/$svc script itself — unlike remove,
+# this is meant to be reversible via enable. The point is saving CPU/RAM on
+# a hack you want to keep around but aren't using right now, without
+# losing its config (e.g. push-braids's braids-config.json) or needing a
+# re-download to bring it back.
+cmd_disable() {
+  local id="$1"; [ -n "$id" ] || die "usage: push-catalog disable <id>"
+  local svc="push-hack-$id"
+  [ -d "$PUSH_HACK_DIR/hacks/$id" ] || die "hack '$id' is not installed"
+  [ -f "/etc/init.d/$svc" ] || die "hack '$id' has no service to disable"
+  as_root "/etc/init.d/$svc" stop 2>/dev/null || true
+  command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
+  as_root rm -f /etc/rc*.d/S99"$svc"
+  info "disabled $id"
+  return 0
+}
+
+# Re-adds boot-autostart links and starts the service — the inverse of
+# disable. A hack that was never disabled (its links already exist) is a
+# harmless no-op: update-rc.d/ln -sf are themselves idempotent.
+cmd_enable() {
+  local id="$1"; [ -n "$id" ] || die "usage: push-catalog enable <id>"
+  local svc="push-hack-$id"
+  [ -f "/etc/init.d/$svc" ] || die "hack '$id' has no service to enable — was it installed?"
+  if command -v update-rc.d >/dev/null 2>&1; then as_root update-rc.d "$svc" defaults >/dev/null 2>&1 || true
+  else for r in 2 3 4 5; do as_root ln -sf "/etc/init.d/$svc" "/etc/rc$r.d/S99$svc" 2>/dev/null || true; done; fi
+  # restart, not start: the generated init.d's start() has no already-running
+  # guard, so calling it on an idempotent/already-enabled hack would spawn a
+  # second duplicate process. restart's own stop-then-start avoids that.
+  as_root "/etc/init.d/$svc" restart || true
+  info "enabled $id"
+  return 0
+}
+
 # ── offline self-test: catalog parsing + the fetch-release/extract path ───────
 self_test() {
   local here; here="$(cd "$(dirname "$0")" && pwd)"
@@ -470,6 +535,8 @@ case "${1:---help}" in
   catalog)    cmd_catalog ;;
   install)    cmd_install "${2:-}" ;;
   remove)     cmd_remove  "${2:-}" ;;
+  disable)    cmd_disable "${2:-}" ;;
+  enable)     cmd_enable  "${2:-}" ;;
   installed)  cmd_installed ;;
   --self-test) self_test ;;
   *) sed -n '2,10p' "$0" ;;

@@ -9,6 +9,11 @@ between minor versions).
 
 ### Added
 
+- Push Hack Catalog gains Enable/Disable per installed hack: `POST
+  /api/disable`/`/api/enable` stop+remove (or re-add+restart) boot-autostart
+  while keeping the installed files and config, for saving CPU/RAM on a
+  hack you're not using right now without a full remove+reinstall.
+  `/api/installed` now reports `{id, enabled}` instead of a bare id list.
 - `catalog/catalog.json` gains entries for `push-audio-loopback` and
   `push-braids`, both now installable via Push Hack Catalog from their
   own repos:
@@ -18,7 +23,9 @@ between minor versions).
   declares `push-audio-loopback` as a `requires`. `hacks/push-audio-loopback/`
   and `hacks/push-braids-host/` are removed from this monorepo — same as
   keyboard-visualizer/automation/browser-bridge before them, development
-  now happens in the split repos directly.
+  now happens in the split repos directly. Both listed as "(alpha)" in
+  their catalog name — newer, less battle-tested than the rest of the
+  catalog.
 - `hacks/push-braids-host`'s on-screen UI gains a third page, "I/O": pick
   which of Push3's own MIDI ports to read pad/button input from, which
   audio device to render to, and which channel pair (1-2, 3-4, ...) of
