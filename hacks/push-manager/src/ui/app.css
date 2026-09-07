@@ -363,7 +363,9 @@ body {
 #btn-midi:hover { color: rgb(0,180,120); }
 #btn-midi.active { color: rgb(0,180,120); }
 
-/* Static link to Push Hack Catalog — always installed alongside push-manager */
+/* Menu-bar links for installed hacks that declare web_ui in their hack.json.
+   display:contents so each <a> stays a direct flex item of .header-inner. */
+#hack-links { display: contents; }
 .header-link {
   font-size: 12px; font-weight: 600; color: var(--grey-mid);
   padding: 6px 0 6px 8px; text-decoration: none;

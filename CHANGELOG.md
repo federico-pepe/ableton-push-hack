@@ -5,6 +5,26 @@ All notable changes to this project are documented here. Format follows
 [Semantic Versioning](https://semver.org/) (pre-1.0: expect breaking changes
 between minor versions).
 
+## [Unreleased]
+
+### Added
+
+- Push Manager's menu bar now lists other installed hacks. Any hack that
+  declares `web_ui` (`{"label", "path"}`) next to its `port` in its own
+  `hack.json` gets a header link to its UI — no push-manager code per hack.
+  This is the same field Push Hack Catalog already reads for its "Open"
+  links, so a hack that works there needs no change. Links refresh on the
+  existing 10s `/api/hacks/installed` poll, so an install or removal shows
+  up without a restart. Docs: `catalog/schema.md`, push-manager's README.
+
+### Changed
+
+- `GET /api/hacks/installed` returns `[{id, name, port, web_ui?}]` instead of
+  a bare array of ids. Breaking for anything that consumed the old shape;
+  in-repo the only caller was Push Manager's own `app.js`.
+- Push Manager's hardcoded `Catalog` header link is gone. The link is now
+  built from push-catalog's own `hack.json`, like every other hack's.
+
 ## [0.1.8-alpha] - 2026-09-06
 
 ### Added

@@ -1917,9 +1917,28 @@ async function brRefresh() {
 // Browser tab needs browser-bridge) — hide their button until the catalog
 // install shows up, same live-checked model as the Shadow UI's own tabs.
 async function refreshOptionalFeatures() {
-  let ids = [];
-  try { ids = await api('GET', '/api/hacks/installed'); } catch (e) { return; }
-  $('btn-browser').style.display = ids.includes('browser-bridge') ? '' : 'none';
+  let hacks = [];
+  try { hacks = await api('GET', '/api/hacks/installed'); } catch (e) { return; }
+  $('btn-browser').style.display =
+    hacks.some(h => h.id === 'browser-bridge') ? '' : 'none';
+  renderHackLinks(hacks);
+}
+
+// Menu-bar hook: every installed hack that declares web_ui + port in its own
+// hack.json gets a header link, Push Hack Catalog included — no per-hack code
+// here. Only rebuilt when the set actually changes, so the 10s poll doesn't
+// kill a hover or a mid-click.
+let hackLinksKey = '';
+function renderHackLinks(hacks) {
+  const links = hacks.filter(h => h.web_ui && h.port);
+  const key = links.map(h => `${h.port}${h.web_ui.path}${h.web_ui.label}`).join('|');
+  if (key === hackLinksKey) return;
+  hackLinksKey = key;
+  $('hack-links').innerHTML = links.map(h =>
+    `<a class="header-link" target="_blank" rel="noopener" ` +
+    `href="//${location.hostname}:${h.port}${esc(h.web_ui.path || '/')}">` +
+    `${esc(h.web_ui.label || h.name || h.id)}</a>`
+  ).join('');
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
@@ -1927,7 +1946,6 @@ history.replaceState({view:'home'}, '');
 loadRoots(false);
 refreshOptionalFeatures();
 setInterval(refreshOptionalFeatures, 10000);
-$('btn-catalog').href = `//${location.hostname}:7702/`;
 
 // Stop all streaming when tab hides or page unloads — prevents orphaned
 // streams that keep mode=2 locked and fight against "Off" mode changes.
