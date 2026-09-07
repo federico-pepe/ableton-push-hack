@@ -24,7 +24,12 @@ func TestInstalledHacks(t *testing.T) {
 	write("broken", `not json`)
 
 	hacksDir = dir
-	defer func() { hacksDir = "/data/push-hack/hacks" }()
+	initdDir = filepath.Join(dir, "init.d") // doesn't exist: everything reads as enabled
+	rcdGlob = filepath.Join(dir, "rc*.d")
+	defer func() {
+		hacksDir = "/data/push-hack/hacks"
+		initdDir, rcdGlob = "/etc/init.d", "/etc/rc*.d"
+	}()
 
 	got := installedHacks()
 	if len(got) != 2 {
@@ -38,5 +43,47 @@ func TestInstalledHacks(t *testing.T) {
 	}
 	if !hackInstalled("push-catalog") || hackInstalled("automation") {
 		t.Error("hackInstalled disagrees with what's on disk")
+	}
+	for _, h := range got {
+		if !h.Enabled {
+			t.Errorf("%s should read as enabled: no /etc/init.d service to check in this test env", h.ID)
+		}
+	}
+}
+
+// hackEnabled mirrors push-catalog.sh's own semantics: a hack with no
+// init.d service at all is always enabled; one with a service is enabled
+// only if it has a boot-autostart rc<N>.d symlink.
+func TestHackEnabled(t *testing.T) {
+	dir := t.TempDir()
+	initdDir = filepath.Join(dir, "init.d")
+	rcdGlob = filepath.Join(dir, "rc*.d")
+	defer func() { initdDir, rcdGlob = "/etc/init.d", "/etc/rc*.d" }()
+
+	if !hackEnabled("no-service") {
+		t.Error("a hack with no init.d service should read as enabled")
+	}
+
+	if err := os.MkdirAll(initdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(initdDir, "push-hack-disabled-one"), []byte("#!/bin/sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if hackEnabled("disabled-one") {
+		t.Error("a service with no rc.d symlink should read as disabled")
+	}
+
+	if err := os.MkdirAll(filepath.Join(dir, "rc2.d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(initdDir, "push-hack-enabled-one"), []byte("#!/bin/sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "rc2.d", "S20push-hack-enabled-one"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !hackEnabled("enabled-one") {
+		t.Error("a service with an rc.d symlink should read as enabled")
 	}
 }

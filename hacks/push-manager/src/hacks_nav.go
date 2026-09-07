@@ -19,6 +19,29 @@ import (
 // hacksDir is a var only so the tests can point it at a temp dir.
 var hacksDir = "/data/push-hack/hacks"
 
+// initdDir and rcdGlob are vars only so the tests can point them at a temp
+// dir — see hackEnabled.
+var (
+	initdDir = "/etc/init.d"
+	rcdGlob  = "/etc/rc*.d"
+)
+
+// hackEnabled mirrors push-catalog.sh's own enabled semantics (cmd_installed
+// there, catalog/schema.md's "The user's own switches" here): "enabled"
+// means "has a boot-autostart link" (an rc<N>.d/S<NN><svc> symlink), not "is
+// currently running" — see that script's cmd_installed for why a
+// running-process or init.d-status check is the wrong signal. A hack with no
+// init.d service at all (binary-less, e.g. a Remote Script) has nothing to
+// disable and is always enabled.
+func hackEnabled(id string) bool {
+	svc := "push-hack-" + id
+	if _, err := os.Stat(filepath.Join(initdDir, svc)); err != nil {
+		return true
+	}
+	matches, _ := filepath.Glob(filepath.Join(rcdGlob, "S*"+svc))
+	return len(matches) > 0
+}
+
 // hackInstalled reports whether a hack with the given id has been deployed
 // (its hack.json exists), checked live rather than cached — used to hide UI
 // for optional hacks that aren't installed, e.g. browser-bridge's Shadow UI
@@ -46,6 +69,9 @@ type hackNav struct {
 	Port     int     `json:"port"`
 	WebUI    *hackUI `json:"web_ui,omitempty"`
 	ShadowUI *hackUI `json:"shadow_ui,omitempty"`
+
+	// Enabled is computed, not decoded from hack.json — see hackEnabled.
+	Enabled bool `json:"enabled"`
 }
 
 // installedHacks reads every deployed hack.json, live — so a hack installed
@@ -61,6 +87,7 @@ func installedHacks() []hackNav {
 		}
 		var h hackNav
 		if json.Unmarshal(data, &h) == nil && h.ID != "" {
+			h.Enabled = hackEnabled(h.ID)
 			hacks = append(hacks, h)
 		}
 	}

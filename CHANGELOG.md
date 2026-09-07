@@ -55,11 +55,22 @@ between minor versions).
   switched off — including the built-in ones. `browsePanelIdx` is gone; the
   Shift+Set chord looks the Browse tab up by id and does nothing if the user
   switched it off.
-- `GET /api/hacks/installed` returns `[{id, name, port, web_ui?, shadow_ui?}]`
+- `GET /api/hacks/installed` returns `[{id, name, port, web_ui?, shadow_ui?, enabled}]`
   instead of a bare array of ids. Breaking for anything that consumed the old
   shape; in-repo the only caller was Push Manager's own `app.js`.
 - Push Manager's hardcoded `Catalog` header link is gone. The link is now
   built from push-catalog's own `hack.json`, like every other hack's.
+
+### Fixed
+
+- A hack disabled through Push Hack Catalog (service stopped, boot-autostart
+  removed, files kept) no longer leaves a dead `web_ui` link in Push
+  Manager's menu bar or a `shadow_ui` tab that never answers. Push Manager
+  now checks the same boot-autostart signal Push Hack Catalog itself uses to
+  report a hack as enabled/disabled, and drops a disabled hack's nav entry
+  entirely; re-enabling it restores the entry with its saved order/switches.
+  It also stops counting a disabled hack as a port claimant in the
+  port-conflict scan.
 
 ## [0.1.8-alpha] - 2026-09-06
 
