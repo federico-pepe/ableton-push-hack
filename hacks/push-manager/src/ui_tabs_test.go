@@ -28,7 +28,12 @@ func TestResolveUIEntries(t *testing.T) {
 
 	hacksDir = dir
 	uiTabsPath = filepath.Join(dir, "ui_tabs.json")
-	defer func() { hacksDir = "/data/push-hack/hacks" }()
+	initdDir = filepath.Join(dir, "init.d") // doesn't exist: everything reads as enabled
+	rcdGlob = filepath.Join(dir, "rc*.d")
+	defer func() {
+		hacksDir = "/data/push-hack/hacks"
+		initdDir, rcdGlob = "/etc/init.d", "/etc/rc*.d"
+	}()
 
 	uiPrefs = []uiPref{
 		{ID: "catalog", Shadow: true, Web: true},
@@ -106,7 +111,12 @@ func TestPortConflicts(t *testing.T) {
 
 	hacksDir = dir
 	uiTabsPath = filepath.Join(dir, "ui_tabs.json")
-	defer func() { hacksDir = "/data/push-hack/hacks" }()
+	initdDir = filepath.Join(dir, "init.d") // doesn't exist: everything reads as enabled
+	rcdGlob = filepath.Join(dir, "rc*.d")
+	defer func() {
+		hacksDir = "/data/push-hack/hacks"
+		initdDir, rcdGlob = "/etc/init.d", "/etc/rc*.d"
+	}()
 
 	conf := portConflicts()
 	if len(conf) != 1 || len(conf[7705]) != 2 {
@@ -131,5 +141,52 @@ func TestPortConflicts(t *testing.T) {
 	}
 	if !byID["catalog"].HasWeb {
 		t.Error("built-in catalog entry lost its web link")
+	}
+}
+
+// A hack disabled through the catalog (its service stopped, boot-autostart
+// removed, files kept) must drop out of the menu bar and the Shadow UI
+// tab strip — its link would otherwise point at nothing running. It must
+// also stop being counted as a port claimant, so it can't turn a healthy
+// port-mate into a false conflict.
+func TestDisabledHackExcluded(t *testing.T) {
+	dir := t.TempDir()
+	writeHack(t, dir, "automation", `{"id":"automation","name":"Automation","port":7703,
+		"web_ui":{"label":"Automation","path":"/"},
+		"shadow_ui":{"label":"AUTO","path":"/api/shadow"}}`)
+	writeHack(t, dir, "keyboard-visualizer", `{"id":"keyboard-visualizer","name":"KV","port":7705,
+		"web_ui":{"label":"KV","path":"/"}}`)
+
+	hacksDir = dir
+	uiTabsPath = filepath.Join(dir, "ui_tabs.json")
+	initdDir = filepath.Join(dir, "init.d")
+	rcdGlob = filepath.Join(dir, "rc*.d")
+	defer func() {
+		hacksDir = "/data/push-hack/hacks"
+		initdDir, rcdGlob = "/etc/init.d", "/etc/rc*.d"
+	}()
+
+	if err := os.MkdirAll(initdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// automation has a service with no boot-autostart symlink: disabled.
+	if err := os.WriteFile(filepath.Join(initdDir, "push-hack-automation"), []byte("#!/bin/sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	byID := map[string]uiEntry{}
+	for _, e := range resolveUIEntries() {
+		byID[e.ID] = e
+	}
+	if _, ok := byID["automation"]; ok {
+		t.Error("a disabled hack should not be a nav entry")
+	}
+	if kv := byID["keyboard-visualizer"]; !kv.HasWeb {
+		t.Error("an unrelated, enabled hack should be unaffected")
+	}
+	for _, e := range activeShadowTabs() {
+		if e.ID == "automation" {
+			t.Error("a disabled hack should not be an active Shadow tab")
+		}
 	}
 }

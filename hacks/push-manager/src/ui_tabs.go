@@ -121,7 +121,7 @@ func candidateEntries() []uiEntry {
 		out = append(out, e)
 	}
 	for _, h := range installedHacks() {
-		if h.Port == 0 || (h.WebUI == nil && h.ShadowUI == nil) {
+		if h.Port == 0 || (h.WebUI == nil && h.ShadowUI == nil) || !h.Enabled {
 			continue
 		}
 		e := uiEntry{ID: h.ID, Label: h.Name, Source: "hack", Port: h.Port, Available: true}
@@ -184,16 +184,19 @@ func resolveUIEntries() []uiEntry {
 	return out
 }
 
-// portConflicts groups installed hacks by port, keeping only the ports more
-// than one hack claims. Only one process can bind a port, so a conflict
-// means at least one of those hacks is not running — a link or a remote tab
-// pointing at it reaches the wrong hack, or nothing. Two hacks are not
-// checked for whether they are actually up: that would be a poller, and the
-// hack.json on disk is enough to tell the user what to fix.
+// portConflicts groups installed, enabled hacks by port, keeping only the
+// ports more than one hack claims. Only one process can bind a port, so a
+// conflict means at least one of those hacks is not running — a link or a
+// remote tab pointing at it reaches the wrong hack, or nothing. A disabled
+// hack isn't a party to this: its service isn't autostarted, so it isn't
+// bound to anything and doesn't turn its port-mate into a false positive.
+// Beyond that, up-ness isn't checked: that would be a poller, and the
+// hack.json + boot-autostart state on disk is enough to tell the user what
+// to fix.
 func portConflicts() map[int][]string {
 	byPort := map[int][]string{}
 	for _, h := range installedHacks() {
-		if h.Port != 0 {
+		if h.Port != 0 && h.Enabled {
 			byPort[h.Port] = append(byPort[h.Port], h.ID)
 		}
 	}

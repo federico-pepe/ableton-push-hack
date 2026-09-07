@@ -53,7 +53,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/live/play` | Starts Live's transport. Sends `play` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `POST` | `/api/live/stop` | Stops Live's transport. Sends `stop` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `GET` | `/api/presets/facets` | Distinct facet values for the Browser filter UI: `{categories, devices, sources, tags}`. |
-| `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?}]` sorted by `id`. The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
+| `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?, enabled}]` sorted by `id`. `enabled` is computed, not read from `hack.json` — it mirrors Push Hack Catalog's own boot-autostart check (see below), not "currently running". The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
 | `GET` | `/api/ui/tabs` | The one ordered list behind both navigations: `{max: 8, entries: [{id, label, source, has_shadow, shadow, shadow_available, requires, has_web, web, web_label, web_path, port, port_conflict}]}`, plus `port_conflicts` — `{"<port>": [ids]}` for every port claimed by more than one installed hack. Built-in Shadow panels plus every installed hack declaring `web_ui` or `shadow_ui`, with the user's saved order and switches applied. |
 | `POST` | `/api/ui/tabs` | Save that list. Body is the new order: `[{id, shadow, web}]`. Persisted to `<hackdir>/ui_tabs.json` and applied to a running Shadow UI immediately (panels for tabs that survive the change keep their state). Returns the same shape as `GET`. |
 | `POST` | `/api/presets/meta` | Set per-preset metadata. Body `{"path":"…","favourite":true,"tags":["warm"]}` — `favourite` and `tags` are independent (omit to leave unchanged). Persisted to `<hackdir>/preset_meta.json`; shared with the on-device Shadow UI Favourites filter. Returns `{ok, favourite, tags}`. `GET /api/presets` accepts `filter,q,fav,tag,device,source,rack` query params. |
@@ -216,6 +216,11 @@ gets used on a phone, next to the hardware.
   end with both switches on, so new things show up rather than going missing.
 - Turning every Shadow tab off leaves the last frame on screen. The Shadow UI
   is still reachable; give it at least one tab to get a usable screen back.
+- A hack **disabled** through Push Hack Catalog (service stopped, its
+  boot-autostart link removed, files kept) drops out of the list entirely —
+  no dead menu-bar link, no Shadow tab that never answers. Re-enabling it
+  brings the entry back on the next poll with its saved order/switches
+  untouched; it doesn't reset to "just installed".
 
 #### Port conflicts
 

@@ -181,7 +181,19 @@ Push Manager reports the clash rather than guessing — a banner on its
 Display -> Tabs page, a note on each affected row, and a line in its log at
 startup. Pick a free port: the assigned ones are listed in `CLAUDE.md`.
 
-Neither reader checks whether the hack is actually running. Push Manager's
-own entry has no `web_ui`: you are already looking at it, and its Catalog
-entry is built in rather than read from push-catalog's `hack.json`, so the
-link survives a catalog installed under a different id.
+Push Manager's own entry has no `web_ui`: you are already looking at it, and
+its Catalog entry is built in rather than read from push-catalog's
+`hack.json`, so the link survives a catalog installed under a different id.
+
+### A disabled hack drops out entirely
+
+Neither reader probes whether a hack is actually *running* — no liveness
+poll, same reasoning as the port-conflict scan above. It does check whether
+a hack is *disabled* (stopped, boot-autostart removed, files kept — Push
+Hack Catalog's `POST /api/disable`): a disabled hack's `web_ui`/`shadow_ui`
+entry is left out of both navigations altogether, rather than showing a
+link or tab that reaches nothing. Re-enabling it (`POST /api/enable`) brings
+the entry back on the next 10s poll, in whatever order/switch state it had
+before — nothing in `ui_tabs.json` is touched by disable/enable. A hack
+disabled this way also stops counting as a claimant in the port-conflict
+scan, since it isn't bound to anything.
