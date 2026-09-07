@@ -143,36 +143,28 @@ func drawIcon(img *image.NRGBA, icon *image.NRGBA, x, y int) {
 // (which arrives as CCJogWheel val=127 CW / val=1 CCW, not a normal press).
 type jogHandler interface{ handleJog(uint8) }
 
-// panelDef pairs a Shadow UI tab with the hack id it depends on. requires
-// == "" means always available (built into the core three hacks); any
-// other value gates the tab on that hack being deployed, checked live via
-// hackInstalled so installing/removing it through the catalog takes effect
-// without a push-manager restart. This is the one place a built-in tab's
-// availability is declared — shadowUIStart/drawPanelTabs/shadowRegisterLEDs/
-// shadowUIHandleCC all loop over panelDefs generically instead of
-// special-casing a panel's index.
-var panelDefs = [...]struct {
+// panelDef declares one built-in Shadow UI tab: its stable id (what the
+// user's tab config in shadow_ui.json refers to), the label drawn on the top
+// strip, and the hack id it depends on. requires == "" means always
+// available; any other value gates the tab on that hack being deployed,
+// checked live via hackInstalled so installing/removing it through the
+// catalog takes effect without a push-manager restart.
+//
+// This is only the *built-in* half of the tab list. shadow_tabs.go merges it
+// with any installed hack declaring shadow_ui, then applies the user's own
+// order/on-off — which is why no tab's screen position is hardcoded here any
+// more: the CC for a tab is CCScreenTopN(its position in the resolved list).
+var panelDefs = []struct {
+	id       string
+	label    string
 	requires string
-	cc       uint8
 	new      func() Panel
 }{
-	{"", CCScreenTop1, func() Panel { return newFilePanel() }},
-	{"", CCScreenTop2, func() Panel { return newStatsPanel() }},
-	{"", CCScreenTop3, func() Panel { return newMidiPanel() }},
-	{"browser-bridge", CCScreenTop4, func() Panel { return newBrowserPanel() }},
-	{"", CCScreenTop5, func() Panel { return newCatalogPanel() }},
-}
-
-// browsePanelIdx is the index of the BrowserPanel within shadowUI.panels —
-// still named/exported for the Shift+Set "jump to Browse" chord, the one
-// caller that needs to reach a specific tab rather than react to a press.
-const browsePanelIdx = 3
-
-// panelAvailable reports whether the Shadow UI tab at index i is currently
-// usable (its required hack, if any, is installed).
-func panelAvailable(i int) bool {
-	r := panelDefs[i].requires
-	return r == "" || hackInstalled(r)
+	{"files", "FILES", "", func() Panel { return newFilePanel() }},
+	{"stats", "STATS", "", func() Panel { return newStatsPanel() }},
+	{"midi", "MIDI", "", func() Panel { return newMidiPanel() }},
+	{"browser", "BROWSER", "browser-bridge", func() Panel { return newBrowserPanel() }},
+	{"catalog", "CATALOG", "", func() Panel { return newCatalogPanel() }},
 }
 
 type Panel interface {
@@ -197,7 +189,8 @@ type Panel interface {
 type ShadowUI struct {
 	mu       sync.Mutex
 	active   bool
-	panels   []Panel
+	tabs     []uiEntry // resolved at start: user order, switched on, available
+	panels   []Panel     // one per tab, same index
 	panelIdx int
 	stopCh   chan struct{}
 }
@@ -223,20 +216,23 @@ const (
 // - CCSettings (CC30): exclusive solo group "settings-anchor" — single press
 //   re-sends same value, keeping the anchor LED lit while shadow UI is active
 // Must be called without ledConfigMu held.
-func shadowRegisterLEDs(activePanelIdx int) {
+func shadowRegisterLEDs(nTabs, activePanelIdx int) {
 	ledConfigMu.Lock()
-	for i, d := range panelDefs {
-		if panelAvailable(i) {
-			ledConfigs[d.cc] = LEDConfig{Mode: LEDModeExclusive, Color: shadowTabColor, Group: "shadow-tabs"}
+	for i := 0; i < maxShadowTabs; i++ {
+		cc := CCScreenTopN(i)
+		if i < nTabs {
+			ledConfigs[cc] = LEDConfig{Mode: LEDModeExclusive, Color: shadowTabColor, Group: "shadow-tabs"}
 		} else {
-			delete(ledConfigs, d.cc)
+			delete(ledConfigs, cc)
 		}
 	}
 	ledConfigs[CCSettings] = LEDConfig{Mode: LEDModeExclusive, Color: 127, Group: "settings-anchor"}
 	ledConfigMu.Unlock()
 	// Bottom button LEDs are managed dynamically via updateBotLEDs — no static config needed.
 
-	go exclusiveLED(panelDefs[activePanelIdx].cc, shadowTabColor)
+	if activePanelIdx < nTabs {
+		go exclusiveLED(CCScreenTopN(activePanelIdx), shadowTabColor)
+	}
 }
 
 // shadowUnregisterLEDs removes shadow UI LED configs.
@@ -244,18 +240,14 @@ func shadowRegisterLEDs(activePanelIdx int) {
 // sequence (clearAllLEDs) so no explicit send needed here.
 func shadowUnregisterLEDs() {
 	ledConfigMu.Lock()
-	delete(ledConfigs, CCScreenTop1)
-	delete(ledConfigs, CCScreenTop2)
-	delete(ledConfigs, CCScreenTop3)
-	delete(ledConfigs, CCScreenTop4)
-	delete(ledConfigs, CCScreenTop5)
+	for i := 0; i < maxShadowTabs; i++ {
+		delete(ledConfigs, CCScreenTopN(i))
+	}
 	delete(ledConfigs, CCSettings)
 	ledConfigMu.Unlock()
-	sendSeqCC(0, CCScreenTop1, 0) //nolint:errcheck
-	sendSeqCC(0, CCScreenTop2, 0) //nolint:errcheck
-	sendSeqCC(0, CCScreenTop3, 0) //nolint:errcheck
-	sendSeqCC(0, CCScreenTop4, 0) //nolint:errcheck
-	sendSeqCC(0, CCScreenTop5, 0) //nolint:errcheck
+	for i := 0; i < maxShadowTabs; i++ {
+		sendSeqCC(0, CCScreenTopN(i), 0) //nolint:errcheck
+	}
 	// Clear all bottom button LEDs.
 	for _, cc := range []uint8{CCScreenBot1, CCScreenBot2, CCScreenBot3, CCScreenBot4,
 		CCScreenBot5, CCScreenBot6, CCScreenBot7, CCScreenBot8} {
@@ -273,16 +265,60 @@ func updateBotLEDs(panel Panel) {
 	}
 }
 
+// buildTabs resolves the user's tab config into live panels. Caller holds
+// shadowUI.mu. An existing panel is kept when its tab survives the change, so
+// reordering the list from the web UI does not throw away a browser's cursor
+// or a catalog's fetched listing.
+func (s *ShadowUI) buildTabs() {
+	prev := make(map[string]Panel, len(s.tabs))
+	for i, t := range s.tabs {
+		if i < len(s.panels) {
+			prev[t.ID] = s.panels[i]
+		}
+	}
+	s.tabs = activeShadowTabs()
+	s.panels = make([]Panel, len(s.tabs))
+	for i, t := range s.tabs {
+		if p, ok := prev[t.ID]; ok {
+			s.panels[i] = p
+		} else {
+			s.panels[i] = t.newPanel()
+		}
+	}
+	if s.panelIdx >= len(s.panels) {
+		s.panelIdx = 0
+	}
+}
+
+// shadowUIReload re-resolves the tab config while the UI is running — called
+// when the web UI saves new settings. No-op when the Shadow UI is not up;
+// shadowUIStart resolves fresh anyway.
+func shadowUIReload() {
+	shadowUI.mu.Lock()
+	if !shadowUI.active {
+		shadowUI.mu.Unlock()
+		return
+	}
+	shadowUI.buildTabs()
+	n, idx := len(shadowUI.tabs), shadowUI.panelIdx
+	var panel Panel
+	if n > 0 {
+		panel = shadowUI.panels[idx]
+	}
+	shadowUI.mu.Unlock()
+	shadowRegisterLEDs(n, idx)
+	if panel != nil {
+		go updateBotLEDs(panel)
+	}
+}
+
 func shadowUIStart() {
 	shadowUI.mu.Lock()
 	defer shadowUI.mu.Unlock()
 	if shadowUI.active {
 		return
 	}
-	shadowUI.panels = make([]Panel, len(panelDefs))
-	for i, d := range panelDefs {
-		shadowUI.panels[i] = d.new()
-	}
+	shadowUI.buildTabs()
 	shadowUI.panelIdx = 0
 	shadowUI.stopCh = make(chan struct{})
 	shadowUI.active = true
@@ -290,9 +326,11 @@ func shadowUIStart() {
 		log.Printf("shadow_ui: shmSetMode(2): %v", err)
 	}
 	go shadowUI.renderLoop()
-	shadowRegisterLEDs(0)
-	go updateBotLEDs(shadowUI.panels[0])
-	log.Printf("shadow_ui: started")
+	shadowRegisterLEDs(len(shadowUI.tabs), 0)
+	if len(shadowUI.panels) > 0 {
+		go updateBotLEDs(shadowUI.panels[0])
+	}
+	log.Printf("shadow_ui: started (%d tabs)", len(shadowUI.tabs))
 }
 
 // shadowUIStop deactivates the shadow UI and restores passthrough display mode.
@@ -315,14 +353,21 @@ func shadowUIStop() {
 // lights its tab. No-op if the shadow UI is not running.
 func shadowUISwitchToBrowse() {
 	shadowUI.mu.Lock()
-	if !shadowUI.active || len(shadowUI.panels) <= browsePanelIdx || !panelAvailable(browsePanelIdx) {
-		shadowUI.mu.Unlock()
-		return
+	idx := -1
+	for i, t := range shadowUI.tabs {
+		if t.ID == "browser" {
+			idx = i
+			break
+		}
 	}
-	shadowUI.panelIdx = browsePanelIdx
-	panel := shadowUI.panels[browsePanelIdx]
+	if !shadowUI.active || idx < 0 {
+		shadowUI.mu.Unlock()
+		return // Browse tab switched off, or browser-bridge not installed
+	}
+	shadowUI.panelIdx = idx
+	panel := shadowUI.panels[idx]
 	shadowUI.mu.Unlock()
-	go exclusiveLED(panelDefs[browsePanelIdx].cc, shadowTabColor)
+	go exclusiveLED(CCScreenTopN(idx), shadowTabColor)
 	go updateBotLEDs(panel)
 }
 
@@ -362,36 +407,34 @@ func shadowUIHandleCC(cc, val uint8) {
 		shadowUI.mu.Unlock()
 		return
 	}
-	// Top buttons switch panels (press only). Loop over panelDefs rather than
-	// switching on a hardcoded index per tab — an unavailable tab's button
-	// (its required hack not installed) is a no-op, same as its blank column
-	// in drawPanelTabs.
-	if val == 127 {
-		for i, d := range panelDefs {
-			if cc != d.cc {
-				continue
-			}
-			if !panelAvailable(i) {
-				shadowUI.mu.Unlock()
-				return
-			}
-			already := shadowUI.panelIdx == i
-			shadowUI.panelIdx = i
-			panel := shadowUI.panels[i]
+	// Top buttons switch panels (press only). A tab's CC is its position in
+	// the resolved list, so a button past the last tab is simply a no-op.
+	if val == 127 && cc >= CCScreenTop1 && cc < CCScreenTop1+maxShadowTabs {
+		i := int(cc - CCScreenTop1)
+		if i >= len(shadowUI.panels) {
 			shadowUI.mu.Unlock()
-			// Re-pressing the MIDI tab exits the monitor sub-view; entering the
-			// panel fresh always lands on the main (intercept/forward) view.
-			if mp, ok := panel.(*MidiPanel); ok {
-				if already {
-					mp.handleTabReenter()
-				} else {
-					mp.monitor = false
-				}
-			}
-			go exclusiveLED(d.cc, shadowTabColor)
-			go updateBotLEDs(panel)
 			return
 		}
+		already := shadowUI.panelIdx == i
+		shadowUI.panelIdx = i
+		panel := shadowUI.panels[i]
+		shadowUI.mu.Unlock()
+		// Re-pressing the MIDI tab exits the monitor sub-view; entering the
+		// panel fresh always lands on the main (intercept/forward) view.
+		if mp, ok := panel.(*MidiPanel); ok {
+			if already {
+				mp.handleTabReenter()
+			} else {
+				mp.monitor = false
+			}
+		}
+		go exclusiveLED(cc, shadowTabColor)
+		go updateBotLEDs(panel)
+		return
+	}
+	if len(shadowUI.panels) == 0 {
+		shadowUI.mu.Unlock()
+		return
 	}
 	panel := shadowUI.panels[shadowUI.panelIdx]
 	shadowUI.mu.Unlock()
@@ -423,6 +466,10 @@ func (s *ShadowUI) renderFrame() {
 	if !s.active {
 		s.mu.Unlock()
 		return
+	}
+	if len(s.panels) == 0 {
+		s.mu.Unlock()
+		return // every tab switched off: leave the last frame up
 	}
 	panel := s.panels[s.panelIdx]
 	panelIdx := s.panelIdx
@@ -460,15 +507,12 @@ func drawText(img *image.NRGBA, x, baseline int, s string, col color.NRGBA) {
 func textWidth(s string) int { return gtext.Width(s) }
 
 // drawPanelTabs renders the top 18px strip with panel labels.
-// Active panel gets a white background with black text. A panel whose
-// required hack (panelDefs) isn't installed renders blank — mirrors the
-// web UI hiding its own nav link for the same hack (see hacks_nav.go).
+// Active panel gets a white background with black text. The slice is already
+// the resolved, switched-on, dependency-satisfied list (ui_tabs.go), so every
+// entry gets a column — nothing to skip here.
 func drawPanelTabs(img *image.NRGBA, panels []Panel, activeIdx int) {
 	fillRect(img, 0, 0, suiW, suiTopH, suiDarkGray)
 	for i, p := range panels {
-		if !panelAvailable(i) {
-			continue
-		}
 		x := i * suiColW
 		label := p.Label()
 		if i == activeIdx {

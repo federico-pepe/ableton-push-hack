@@ -21,6 +21,8 @@
   .name { font-weight:600; }
   .desc { color:var(--muted); font-size:14px; margin-top:2px; }
   .meta { color:var(--muted); font-size:12px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .meta a.repo { color:var(--muted); text-decoration:underline; }
+  .meta a.repo:hover { color:var(--fg); }
   button { border:0; border-radius:8px; padding:8px 14px; font:inherit; font-weight:600; font-size:14px; cursor:pointer; }
   .install { background:var(--accent); color:var(--accent-fg); }
   .remove { background:transparent; color:var(--danger); border:1px solid var(--line); }
@@ -93,8 +95,17 @@ async function load() {
     const card = document.createElement("div");
     card.className = "card";
     const req = (h.requires || []).map(r => `<span class="tag">needs ${esc(r)}</span>`).join(" ");
+    // Who maintains it: the catalog's author field, and the repo the hack
+    // actually ships from — the one thing that says where an install comes
+    // from. Linked when we know the homepage.
+    const repo = h.github_repo
+      ? (h.homepage
+          ? `<a class="repo" href="${esc(h.homepage)}" target="_blank" rel="noopener">${esc(h.github_repo)}</a>`
+          : esc(h.github_repo))
+      : "";
     const meta = [
       h.author && `by ${esc(h.author)}`,
+      repo,
       update ? `v${esc(h.installed_version)} installed &rarr; v${esc(h.version || "?")} available`
              : `v${esc(h.version || "?")}`,
       `updated ${fmtDate(h.released_at)}`,

@@ -102,6 +102,26 @@
     <div class="disp-tabs">
       <button class="disp-tab active" data-tab="control" onclick="showDispTab('control')">Control</button>
       <button class="disp-tab"        data-tab="draw"    onclick="showDispTab('draw')">Draw</button>
+      <button class="disp-tab"        data-tab="tabs"    onclick="showDispTab('tabs')">Tabs</button>
+    </div>
+
+    <!-- Tab: Tabs — Shadow UI tab order + per-entry web/shadow switches -->
+    <div id="dtab-tabs" style="display:none">
+      <div class="disp-section">
+        <div class="disp-label">Navigation</div>
+        <p class="page-desc" id="tabs-desc">
+          Order and switches for both navigations. <b>Shadow</b> shows the entry as
+          a tab on Push's screen; <b>Web</b> shows it in this page's menu bar.
+          Only the first 8 Shadow tabs fit on Push's 8 top buttons.
+        </p>
+        <div id="tabs-warn"></div>
+        <div id="tabs-list" class="tabs-list"></div>
+        <div class="tabs-actions">
+          <button class="draw-tool-btn" onclick="saveUITabs()">Save</button>
+          <button class="draw-tool-btn" onclick="loadUITabs()">Revert</button>
+          <span id="tabs-msg" class="tabs-msg"></span>
+        </div>
+      </div>
     </div>
 
     <!-- Tab: Control -->

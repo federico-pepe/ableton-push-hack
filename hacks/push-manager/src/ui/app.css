@@ -363,6 +363,33 @@ body {
 #btn-midi:hover { color: rgb(0,180,120); }
 #btn-midi.active { color: rgb(0,180,120); }
 
+/* ── Shadow UI / menu tab settings ───────────────────────────────────────── */
+.tabs-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.tabs-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--grey); border-radius: 6px; background: var(--white);
+}
+.tabs-row.overflow { opacity: 0.55; }
+.tabs-row .tabs-name { font-weight: 600; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabs-row .tabs-sub { font-size: 11px; color: var(--grey-mid); font-weight: 400; }
+.tabs-row .tabs-move { background: none; border: 1px solid var(--grey); border-radius: 4px;
+  cursor: pointer; width: 26px; height: 26px; font-size: 13px; line-height: 1; color: var(--black); }
+.tabs-row .tabs-move:disabled { opacity: 0.3; cursor: default; }
+.tabs-sw { display: flex; align-items: center; gap: 4px; font-size: 11px;
+  color: var(--grey-mid); text-transform: uppercase; letter-spacing: 0.04em; }
+.tabs-sw input { width: 16px; height: 16px; }
+.tabs-sw.na { opacity: 0.3; }
+.tabs-clash { color: rgb(200,60,60); }
+.tabs-warn-row {
+  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid rgb(220,60,60); color: rgb(180,40,40);
+  background: rgba(220,60,60,0.07); font-size: 12px; line-height: 1.5;
+}
+.tabs-warn-row code { font-family: monospace; font-size: 11px; }
+.tabs-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.tabs-msg { font-size: 12px; color: var(--grey-mid); }
+
 /* Menu-bar links for installed hacks that declare web_ui in their hack.json.
    display:contents so each <a> stays a direct flex item of .header-inner. */
 #hack-links { display: contents; }

@@ -13,13 +13,20 @@ import (
 	"image"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/widgets"
 )
 
-const catalogAPIBase = "http://127.0.0.1:7702"
+// push-catalog is one of the three core hacks, so its port is a fixed fact
+// of the device rather than something to discover — same reasoning that lets
+// ui_tabs.go hand the built-in CATALOG entry a menu-bar link without the
+// installed hack having to declare web_ui.
+const catalogPort = 7702
+
+var catalogAPIBase = fmt.Sprintf("http://127.0.0.1:%d", catalogPort)
 
 // Rows visible in the content area: (suiContentBot-suiContentY - breadcrumb 13)
 // / rowH(18) ≈ 6. Kept as a const so cursor/scroll math needs no render pass.
@@ -35,6 +42,7 @@ type catalogHack struct {
 	UpdateAvailable  bool     `json:"update_available"`
 	Description      string   `json:"description"`
 	Author           string   `json:"author"`
+	GithubRepo       string   `json:"github_repo"`
 	Requires         []string `json:"requires"`
 }
 
@@ -280,7 +288,13 @@ func (p *CatalogPanel) Render(img *image.NRGBA) {
 		rows[i] = widgets.ListRow{Text: text, TextCol: tc}
 	}
 
+	// Breadcrumb doubles as the detail line for whatever is under the
+	// cursor: who maintains this hack and which repo it installs from. The
+	// hack count was the same number the list already shows.
 	crumb := fmt.Sprintf("Catalog - %d hacks", len(p.hacks))
+	if h, ok := p.selected(); ok {
+		crumb = catalogOrigin(h)
+	}
 	widgets.RenderList(img, widgets.Default, widgets.ListView{
 		Rows:       rows,
 		Cursor:     p.cursor,
@@ -289,6 +303,22 @@ func (p *CatalogPanel) Render(img *image.NRGBA) {
 		Status:     p.status, // when non-empty, overrides breadcrumb
 		EmptyText:  "No hacks - is the push-catalog daemon running?",
 	}, suiContentY, suiW, catalogRowH, suiContentBot)
+}
+
+// catalogOrigin is the "who made this / where does it come from" line.
+// Author is dropped when it is just the repo owner again, so the common case
+// reads as one thing rather than the same name twice.
+func catalogOrigin(h catalogHack) string {
+	owner, _, _ := strings.Cut(h.GithubRepo, "/")
+	switch {
+	case h.GithubRepo != "" && (h.Author == "" || h.Author == owner):
+		return h.GithubRepo
+	case h.GithubRepo != "":
+		return fmt.Sprintf("%s - by %s", h.GithubRepo, h.Author)
+	case h.Author != "":
+		return "by " + h.Author
+	}
+	return "Catalog"
 }
 
 // ── bottom strip ──────────────────────────────────────────────────────────────

@@ -29,19 +29,23 @@ func hackInstalled(id string) bool {
 	return err == nil
 }
 
-type hackWebUI struct {
+// hackUI is the shape of both hack.json nav hooks — web_ui (a menu-bar
+// link) and shadow_ui (a Shadow UI tab, rendered by remote_panel.go).
+// Same two fields; the port comes from the hack's own `port`.
+type hackUI struct {
 	Label string `json:"label"`
 	Path  string `json:"path"`
 }
 
-// hackNav is one installed hack as the web UI sees it: id for gating a
-// feature button, plus port + web_ui for the menu-bar link (nil web_ui = no
-// link, e.g. a Remote Script or push-display).
+// hackNav is one installed hack as the UI layer sees it: id for gating a
+// feature button, plus port + whichever nav hooks it declares. Both are nil
+// for a hack with no UI of its own (a Remote Script, push-display).
 type hackNav struct {
-	ID    string     `json:"id"`
-	Name  string     `json:"name"`
-	Port  int        `json:"port"`
-	WebUI *hackWebUI `json:"web_ui,omitempty"`
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Port     int     `json:"port"`
+	WebUI    *hackUI `json:"web_ui,omitempty"`
+	ShadowUI *hackUI `json:"shadow_ui,omitempty"`
 }
 
 // installedHacks reads every deployed hack.json, live — so a hack installed

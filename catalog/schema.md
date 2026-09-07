@@ -111,40 +111,77 @@ Remote Script, which must land in Live's own User Library, not
   `hack.json` before deleting `hacks/<id>/`, and removes it too — the
   daemon owns the full lifecycle of anything it put on disk.
 
-## Web UI navigation (`hack.json`'s `web_ui`)
+## Navigation hooks (`hack.json`'s `web_ui` and `shadow_ui`)
 
-A hack with its own web UI declares it once, so the user never has to know
-the port and type the URL by hand:
+A hack can put itself in either of push-manager's two navigations. Both
+hooks are one object next to the hack's own `port`, and both are optional:
 
 ```jsonc
 {
   "port": 7703,
-  "web_ui": { "label": "My Hack", "path": "/" }
+  "web_ui":    { "label": "My Hack", "path": "/" },
+  "shadow_ui": { "label": "MINE",    "path": "/api/shadow" }
 }
 ```
 
 | Field | Meaning |
 |-------|---------|
-| `label` | Link text. Keep it short — it sits in a menu bar. |
-| `path` | Path on the hack's own port, e.g. `/`. Defaults to `/` if empty. |
+| `label` | Link or tab text. Keep it short. A `shadow_ui` label is drawn in a 120px column on Push's screen, and **must be ASCII** — the on-device font has no glyph past ASCII. |
+| `path` | Path on the hack's own port. Defaults to `/` if empty. |
 
-The port is not repeated here; the hack's own `port` field is used. The URL
-built is `http://<device-host>:<port><path>`, opened in a new tab.
+The port is not repeated in either object; the hack's own `port` field is
+used.
 
-One declaration, two places read it:
+### `web_ui` — a link in the menu bar
+
+Two readers, one declaration:
 
 - **Push Hack Catalog** puts an "Open" link on the installed hack's card.
   `GET /api/catalog` (given `hacks_dir`, which `cmd_catalog` always passes)
   reads it straight off the *installed* copy's `hack.json` alongside
   `installed_version`, so the card needs no second round-trip.
-- **Push Manager** puts a link in its own menu bar, from
-  `GET /api/hacks/installed` (`[{id, name, port, web_ui?}]`, sorted by `id`),
-  polled every 10s. A hack installed or removed through the catalog shows up
-  or drops out within 10s, with no push-manager restart.
+- **Push Manager** puts a link in its own menu bar, built from
+  `GET /api/ui/tabs` and polled every 10s. A hack installed or removed
+  through the catalog shows up or drops out within 10s, no restart.
 
-Omit `web_ui` entirely for a hack with no UI of its own (a Remote Script, or
-push-display). That is how a hack opts out of both.
+The URL is `http://<device-host>:<port><path>`, opened in a new tab.
 
-Neither reader checks whether the hack is actually running — the link is
-built from what is on disk. Push Manager's own entry is absent by design:
-its `hack.json` declares no `web_ui`, since you are already looking at it.
+### `shadow_ui` — a tab on Push's screen
+
+Push Manager adds a tab to the Shadow UI's top strip and renders it by
+polling the hack. The hack serves a small JSON view and receives every
+button press back as a `{"cc", "value"}` POST on the same path — it owns
+all the state, push-manager just draws. The full request/response contract
+is in [push-manager's README](../hacks/push-manager/README.md#shadow-ui-tabs-from-other-hacks).
+
+A hack with a `shadow_ui` tab does **not** need to draw pixels or touch the
+display shm, so it is not a "display-owning hack" — no push-display
+dependency, no `/api/display/*` calls. It does need push-manager running,
+since push-manager is what draws the tab.
+
+### The user's own switches
+
+Both hooks are a *request*, not a guarantee. Push Manager's Display →
+Tabs settings page lists every entry with two switches — one per
+navigation — and lets the user reorder them; the order and switches
+persist in push-manager's `ui_tabs.json`. A hack that has just been
+installed starts with both switches on. Push 3 has 8 top buttons, so only
+the first 8 switched-on Shadow tabs are drawn.
+
+Omit a hook entirely for a hack that has no such UI (a Remote Script, or
+push-display). That is how a hack opts out — it then never appears in that
+navigation or in the settings list for it.
+
+### Ports must be unique
+
+Both hooks build their URL from the hack's own `port`, and only one process
+can bind a port. Two installed hacks declaring the same one means at least
+one is not running, and a link or tab pointing there reaches the wrong hack.
+Push Manager reports the clash rather than guessing — a banner on its
+Display -> Tabs page, a note on each affected row, and a line in its log at
+startup. Pick a free port: the assigned ones are listed in `CLAUDE.md`.
+
+Neither reader checks whether the hack is actually running. Push Manager's
+own entry has no `web_ui`: you are already looking at it, and its Catalog
+entry is built in rather than read from push-catalog's `hack.json`, so the
+link survives a catalog installed under a different id.
