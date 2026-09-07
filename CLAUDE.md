@@ -50,89 +50,20 @@ hacks/push-display/deploy.sh                      # standalone push-display re-d
 
 ## Architecture
 
-### Framework layer (`scripts/`, `lib/`)
-SSH-based deploy system. `lib/common.sh` — shared SSH helpers (`push_exec`, `push_exec_root` use `-n` to prevent stdin consumption in loops), Push path detection, service install/remove. Push uses **sysvinit**, not systemd. Stop service before SCP — running binary is locked on Linux. Regular binaries copied as `ableton`; `.so` files copied as `root` via `push_copy_root`. `check_connection()` auto-clears a stale SSH host key (`clear_host_key()` → `ssh-keygen -R`) when an OS update regenerated the device key — detects `REMOTE HOST IDENTIFICATION HAS CHANGED` and retries.
+Full write-up (framework layer, hack structure convention, `core/` shared
+library package table, and each core hack's file-by-file layout) lives in
+[docs/architecture.md](docs/architecture.md). HTTP routes and wire protocols
+live in [docs/api-reference.md](docs/api-reference.md). This file keeps only
+the rules that must not be violated.
 
-### Hack structure (`hacks/<hack-id>/`)
-- `hack.json` — metadata: id, name, version, port, allowed_roots, binary, enabled
-- `service.initd` — optional custom init.d template; placeholders: `{{SVC_NAME}}`, `{{HACK_DIR}}`, `{{LOG_DIR}}`, `{{PORT}}`
-- `remote-script/` — optional payload copied to `<remote_hack_dir>/remote-script` by install.sh
-- Binary deployed to `/data/push-hack/hacks/<id>/`; service at `/etc/init.d/push-hack-<id>`
-
-### Core shared library (`core/`)
-Nested Go module (`github.com/federico-pepe/ableton-push-hack/core`, own `go.mod`) that push-manager/automation/keyboard-visualizer each pull in via `require`+`replace ../../../core` in their own `go.mod` — hacks stay independently buildable, and a third-party hack in its own repo could `require` the same path without a `replace` and resolve it from GitHub. See `discovery/push-core-refactor.md` for the full extraction plan/rationale.
-
-| Package | Contents |
-|---|---|
-| `core/push3` | Zero-import Push 3 facts: full button/encoder MIDI map (`buttons.go`), 128-entry named LED palette + `ColorByName` (`colors.go`), display geometry `VisW/VisH/Stride/FrameBytes/TotalBytes` (`geometry.go`), encoder helpers `IsEncoderCC/DecodeRel/ScaleVal/ClampInt` (`encoder.go`, tested in `encoder_test.go`). push-manager's `push3_buttons.go` re-exports the button/encoder consts as package-`main` aliases (`const CCShift = push3.CCShift`, etc.) so its ~180 existing call sites across `midi.go`/`ui_shadow.go` didn't need touching — `core/push3` is still the single source of truth. |
-| `core/gfx`, `core/gfx/text` | Stdlib-only image primitives (`FillRect`, `DrawIcon`) in `gfx`; the only `golang.org/x/image` consumer (`DrawText`/`TextWidth`/`Truncate`, basicfont) split into `gfx/text` so automation and keyboard-visualizer's zero-external-dependency binaries stay that way — verified via `go list -deps`. **Everything drawn through `gfx/text` must be ASCII** — see the rule below. |
-| `core/gfx/widgets` | Shared Shadow-UI-style drawing components built on `gfx`/`gfx/text`: `Theme` (named color palette), `SoftButton`/`DrawBotStrip` (semantic button state instead of string-matching label text), `ListRow`/`ListView`/`RenderList` (scrollable list + breadcrumb + scrollbar, generalizing push-manager's `FilePanel`/`BrowserPanel`), `KVRow`/`DrawKVRows` (label:value rows, generalizing `StatsPanel`/`MidiPanel`), plus ahead-of-need primitives (`DrawBorder`/`DrawMeter`/`DrawArc`, `Knob`). Operates only on plain `image.NRGBA` — no shm, no hack-specific state — so any hack drawing on Push's screen can share it (keyboard-visualizer is a candidate second adopter for `Theme`, not yet done). See `discovery/shadow-ui-component-framework.md`. All 4 push-manager panels migrated (list/row rendering + `SoftBotStrip`); `Panel` interface's `BotStrip()` is gone, replaced by `SoftBotStrip()`. |
-| `core/display` | `codec.go`: `ToBGR565`/`FromBGR565` pixel codecs (tested in `codec_test.go` — duplicate-frame invariant, stride padding, round-trip). `shm.go`: `Shm` struct wrapping the push_hook.so shared-memory mmap (`Ensure/Connected/Mode/SetMode/ReadFrame/WritePixels/CompareAndSetMode/FrameSeq`) — **`os.O_RDWR` with no `O_CREATE`**, push_hook.c is the sole creator, push-manager the sole writer (see "Display-owning hacks" below). Single consumer (push-manager); other hacks reach the display via `core/pmclient` instead. |
-| `core/httpx` | `WithLogging`, `WithCORS(allowMethods, next)` (allowMethods is the one thing that ever diverged per-hack, pinned by `middleware_test.go`), `JSON`, `Error`, `NewServer` (30s read / 5min write / 120s idle timeout triple), `ServeEmbedded` (automation's and keyboard-visualizer's identical single-file `handleUI`; push-manager's three-file UI keeps its own handler). |
-| `core/hackcfg` | `Config` + `Load(path, defaultPort)` — the minimal id/name/version/port shape automation and keyboard-visualizer both used. push-manager's config is a strict superset (allowed_roots, settings, `~` expansion) and stays put. |
-| `core/sse` | Generic `Broker[T]` (`Register/Unregister/Broadcast`) + `Serve[T]` SSE HTTP helper. `NewBroker`'s `pruneDropped` parameter preserves a real behavioral difference: automation drops a client whose channel is full (`true`), keyboard-visualizer does not (`false`) — pinned by `broker_test.go`. |
-| `core/pmclient` | HTTP client for push-manager's display/tempo API — `SetMode`, `PushImage`, `DisplayStatus`, `Tempo`. Turns the "display-owning hacks go through push-manager's HTTP API" rule (see below) into a compiler-enforced one. Used by keyboard-visualizer (display takeover, dependency watcher) and automation (BPM poll fallback). |
-| `core/alsaseq` | The ALSA sequencer layer, `/dev/snd/seq` ioctls, no cgo. `const.go`: kernel ABI (ioctl numbers, struct offsets, event types — verbatim move, diffed against all three hacks' prior copies). `bootsettle.go`: `WaitForBootSettle` (defers `/dev/snd` access past the USB-A cold-boot enumeration window). `client.go`: `Client`/`Open`/`CreatePort`/`Subscribe`/`Addr`/`FD`/`Close`. `event.go`: `WriteEvent`/`SendCC`/`SendNote`/`SendSysEx`. `ports.go`: `Port`/`ParseClients`/`EnumPorts`/`FindByName` (tested against `testdata/seq_clients_*.txt` fixtures — bare and shifted-client-number cases; hand-constructed, not yet captured off real hardware). `reader.go`: `Handler` interface + `Walk`/`ReadLoop` — the shared event decoder that fixed automation's SysEx desync bug (its own walker had no variable-length branch; `reader_test.go`'s `TestWalkFixedVarlenFixed` is the regression test). |
-
-### Push Manager (`hacks/push-manager/`)
-Go binary, no runtime deps. ~8–15MB RSS. Port 7701. See `hacks/push-manager/README.md` for full API.
-
-| File | Role |
-|------|------|
-| `src/main.go` | HTTP server, routes, middleware |
-| `src/files.go` | Filesystem ops with path traversal guard |
-| `src/stats.go` | CPU/memory/disk/uptime/IP stats; top processes — `watchedProcs()` combines a fixed set (Ableton Index, Live, Push3) with every currently installed hack that has a binary (read live off each `hack.json`), so an installed/removed hack appears/disappears from the CPU breakdown without a push-manager restart, instead of the previous hardcoded four-entry list that missed every hack split out of the monorepo. |
-| `src/presets.go` | Preset index: scans `.adv`/`.adg` under Core Library, Factory Packs, User Library. In-memory cache + `presets.json`. `QueryPresets(PresetFilter)`, `presetFacets()`. Metadata (favourites, tags) in `preset_meta.json`. |
-| `src/live_bridge.go` | One-shot TCP to `127.0.0.1:7704` (Browser Bridge). `liveLoad(name, category)` → `load:<root>:<name>`. Also: `livePlay()`, `liveStop()`, `liveIsPlaying()`, `liveTempo()`, `liveBeat()`. |
-| `src/display.go` | Shared-memory bridge to push_hook.so, now a thin wrapper over `core/display.Shm` (`var shm = &coredisplay.Shm{}`) — `shmGetMode`/`shmSetMode`/`shmReadFrame`/`shmWritePixels` delegate straight through so `ui_shadow.go`'s call sites didn't need touching. Three modes: 0=passthrough, 1=bar, 2=takeover. OSD subsystem: single-line and multi-line renderers (unchanged, stayed put — no second consumer). Startup splash on fresh hook attach, wired via `Shm.OnConnect`. Screenshot: `shmReadFrame`+`bgr565ToImage` (→ `core/display.FromBGR565`) read the framebuf back and `png.Encode` it — captures only push-manager-owned frames (Shadow UI/OSD/image), not the native Ableton UI (never copied into shm in passthrough). |
-| `src/midi.go` | ALSA seq subscriber + LED output, now built on `core/alsaseq` (`Client`/`Open`/`CreatePort`/`Subscribe`/`WriteEvent`/`SendCC`/`SendNote`/`SendSysEx`/`Walk`/`ReadLoop` — the kernel ABI consts and raw ioctls that used to live here moved to that package). **Boot-settle:** `alsaseq.WaitForBootSettle()` defers `/dev/snd` access until uptime ≥ 30s (USB-A safety). **Auto-detect:** `detectPush3Port()` calls `alsaseq.FindByName()` on each connection attempt — handles shifted client numbers (e.g. 20 instead of 16) when USB MIDI devices are connected at boot; disabled once user manually subscribes. LED config system (trigger/momentary/exclusive modes, animations). Chords: Shift+Settings=intercept toggle, Shift+Set=open browser. |
-| `src/remap.go` | MIDI remapping. `MidiMapping` (src→out CC/Note), `applyRemap()` called from `processFixedEvent` — transforms a Push control's value and sends to a user-selected writable ALSA port via `sendSeqCCTo`/`sendSeqNoteTo` (reuses `midiOut`, the shared `*alsaseq.Client`, no new port). Absolute sources scale velocity into `[min,max]`; relative encoders (CC 71-79/14) accumulate deltas (`push3.DecodeRel`, `remapAccum`) clamped to range. Gated by `remapEnabled` + optional `remapRequireIntercept`. Persisted in `midi.json` via `midiPersistData`. |
-| `src/ui/index.html`, `app.css`, `app.js` | Three-file SPA (not single-file — all three embedded at `main.go:19`) — file browser, display control, MIDI monitor, LED panel, MIDI mapping panel (learn/manual + writable-port dropdown), preset browser tab. Header's `#hack-links` span (`display:contents`, so each `<a>` stays a flex item of `.header-inner`) is filled from `/api/ui/tabs` — one link per installed hack declaring `web_ui` whose Web switch is on, Catalog included; no port is hardcoded any more. Display page gains a third sub-tab, **Tabs** (`#dtab-tabs`), the settings editor for that list: ↑/↓ reorder (not drag-and-drop — this page gets used on a phone) plus Shadow/Web checkboxes per entry, greying out anything past the 8-tab hardware limit. `uiTabsDirty` stops the 10s poll clobbering unsaved edits. |
-| `src/ui_shadow.go` | On-device Shadow UI (~30fps, Push 3 display — bumped from 10fps 2026-08-18, pending on-device CPU perf test). Five built-in panels: FilePanel, StatsPanel, MidiPanel, BrowserPanel, CatalogPanel (`src/catalog_panel.go`, below), declared in one data-driven table (`panelDefs`: stable id + label + hack-id dependency + constructor). **No tab's screen position is hardcoded any more** — `ui_tabs.go` resolves the user's order/switches into `shadowUI.tabs`, a tab's CC is `CCScreenTopN(its index)`, and `shadowRegisterLEDs`/`shadowUIHandleCC`/`drawPanelTabs` all work off that resolved list (which is already filtered, so `panelAvailable` is gone). `buildTabs()` reuses a surviving tab's existing Panel across a reorder so a browser cursor or fetched catalog isn't thrown away; `shadowUIReload()` re-resolves live when the web UI saves. External hacks' tabs enter the same list as `RemotePanel`s. `shadowUISwitchToBrowse` looks the Browse tab up by id (the `browsePanelIdx` const is gone — the user can reorder or switch it off). The first four panels render via `core/gfx/widgets` (`KVRow` for Stats/Midi, `ListView`/`RenderList` for Files/Browser, `SoftButton` for every panel's bottom strip; see that package's row above). `loadSuiIcon`/`iconNameForEntry`/`iconNameForPreset` (icon resolution, reads `/opt/push3/.../Images/Browser/`) and panel-specific input handling (`HandleCC`, cursor/scroll math) stay local — deliberately not extracted, per discovery/shadow-ui-component-framework.md's scope. Activated by MIDI intercept; triggered by Shift+Set chord. While active it fully owns the 4 under-screen soft-buttons' LEDs — the generic trigger/momentary dispatch in `midi.go` is suppressed for CC 20–23 (`isScreenBotCC`), so panels drive them directly. Browser: SEARCH opens the on-screen keyboard (DONE lit green → white on exit); FILTER/REFRESH are momentary (green while held → white on release). MidiPanel has a MONITOR sub-view (Bot3): live event log read from `midiRing`, soft-buttons toggle the display-filter categories (Bot1-4 Sens/SysEx/CC/Note + Bot5 Chan Pressure — same classification as the web UI). Extra soft-buttons beyond the primary 4 use the optional `extraBots` interface (buttons 5-8, CC24-27); `isScreenBotCC` now covers CC20-27. Re-press the MIDI tab to exit the sub-view. (Input port is *not* selectable on-device — subscribing away from the Push port would kill the Shadow UI's own MIDI feed; change it from the web UI only.) |
-| `src/catalog_panel.go` | CATALOG tab — thin on-device client of the `push-catalog` hack's HTTP API (`http://127.0.0.1:7702`, hardcoded — same-device localhost only). Never installs anything itself; polls `/api/catalog`+`/api/installed` (self-heals every 10s while the tab is visible; `/api/installed` returns `[{id, enabled}]`, mirroring the web UI's own decode), renders a scrollable list via `core/gfx/widgets.RenderList` (the breadcrumb doubles as the selected hack's provenance line — `catalogOrigin` prints `owner/repo` plus `by <author>` when the author isn't just the repo owner) (an installed hack whose `update_available` came back true gets an `[update: vX]` row and its INSTALL soft-button relabels to `Update` — same POST `/api/install` action, since installing over an existing hack already re-extracts + restarts it; an installed-but-disabled hack gets a `[disabled]` row tag), and posts `/api/install`/`/api/remove`/`/api/enable`/`/api/disable` for the selected hack on the bottom-strip soft-buttons (Bot1 Install/Update, Bot2 Remove, Bot3 Enable/Disable — async, so a multi-second download never blocks the render/MIDI threads). Degrades gracefully if `push-catalog` isn't installed/running (`EmptyText` message) rather than erroring. |
-| `src/ui_tabs.go` | The one ordered list behind **both** navigations, with two switches per entry (Shadow / Web). `candidateEntries()` merges built-in `panelDefs` with every installed, **enabled** hack declaring `web_ui` and/or `shadow_ui` (read live off disk, `hackNav.Enabled` from `hacks_nav.go`'s `hackEnabled` — a hack disabled through the catalog is skipped entirely rather than left as a dead link/tab); `resolveUIEntries()` applies the user's saved order + switches from `<hackdir>/ui_tabs.json`, dropping stale ids and appending never-seen ones switched on; `activeShadowTabs()` is the hardware subset (switched on, dependency installed, capped at `maxShadowTabs` = 8, since Push has 8 top buttons). `GET`/`POST /api/ui/tabs`. A `POST` calls `shadowUIReload()` so a save applies to a running Shadow UI with no restart. The built-in `catalog` entry carries its own menu-bar link (`catalogPort` = 7702, a core-hack fact — so the Catalog link survives an installed catalog that predates `web_ui` or uses a different id). `portConflicts()`/`annotatePortConflicts()` flag every port claimed by more than one installed, **enabled** hack (a disabled one isn't bound to anything, so it can't turn a healthy port-mate into a false positive) — surfaced per-entry (`port_conflict`) and whole-map (`port_conflicts`), banner + row note in the web UI, one `log.Printf` at startup via `warnPortConflicts()`; built-ins are excluded since they point at a port rather than bind one, and nothing is probed over the network. `app.js` renders one header link per port (first in the user's order wins). Pinned by `ui_tabs_test.go`. |
-| `src/remote_panel.go` | `RemotePanel` — a Shadow UI tab owned by another hack, the `shadow_ui` half of the hook. push-manager is a dumb terminal: GETs `http://127.0.0.1:<port><path>` every 300ms for a `remoteView` (`title`/`status`/`rows`/`cursor`/`buttons`/`hint`), renders it with `core/gfx/widgets.RenderList`, and POSTs every press back as `{cc, value}` — the hack owns all state. Deliberately **not** a pixel protocol: a PNG per frame is an encode + decode 30×/sec on a device whose whole point is not stealing CPU from Live. Contract documented in push-manager's README. |
-| `src/hacks_nav.go` | `hackInstalled(id)` (checked live, shared with `ui_shadow.go`'s `panelAvailable`) and `GET /api/hacks/installed` — lets the web UI mirror the Shadow UI's own install-gating: a feature button whose dependency isn't installed (the preset Browser tab needs `browser-bridge`) hides itself, live, polled every 10s from `app.js`. It also decodes both nav hooks off each installed `hack.json` — `web_ui` and `shadow_ui`, same `hackUI` shape (`{label, path}`, port comes from the hack's own `port`) — which `ui_tabs.go` turns into menu-bar links and Shadow UI tabs. `hackEnabled(id)` mirrors push-catalog.sh's own `cmd_installed` semantics — "enabled" is a boot-autostart `rc<N>.d/S<NN><svc>` symlink, not "currently running" (a hack with no init.d service, e.g. a Remote Script, is always enabled) — computed fresh into each `hackNav.Enabled` rather than read off `hack.json`; `ui_tabs.go` uses it to drop a disabled hack's nav entry entirely instead of leaving a dead link. `hacksDir`/`initdDir`/`rcdGlob` are vars only so `hacks_nav_test.go` can point them at a temp dir. |
-| `src/live_log.go` | Support-detection marker. Polls `/proc` for the Live process (`findWatchedPIDs`); when a new Live instance appears, waits an 8s grace (Live truncates its `Log.txt` on launch) then appends one native-format line `…: info: push-hack loaded: <id> v<ver>, …` to the newest `/data/.config/Ableton/Live */Log.txt`. Lists all deployed hacks + versions (scans `/data/push-hack/hacks/*/hack.json`). Re-marks on Live restart. Independent of push-display so it works with push-manager alone. |
-
-**Key routes:** `/api/list`, `/api/download`, `/api/upload`, `/api/delete`, `/api/rename`, `/api/copy`, `/api/unmount`, `/api/stats`, `/api/assets/<path>`, `/api/display/{status,mode,image,screenshot}` (`screenshot` = GET, PNG of current framebuf, `X-Display-Mode` header), `/api/midi/{events,stream,filter,ports,subscribe,chords,led,palette,mapping,mapping/config}` (`ports?writable=1` lists output destinations), `/api/presets`, `/api/presets/{refresh,facets,meta}`, `/api/live/load`, `/api/live/tempo`, `/api/live/playing`, `/api/live/play`, `/api/live/stop`, `/api/hacks/installed`, `/api/ui/tabs` (GET/POST).
-
-**File ownership:** push-manager runs as root; chowns all created files to match parent dir owner (ensures `ableton:users` ownership).
-
-**USB drives:** auto-mount to `/run/media/<label>-<device>`. After `syscall.Unmount`, delete `/tmp/.automount-<name>` so drive can re-mount on replug.
-
-### Push Display (`hacks/push-display/`)
-LD_PRELOAD hook (C shared library) injected into Push3 process only (checks `/proc/self/comm == Push3`). Intercepts `libusb_bulk_transfer` for display overlay/takeover, and `snd_seq_event_input` for MIDI neutralization. 8s boot grace window before activating. `make splash` regenerates `src/splash_data.h`.
-
-**⚠️ Ableton OS updates freeze with the hook installed.** Push3 itself drives the update and flashes co-processor firmware over the same USB/libusb path the hook interposes; the collision hangs the device mid-update (blank screen, dead buttons). An in-process kill-switch was tried and **does not work** — an LD_PRELOAD interposition can't be removed from a running process, and by the time any update signal appears Push3 is already the hooked process flashing firmware. **You must uninstall the hack (`./scripts/uninstall.sh`) before running an OS update, then reinstall after.** See README.
-
-**Shared memory layout** (must stay in sync between `push_hook.c` and `display.go`):
-```
-offset  0: uint32 magic      (0x50555348 "PUSH")
-offset  4: uint32 version    (1)
-offset  8: uint32 mode       (0=passthrough, 1=bar, 2=takeover)
-offset 12: uint32 frame_seq  (incremented by push-manager on each image write)
-offset 16: uint8[655360]     BGR565 pixels (960×160, stride 1024, frame duplicated)
-total: 655376 bytes, permissions 0666
-```
-
-**Display geometry:** 960×160 px, BGR565 XOR-shaped (`{0xE7,0xF3,0xE7,0xFF}` repeated), stride 1024, frame sent twice.
-
-Browser Bridge (the `PushHackBrowser` MIDI Remote Script push-manager's `live_bridge.go` talks to over TCP port 7704) moved out of this repo — see
-[federico-pepe/push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge), installable via Push Hack Catalog like Automation and Keyboard Visualizer.
-
-### Push Hack Catalog (`hacks/push-catalog/`)
-Go binary, no runtime deps. Port 7702. On-device installer for community hacks — browse and install from a phone, no SSH/build toolchain needed. Does almost nothing itself: serves one page and shells out to an embedded `push-catalog.sh` for every action, so the install logic has exactly one home (`go:embed`).
-
-**Model:** Push Hack Catalog hosts no binaries. `catalog/catalog.json` (this repo) is an index of pointers — each entry names a hack's own `github_repo`. That repo publishes its own GitHub Releases and keeps a `release.json` at its root; the daemon fetches that live on every install (and on every `/api/catalog` listing, to source each entry's live `version`/`released_at`), downloads the release tarball it points at, and extracts it (the tarball's own `hack.json` + binary) straight into `/data/push-hack/hacks/<id>/`. No sha256 pin, no signing — the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once." See `catalog/ARCHITECTURE.md` for the full model and `catalog/PUBLISHING.md` for how a hack author publishes into it.
-
-| File | Role |
-|------|------|
-| `push-catalog.sh` (embedded into the binary via `make embed`) | All the logic: `q()`/`rq()` (python3-only JSON readers — no jq dependency, mirrors the framework installer's own avoidance of it; `q`'s `catalog` op passes through `github_repo` (who maintains the hack, shown in both the web cards and the Shadow UI breadcrumb) and fetches each hack's live `release.json` via urllib to enrich the listing with `version`/`released_at`, degrading to `null` per-entry rather than failing the whole listing; given an optional `hacks_dir` arg it also reads that hack's locally installed `hack.json` for `installed_version` (sets `update_available` when it differs from the live `version`), `port`, and `web_ui` (so the web UI can render an "Open" link) — `cmd_catalog` always passes `$PUSH_HACK_DIR/hacks`), `fetch_release()` (pulls a hack's `release.json` off `raw.githubusercontent.com`, or a `release_url` override for local/dev entries), `cmd_install` (fetch release → download tarball → `tar -xzf` into `hacks/` → read the extracted `hack.json` → `install_service` — this is also how an update is applied, same command, no separate code path), `cmd_remove`, `--self-test` (offline: catalog parsing, the catalog-enrichment op incl. `installed_version`/`update_available`, and a checked-in `testdata/fixture-hack.tar.gz` exercising the fetch/extract path — all via `file://` overrides, no real network or `/etc/init.d` touched). |
-| `src/main.go` | HTTP server: `GET /`, `GET /api/catalog` (proxies `push-catalog.sh catalog`), `GET /api/installed` (now `[{id, enabled}]` — `enabled` reads the init.d service's actual running state, via `status`'s printed text since its exit code is always 0), `POST /api/install?id=`, `POST /api/remove?id=`, `POST /api/disable?id=`/`POST /api/enable?id=` (stop+remove boot-autostart vs. re-add+restart, keeping installed files either way — for saving CPU/RAM on a hack you're not using right now without losing its config; web UI only so far, not on the on-device Shadow UI's CATALOG tab) — hack id validated against `^[a-z0-9][a-z0-9-]{0,63}$` before it ever reaches the shell. |
-| `src/index.html` | Single-file responsive web UI: catalog cards in a 3-column grid (collapsing to fewer columns on narrow/phone widths via CSS grid `auto-fill`), each showing name, description, author, the `github_repo` it installs from (linked to `homepage`), live version, last-updated date, `requires` tags, and — for an installed hack that declares `web_ui` in its `hack.json` — an "Open" link straight to that hack's own UI (`installed_port`/`web_ui` read off the installed copy by `push-catalog.sh`'s `catalog` op, alongside `installed_version`). Install/Update/Remove (Update shown, with an "update available" tag, when `update_available` is true) opens a popup modal showing the shell output live, instead of a persistent log pane. |
-
-**Key routes:** `GET /`, `GET /api/catalog`, `GET /api/installed`, `POST /api/install?id=<id>`, `POST /api/remove?id=<id>`, `POST /api/disable?id=<id>`, `POST /api/enable?id=<id>`.
+**Push Display OS-update freeze:** an Ableton OS update flashes co-processor
+firmware over the same USB/libusb path the push-display hook interposes.
+With the hook installed, this hangs the device mid-update (blank screen,
+dead buttons). An in-process kill-switch does not work — an LD_PRELOAD
+interposition cannot be removed from a running process, and by the time any
+update signal appears, Push3 is already the hooked process flashing
+firmware. **Uninstall the hack (`./scripts/uninstall.sh`) before an OS
+update, then reinstall after.** See `hacks/push-display/README.md`.
 
 ## USB-A port safety
 
@@ -142,25 +73,11 @@ Go binary, no runtime deps. Port 7702. On-device installer for community hacks �
 
 **Testing gotcha:** wedge reproduces only on cold power-on, never on warm `reboot`. Always test with `poweroff` + manual power-on.
 
-## On Push (deployed layout)
-```
-/data/push-hack/
-├── hacks/push-manager/   push-manager binary + hack.json
-├── hacks/push-display/   push_hook.so, framebuf shm, midiflt shm
-└── logs/                 push-manager.log, push-hook.log
-```
+## On Push (deployed layout) and Push 3 key facts
 
-## Push 3 — Key Facts
-
-- **OS:** AbletonOS, kernel 5.15.48 real-time, x86_64 Intel
-- **Init:** sysvinit runlevel 5 — NOT systemd
-- **SSH:** `ableton@push.local` (normal), `root@push.local` (service install). No sudo.
-- **Writable:** `/data` (ext4, 201GB). User content: `/data/Music/Ableton/`
-- **Read-only:** `/opt` — never write there
-- **MIDI routing:** ALSA seq, not libusb. Subscribe to "Ableton Push 3 Live Port" (usually client 16:0, auto-detected by name). `CREATE_PORT` ioctl requires `portInfo[addr.client] = ownClientID` or kernel returns EPERM. MIDI blocking via hook intercepting `snd_seq_event_input` (sets type→NONE when `midiflt->enabled`).
-- **USB drives:** auto-mount to `/run/media/<label>-<device>`; `usb-storage` is kernel built-in
-- **Button map:** `docs/push3-button-map.md`. All buttons CC ch0, 127=press/0=release. Pad grid Notes 36–99.
-- **LED colors:** `docs/push3-led-colors.md`. 128-entry palette; same indices for pads (Note velocity) and buttons (CC value). `core/push3/colors.go`'s `NamedColors` was **wrong for every entry until 2026-08-18** — it claimed a Push-2-derived even/odd split that isn't true for Push 3 (every one of the 128 raw velocities is a real, distinct colour). Fixed by rebuilding it from this doc's SysEx-queried table; see that file's own header comment for the full story. Trust this doc over any claim `colors.go` makes about its own source.
+See [docs/architecture.md](docs/architecture.md) for the deployed directory
+layout (`/data/push-hack/...`) and Push 3 hardware/OS facts (SSH access,
+writable paths, MIDI routing, button map, LED colors).
 
 ## Drawing text — ASCII only
 
@@ -242,7 +159,11 @@ publish step.
 
 ## Reference Docs
 
-`docs/` holds Push hardware/OS references (`push3-*`); each hack documents itself in its own folder README.
+`docs/` holds architecture, API, and Push hardware/OS references; each hack also documents itself in its own folder README.
+
+Framework and API (`docs/`):
+- `docs/architecture.md` — framework layer, hack structure convention, `core/` shared library, per-hack file layout, deployed directory layout, Push 3 hardware/OS facts
+- `docs/api-reference.md` — HTTP routes for push-manager and push-catalog, the RemotePanel contract, the push-display shared-memory protocol
 
 Push hardware / OS (`docs/`):
 - `docs/push3-internals.md` — OS, filesystem, XMOS USB protocol, display, MIDI routing

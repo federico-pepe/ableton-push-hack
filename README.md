@@ -199,7 +199,11 @@ replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
 
 ## Reference
 
-`docs/` = Push hardware/OS references; each hack documents itself in its folder README.
+`docs/` = architecture, API, and Push hardware/OS references; each hack documents itself in its folder README.
+
+**Framework and API** (`docs/`):
+- `docs/architecture.md` — deploy framework, hack structure, `core/` shared library, per-hack file layout
+- `docs/api-reference.md` — HTTP routes, the RemotePanel contract, the push-display shared-memory protocol
 
 **Push hardware / OS** (`docs/`):
 - `docs/push3-internals.md` — OS, filesystem, XMOS USB protocol, display, MIDI routing
