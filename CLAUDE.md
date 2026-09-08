@@ -28,6 +28,22 @@ cd hacks/push-manager && PATH=$PATH:/usr/local/go/bin make
 cd hacks/push-display && make          # cross-compiles push_hook.so via Docker
 ```
 
+**Committed pre-built binaries:** `hacks/push-manager/push-manager` and
+`hacks/push-catalog/push-catalog` are git-tracked (unlike `hacks/*/build/`,
+which stays gitignored) so `./scripts/install.sh` works with no Go/Docker
+toolchain on a fresh clone — see `.gitignore`. `push-display/push_hook.so`
+is committed the same way. **Whenever you change source under
+`hacks/push-manager/src/` or `hacks/push-catalog/src/` (or `core/`, which
+both depend on), rebuild and commit the updated binary in the same commit:**
+
+```bash
+cd hacks/push-manager && PATH=$PATH:/usr/local/go/bin make && git add push-manager
+cd hacks/push-catalog && PATH=$PATH:/usr/local/go/bin make && git add push-catalog
+```
+
+A stale committed binary silently undoes the source change for anyone who
+installs without `--build`.
+
 ### Test (core/ shared library)
 ```bash
 make test    # go test ./core/...

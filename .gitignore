@@ -9,12 +9,12 @@
 *.test
 hacks/*/src/vendor/
 
-# Build output binaries (deploy via install.sh, never git-tracked — a
-# tracked binary here can shadow the depth-1 one that install.sh's
-# `find -maxdepth 2` picks up first alphabetically)
+# Build output. The `build/` dir is always ignored — install.sh's
+# `find -maxdepth 2` would otherwise pick up a stale copy alongside the
+# root-level binary. The root-level push-manager and push-catalog binaries
+# ARE git-tracked (see below): they ship pre-built so install.sh works with
+# no Go/Docker toolchain out of the box. Rebuild + recommit them on release.
 hacks/*/build/
-hacks/*/push-manager
-hacks/*/push-catalog
 hacks/*/automation
 hacks/*/src/push-manager
 hacks/*/src/automation
