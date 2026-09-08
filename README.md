@@ -103,7 +103,7 @@ C shared library injected into Push 3's process via `LD_PRELOAD`. Intercepts `li
 ## Quick start
 
 ```bash
-# 1. Build and deploy all hacks
+# 1. Deploy all hacks (pre-built binaries, no Go/Docker toolchain needed)
 #    The installer will guide you through SSH key setup if needed,
 #    then ask you to accept a disclaimer before proceeding.
 ./scripts/install.sh

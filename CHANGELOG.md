@@ -5,6 +5,19 @@ All notable changes to this project are documented here. Format follows
 [Semantic Versioning](https://semver.org/) (pre-1.0: expect breaking changes
 between minor versions).
 
+## [Unreleased]
+
+### Fixed
+
+- `install.sh`'s default (deploy pre-built binaries, no `--build`) failed on
+  a fresh clone: push-manager and push-catalog binaries were gitignored and
+  never shipped, so the installer died with
+  `Binary '<name>' not found ... Run make first.` Both binaries are now
+  committed to git alongside push-display's already-tracked `push_hook.so`,
+  so `./scripts/install.sh` works out of the box with no Go or Docker
+  toolchain installed. `--build` still rebuilds from source for developers.
+  Rebuild and recommit these binaries on release.
+
 ## [0.1.9-alpha] - 2026-09-07
 
 ### Added
