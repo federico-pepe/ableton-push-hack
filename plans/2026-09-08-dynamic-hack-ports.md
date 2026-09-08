@@ -34,7 +34,12 @@ Decisions:
     socket. 7703/7705–7710 are unused headroom, held for future
     framework-level fixed ports.
 - **Catalog hacks are assigned dynamically starting at 7711** by
-  push-catalog, to every hack that runs a service (has a `binary`).
+  push-catalog, to every hack that declares `web_ui` or `shadow_ui` (not
+  merely "has a `binary`" — found live: `push-audio-loopback` has a binary
+  but runs no HTTP server at all, just loads a kernel module, and declares
+  neither hook. An earlier version of this gate assigned it a port anyway;
+  harmless in practice since nothing reads it without a nav hook, but
+  wrong, and fixed before merge).
 
 ## How ports reach a running hack
 
@@ -62,18 +67,21 @@ In `install_one()`:
   port if this is a re-install/update (`dir/hack.json` already exists).
 - After extraction and the `hack.json` sanity check, and before the
   `chown -R "$owner" "$dir"` step (so the rewritten file gets the same
-  ownership fix-up as everything else tar just wrote as root), a new
-  `allocate_port` function rewrites the extracted `hack.json`'s `port`
-  field to its result via `as_root`. Skipped for `binary: ""` hacks (no
-  service, e.g. Remote Scripts) — no port to assign.
+  ownership fix-up as everything else tar just wrote as root), a
+  `needs_port` gate checks `binary` is non-empty **and** `web_ui` or
+  `shadow_ui` is present; only then does a new `allocate_port` function
+  rewrite the extracted `hack.json`'s `port` field to its result via
+  `as_root`. A hack with no binary (Remote Script) or a binary but no nav
+  hook (e.g. `push-audio-loopback`, which only loads a kernel module and
+  runs no HTTP server) is left with no `port` field at all.
 - `allocate_port(id, hacks_dir, prev_port)`: a `python3` one-liner (same
   style as `q`/`rq`) globs `hacks_dir/*/hack.json` (excluding `id`'s own
   directory), collects every `port` value found into a used-set, then
   returns `prev_port` if it's set, `>= 7711`, and not in the used-set
   (keeps a reinstalled/updated hack's port stable — no dead bookmarks);
   otherwise returns the smallest free integer `>= 7711`.
-- Added a self-test block (`self_test()`, section "3d") covering
-  `allocate_port` directly, offline, no root needed.
+- Added self-test coverage (`self_test()`, sections "3d"/"3e") for
+  `allocate_port` and the `needs_port` gate, offline, no root needed.
 
 ### 2. Menu-bar links / Display → Tabs — no code change, by design
 
