@@ -263,6 +263,45 @@ install_with_deps() {
   install_one "$id" "$reg"
 }
 
+# Assigns hacks/<id> a port: 7701-7710 is reserved for the framework
+# (push-manager 7701, push-catalog 7702, Browser Bridge's fixed Remote
+# Script socket 7704, the rest held for future framework-internal use), so
+# every catalog hack with a binary gets the lowest free integer >= 7711,
+# scanning every OTHER installed hack's hack.json for its currently
+# claimed port. A hack being re-installed (update) keeps whatever port it
+# already had — read off the hack.json this call is about to overwrite —
+# so a running link/bookmark to the old port doesn't silently start
+# pointing at a dead process. hack.json authors no longer declare a port
+# at all; push-catalog is the sole writer of the installed copy's `port`.
+allocate_port() {
+  local id="$1" hacks_dir="$2" prev_port="${3:-}"
+  python3 - "$id" "$hacks_dir" "$prev_port" <<'PY'
+import json, sys, os, glob
+id_, hacks_dir, prev_port = sys.argv[1:]
+used = set()
+for hj in glob.glob(os.path.join(hacks_dir, "*", "hack.json")):
+    if os.path.basename(os.path.dirname(hj)) == id_:
+        continue
+    try:
+        p = json.load(open(hj)).get("port")
+        if isinstance(p, int):
+            used.add(p)
+    except Exception:
+        pass
+try:
+    pp = int(prev_port)
+except (ValueError, TypeError):
+    pp = None
+if pp is not None and pp >= 7711 and pp not in used:
+    port = pp
+else:
+    port = 7711
+    while port in used:
+        port += 1
+print(port)
+PY
+}
+
 # Fetch + extract + register the single hack $1 (no dependency handling —
 # see install_with_deps).
 install_one() {
@@ -280,6 +319,12 @@ install_one() {
   local hacks_dir="$PUSH_HACK_DIR/hacks" dir="$PUSH_HACK_DIR/hacks/$id"
   as_root mkdir -p "$hacks_dir" "$PUSH_HACK_DIR/logs"
 
+  # Capture the currently-installed port (if any) before the tarball
+  # overwrites hack.json — allocate_port uses it to keep a reinstalled/
+  # updated hack's port stable rather than reshuffling it.
+  local prev_port=""
+  [ -f "$dir/hack.json" ] && prev_port="$(python3 -c "import json,sys; v=json.load(open(sys.argv[1])).get('port'); print(v if isinstance(v,int) else '')" "$dir/hack.json" 2>/dev/null || echo "")"
+
   info "fetching $id v$version"
   local tmp; tmp="$(mktemp)"
   fetch "$dl_url" "$tmp"
@@ -287,6 +332,22 @@ install_one() {
   as_root tar -xzf "$tmp" -C "$hacks_dir"
   rm -f "$tmp"
   [ -f "$dir/hack.json" ] || die "tarball for $id did not contain hack.json"
+
+  # Assign + inject the port before anything reads hack.json for real
+  # (install_service, install_payload, push-manager's live poll). A hack
+  # with no binary (a Remote Script) has no service and needs no port.
+  local bin_check; bin_check="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('binary',''))" "$dir/hack.json" 2>/dev/null || echo "")"
+  if [ -n "$bin_check" ]; then
+    local port; port="$(allocate_port "$id" "$hacks_dir" "$prev_port")"
+    as_root python3 -c "
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d['port'] = int(sys.argv[2])
+json.dump(d, open(p, 'w'), indent=2)
+" "$dir/hack.json" "$port"
+    info "assigned port $port to $id"
+  fi
 
   # tar run as root restores the *original* uid/gid baked into the archive
   # (e.g. a CI runner's own uid) rather than defaulting to the current user.
@@ -507,6 +568,28 @@ JSON
   [ "$(q "$cat2" len no-reqs 'requires' 2>/dev/null || echo 0)" = "0" ] \
     || die "self-test: missing requires field mishandled"
   rm -f "$cat2"
+
+  # 3d. allocate_port: dynamic port assignment, offline/no root needed —
+  #     pure function over a fake hacks_dir.
+  local ports_dir; ports_dir="$(mktemp -d)"
+  mkdir -p "$ports_dir/existing-a" "$ports_dir/existing-b"
+  printf '{"id":"existing-a","port":7711}\n' > "$ports_dir/existing-a/hack.json"
+  printf '{"id":"existing-b","port":7712}\n' > "$ports_dir/existing-b/hack.json"
+  # a brand-new hack (no prev_port) skips both claimed ports
+  [ "$(allocate_port "new-hack" "$ports_dir" "")" = "7713" ] \
+    || die "self-test: allocate_port didn't skip claimed ports"
+  # a reinstalled hack whose own previous port is still free keeps it,
+  # rather than reallocating to the next free slot
+  [ "$(allocate_port "existing-c" "$ports_dir" "7714")" = "7714" ] \
+    || die "self-test: allocate_port didn't keep a still-free prev_port"
+  # a previous port that's since been claimed by someone else (or falls
+  # inside the 7701-7710 reserved block) is not honored — falls back to
+  # the next free slot instead
+  [ "$(allocate_port "existing-c" "$ports_dir" "7711")" = "7713" ] \
+    || die "self-test: allocate_port reused a claimed prev_port"
+  [ "$(allocate_port "existing-c" "$ports_dir" "7703")" = "7713" ] \
+    || die "self-test: allocate_port honored a prev_port inside the reserved block"
+  rm -rf "$ports_dir"
 
   # 4. extraction: same `tar -xzf ... -C hacks_dir` cmd_install uses, into a
   #    scratch dir (no as_root/root/service registration — this only proves

@@ -19,10 +19,8 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"sync"
 )
 
@@ -45,11 +43,6 @@ type uiEntry struct {
 	WebLabel string `json:"web_label,omitempty"`
 	WebPath  string `json:"web_path,omitempty"`
 	Port     int    `json:"port,omitempty"`
-
-	// PortConflict names the other installed hacks claiming this entry's
-	// port. Non-empty means at most one of them is actually reachable —
-	// see portConflicts.
-	PortConflict []string `json:"port_conflict,omitempty"`
 
 	shadowPath string       // remote tabs only
 	new        func() Panel // built-in tabs only
@@ -80,15 +73,6 @@ func loadUITabs() {
 	uiTabsMu.Lock()
 	uiPrefs = prefs
 	uiTabsMu.Unlock()
-}
-
-// warnPortConflicts logs any port claimed by more than one installed hack.
-// Cheap, once, at startup — a hack that silently never answers because a
-// sibling took its port is otherwise a miserable thing to diagnose.
-func warnPortConflicts() {
-	for port, ids := range portConflicts() {
-		log.Printf("ui_tabs: port %d claimed by %v - only one of them can be running", port, ids)
-	}
 }
 
 func saveUITabs(prefs []uiPref) error {
@@ -180,53 +164,7 @@ func resolveUIEntries() []uiEntry {
 			out = append(out, byID[e.ID])
 		}
 	}
-	annotatePortConflicts(out)
 	return out
-}
-
-// portConflicts groups installed, enabled hacks by port, keeping only the
-// ports more than one hack claims. Only one process can bind a port, so a
-// conflict means at least one of those hacks is not running — a link or a
-// remote tab pointing at it reaches the wrong hack, or nothing. A disabled
-// hack isn't a party to this: its service isn't autostarted, so it isn't
-// bound to anything and doesn't turn its port-mate into a false positive.
-// Beyond that, up-ness isn't checked: that would be a poller, and the
-// hack.json + boot-autostart state on disk is enough to tell the user what
-// to fix.
-func portConflicts() map[int][]string {
-	byPort := map[int][]string{}
-	for _, h := range installedHacks() {
-		if h.Port != 0 && h.Enabled {
-			byPort[h.Port] = append(byPort[h.Port], h.ID)
-		}
-	}
-	for port, ids := range byPort {
-		if len(ids) < 2 {
-			delete(byPort, port)
-		}
-	}
-	return byPort
-}
-
-// annotatePortConflicts tags each hack-backed entry with the other hacks on
-// its port. Built-ins are skipped: they bind nothing, they only point at a
-// port, so the CATALOG entry sharing 7702 with the catalog hack itself is
-// the normal case rather than a clash.
-func annotatePortConflicts(entries []uiEntry) {
-	conf := portConflicts()
-	if len(conf) == 0 {
-		return
-	}
-	for i, e := range entries {
-		if e.Source != "hack" || e.Port == 0 {
-			continue
-		}
-		for _, id := range conf[e.Port] {
-			if id != e.ID {
-				entries[i].PortConflict = append(entries[i].PortConflict, id)
-			}
-		}
-	}
 }
 
 // activeShadowTabs is the subset the hardware actually shows: switched on,
@@ -256,19 +194,11 @@ func (e uiEntry) newPanel() Panel {
 
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 
-// uiTabsResponse is what both verbs return. port_conflicts is keyed by port
-// (as a string, since JSON object keys are) and covers *every* installed
-// hack, including ones with no nav hooks — a clash there is still worth
-// showing on the one page that lists what is installed.
+// uiTabsResponse is what both verbs return.
 func uiTabsResponse() map[string]any {
-	conf := map[string][]string{}
-	for port, ids := range portConflicts() {
-		conf[strconv.Itoa(port)] = ids
-	}
 	return map[string]any{
-		"entries":        resolveUIEntries(),
-		"max":            maxShadowTabs,
-		"port_conflicts": conf,
+		"entries": resolveUIEntries(),
+		"max":     maxShadowTabs,
 	}
 }
 

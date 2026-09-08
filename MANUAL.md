@@ -85,7 +85,7 @@ You'll need Live 12.4 or later installed on Push.
 7. Reboot Push for the setting to take effect.
 
 ###  Automation Hack
-To use the **Automation** feature in Push Manager, you need to connect to http://push.local:7703
+To use the **Automation** feature, open Push Manager and select **Automation** from the menu bar.
 
 You'll need Live 12.4 or later installed on Push.
 

@@ -75,8 +75,11 @@ The asset at `download_url` is a `.tar.gz` whose single top-level entry is
 my-hack.tar.gz
 └── my-hack/
     ├── hack.json      # the standard framework hack.json — id, name, version,
-    │                  # port, binary, enabled, ... same shape the framework's
+    │                  # binary, enabled, ... same shape the framework's
     │                  # own hacks use. The store does not invent a new format.
+    │                  # Don't declare `port`: the store assigns it at install
+    │                  # time (see "Ports are assigned by the store" below)
+    │                  # and overwrites whatever's there.
     ├── my-hack        # the linux/amd64 binary, executable bit preserved by tar
     └── ...             # any other files the hack needs (remote-script/, etc.)
 ```
@@ -118,7 +121,6 @@ hooks are one object next to the hack's own `port`, and both are optional:
 
 ```jsonc
 {
-  "port": 7703,
   "web_ui":    { "label": "My Hack", "path": "/" },
   "shadow_ui": { "label": "MINE",    "path": "/api/shadow" }
 }
@@ -130,7 +132,8 @@ hooks are one object next to the hack's own `port`, and both are optional:
 | `path` | Path on the hack's own port. Defaults to `/` if empty. |
 
 The port is not repeated in either object; the hack's own `port` field is
-used.
+used — the one the store assigns at install time, not one the author
+declares (see "Ports are assigned by the store" below).
 
 ### `web_ui` — a link in the menu bar
 
@@ -172,14 +175,17 @@ Omit a hook entirely for a hack that has no such UI (a Remote Script, or
 push-display). That is how a hack opts out — it then never appears in that
 navigation or in the settings list for it.
 
-### Ports must be unique
+### Ports are assigned by the store
 
-Both hooks build their URL from the hack's own `port`, and only one process
-can bind a port. Two installed hacks declaring the same one means at least
-one is not running, and a link or tab pointing there reaches the wrong hack.
-Push Manager reports the clash rather than guessing — a banner on its
-Display -> Tabs page, a note on each affected row, and a line in its log at
-startup. Pick a free port: the assigned ones are listed in `CLAUDE.md`.
+Both hooks build their URL from the hack's own `port` — but a hack no
+longer declares that port itself. `push-catalog install` writes it into
+the installed `hack.json` before the service ever starts, picking the
+lowest free integer `>= 7711` (scanning every other installed hack's
+`hack.json` for what's already claimed), so two catalog hacks can never
+collide. 7701–7710 is reserved for the framework itself (push-manager,
+push-catalog, and a couple of fixed internal ports — see `CLAUDE.md`) and
+is never handed out. A reinstalled/updated hack keeps the port it already
+had rather than getting reshuffled.
 
 Push Manager's own entry has no `web_ui`: you are already looking at it, and
 its Catalog entry is built in rather than read from push-catalog's
@@ -188,12 +194,10 @@ its Catalog entry is built in rather than read from push-catalog's
 ### A disabled hack drops out entirely
 
 Neither reader probes whether a hack is actually *running* — no liveness
-poll, same reasoning as the port-conflict scan above. It does check whether
-a hack is *disabled* (stopped, boot-autostart removed, files kept — Push
-Hack Catalog's `POST /api/disable`): a disabled hack's `web_ui`/`shadow_ui`
-entry is left out of both navigations altogether, rather than showing a
-link or tab that reaches nothing. Re-enabling it (`POST /api/enable`) brings
-the entry back on the next 10s poll, in whatever order/switch state it had
-before — nothing in `ui_tabs.json` is touched by disable/enable. A hack
-disabled this way also stops counting as a claimant in the port-conflict
-scan, since it isn't bound to anything.
+poll. It does check whether a hack is *disabled* (stopped, boot-autostart
+removed, files kept — Push Hack Catalog's `POST /api/disable`): a disabled
+hack's `web_ui`/`shadow_ui` entry is left out of both navigations
+altogether, rather than showing a link or tab that reaches nothing.
+Re-enabling it (`POST /api/enable`) brings the entry back on the next 10s
+poll, in whatever order/switch state it had before — nothing in
+`ui_tabs.json` is touched by disable/enable.

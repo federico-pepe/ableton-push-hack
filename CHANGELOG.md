@@ -7,6 +7,19 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- Catalog hacks no longer declare a `port` in their own `hack.json`.
+  `push-catalog install` now assigns one automatically — the lowest free
+  integer `>= 7711` — before the hack's service ever starts, keeping a
+  reinstalled/updated hack's existing port stable. 7701-7710 is reserved
+  for the framework (push-manager 7701, push-catalog 7702, Browser
+  Bridge's fixed Remote Script socket 7704). This makes port collisions
+  between catalog hacks structurally impossible, so Push Manager's
+  port-conflict banner/log warning (`portConflicts()`/`warnPortConflicts()`
+  in `ui_tabs.go`) has been removed as dead weight. See
+  `catalog/schema.md`.
+
 ### Fixed
 
 - `install.sh`'s default (deploy pre-built binaries, no `--build`) failed on
