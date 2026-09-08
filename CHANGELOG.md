@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.10-alpha] - 2026-09-08
+
 ### Changed
 
 - Catalog hacks no longer declare a `port` in their own `hack.json`.
