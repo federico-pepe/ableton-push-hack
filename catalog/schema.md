@@ -187,6 +187,11 @@ push-catalog, and a couple of fixed internal ports — see `CLAUDE.md`) and
 is never handed out. A reinstalled/updated hack keeps the port it already
 had rather than getting reshuffled.
 
+Only a hack that declares `web_ui` or `shadow_ui` gets a port at all — a
+binary alone isn't enough. A hack with a binary but neither hook (a
+background service with no HTTP surface, e.g. one that just loads a kernel
+module) is left with no `port` field, same as one with `"binary": ""`.
+
 Push Manager's own entry has no `web_ui`: you are already looking at it, and
 its Catalog entry is built in rather than read from push-catalog's
 `hack.json`, so the link survives a catalog installed under a different id.

@@ -334,10 +334,18 @@ install_one() {
   [ -f "$dir/hack.json" ] || die "tarball for $id did not contain hack.json"
 
   # Assign + inject the port before anything reads hack.json for real
-  # (install_service, install_payload, push-manager's live poll). A hack
-  # with no binary (a Remote Script) has no service and needs no port.
-  local bin_check; bin_check="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('binary',''))" "$dir/hack.json" 2>/dev/null || echo "")"
-  if [ -n "$bin_check" ]; then
+  # (install_service, install_payload, push-manager's live poll). Only a
+  # hack that actually needs an addressable port gets one: no binary (a
+  # Remote Script) never does, and having a binary alone isn't enough
+  # either — push-audio-loopback has one but runs no HTTP server at all
+  # (just loads a kernel module), so it declares neither web_ui nor
+  # shadow_ui and would otherwise get a spurious, unused port assigned.
+  local needs_port; needs_port="$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print('1' if d.get('binary') and (d.get('web_ui') or d.get('shadow_ui')) else '')
+" "$dir/hack.json" 2>/dev/null || echo "")"
+  if [ -n "$needs_port" ]; then
     local port; port="$(allocate_port "$id" "$hacks_dir" "$prev_port")"
     as_root python3 -c "
 import json, sys
@@ -590,6 +598,28 @@ JSON
   [ "$(allocate_port "existing-c" "$ports_dir" "7703")" = "7713" ] \
     || die "self-test: allocate_port honored a prev_port inside the reserved block"
   rm -rf "$ports_dir"
+
+  # 3e. install_one's needs_port gate (same python check it runs inline):
+  #     a binary alone is not enough — push-audio-loopback has one but no
+  #     web_ui/shadow_ui and runs no HTTP server, so it must not get a port.
+  needs_port_check() {
+    python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print('1' if d.get('binary') and (d.get('web_ui') or d.get('shadow_ui')) else '')
+" "$1"
+  }
+  local np_dir; np_dir="$(mktemp -d)"
+  printf '{"binary":"x","web_ui":{"label":"X","path":"/"}}\n' > "$np_dir/with-web-ui.json"
+  printf '{"binary":"x"}\n' > "$np_dir/binary-only.json"
+  printf '{"binary":""}\n' > "$np_dir/no-binary.json"
+  [ "$(needs_port_check "$np_dir/with-web-ui.json")" = "1" ] \
+    || die "self-test: needs_port_check missed a hack that declares web_ui"
+  [ -z "$(needs_port_check "$np_dir/binary-only.json")" ] \
+    || die "self-test: needs_port_check assigned a port to a binary with no web_ui/shadow_ui"
+  [ -z "$(needs_port_check "$np_dir/no-binary.json")" ] \
+    || die "self-test: needs_port_check assigned a port to a no-binary hack"
+  rm -rf "$np_dir"
 
   # 4. extraction: same `tar -xzf ... -C hacks_dir` cmd_install uses, into a
   #    scratch dir (no as_root/root/service registration — this only proves
