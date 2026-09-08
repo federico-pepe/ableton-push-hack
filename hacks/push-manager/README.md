@@ -54,7 +54,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/live/stop` | Stops Live's transport. Sends `stop` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `GET` | `/api/presets/facets` | Distinct facet values for the Browser filter UI: `{categories, devices, sources, tags}`. |
 | `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?, enabled}]` sorted by `id`. `enabled` is computed, not read from `hack.json` — it mirrors Push Hack Catalog's own boot-autostart check (see below), not "currently running". The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
-| `GET` | `/api/ui/tabs` | The one ordered list behind both navigations: `{max: 8, entries: [{id, label, source, has_shadow, shadow, shadow_available, requires, has_web, web, web_label, web_path, port, port_conflict}]}`, plus `port_conflicts` — `{"<port>": [ids]}` for every port claimed by more than one installed hack. Built-in Shadow panels plus every installed hack declaring `web_ui` or `shadow_ui`, with the user's saved order and switches applied. |
+| `GET` | `/api/ui/tabs` | The one ordered list behind both navigations: `{max: 8, entries: [{id, label, source, has_shadow, shadow, shadow_available, requires, has_web, web, web_label, web_path, port}]}`. Built-in Shadow panels plus every installed hack declaring `web_ui` or `shadow_ui`, with the user's saved order and switches applied. |
 | `POST` | `/api/ui/tabs` | Save that list. Body is the new order: `[{id, shadow, web}]`. Persisted to `<hackdir>/ui_tabs.json` and applied to a running Shadow UI immediately (panels for tabs that survive the change keep their state). Returns the same shape as `GET`. |
 | `POST` | `/api/presets/meta` | Set per-preset metadata. Body `{"path":"…","favourite":true,"tags":["warm"]}` — `favourite` and `tags` are independent (omit to leave unchanged). Persisted to `<hackdir>/preset_meta.json`; shared with the on-device Shadow UI Favourites filter. Returns `{ok, favourite, tags}`. `GET /api/presets` accepts `filter,q,fav,tag,device,source,rack` query params. |
 
@@ -159,19 +159,20 @@ CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall
 
 Any hack installed on the device can put its own link in Push Manager's menu
 bar. There is no API to call and no code to add here — the hack declares
-`web_ui` next to its `port` in its own `hack.json`:
+`web_ui` in its own `hack.json`:
 
 ```jsonc
 {
   "id": "automation",
-  "port": 7703,
   "web_ui": { "label": "Automation", "path": "/" }
 }
 ```
 
-Push Manager links it as `http://<this-host>:<port><path>`, opening in a new
-tab. This is the same field Push Hack Catalog reads for its "Open" links, so
-a hack that already works there needs no change. Full field reference:
+Push Manager links it as `http://<this-host>:<port><path>`, using the
+`port` Push Hack Catalog assigned the hack at install time — the hack does
+not declare a port itself. This is the same field Push Hack Catalog reads
+for its "Open" links, so a hack that already works there needs no change.
+Full field reference:
 [catalog/schema.md](../../catalog/schema.md#navigation-hooks-hackjsons-web_ui-and-shadow_ui).
 
 Notes:
@@ -186,10 +187,6 @@ Notes:
   for the installed copy to declare `web_ui` — an older catalog build, or one
   installed under a different id, still gets one. It is an ordinary entry
   otherwise: the user can switch it off or move it.
-- **One link per port.** Two entries pointing at the same port would be two
-  links to the same server and at most one of them can be right, so the
-  earlier one in the user's order wins — a rule they can change by
-  reordering. See port conflicts below.
 - The link only points at the hack's UI. It does not embed it, and Push
   Manager never checks whether the hack is actually running.
 
@@ -222,33 +219,6 @@ gets used on a phone, next to the hardware.
   brings the entry back on the next poll with its saved order/switches
   untouched; it doesn't reset to "just installed".
 
-#### Port conflicts
-
-Only one process can bind a port, so two installed hacks declaring the same
-`port` in their `hack.json` means at least one of them is not running — and
-anything pointing at that port (a menu-bar link, a `shadow_ui` tab) reaches
-the wrong hack, or nothing.
-
-push-manager does not try to guess which one won. It reports the clash, in
-three places:
-
-- A red banner at the top of this page naming the port and every hack
-  claiming it, since that is where you can act on it.
-- A note on each affected row.
-- One line in `push-manager.log` at startup — a hack that silently never
-  answers because a sibling took its port is otherwise miserable to
-  diagnose.
-
-The scan covers every installed hack, including ones with no navigation
-entry of their own. Built-in entries are excluded: they only *point* at a
-port, they bind nothing, so the built-in **Catalog** entry sharing 7702 with
-the catalog hack is the normal case, not a clash. Nothing is probed over the
-network — the `hack.json` files on disk say enough to tell you what to fix,
-and a liveness poller would be a running cost for a problem you fix once.
-
-The fix is to change the `port` in one hack's `hack.json`, or remove that
-hack. Assigned ports are listed in `CLAUDE.md`.
-
 ### Shadow UI tabs from other hacks
 
 A hack can own a Shadow UI tab without any Go code landing in push-manager.
@@ -257,7 +227,6 @@ It declares `shadow_ui` in its `hack.json`:
 ```jsonc
 {
   "id": "automation",
-  "port": 7703,
   "shadow_ui": { "label": "AUTO", "path": "/api/shadow" }
 }
 ```

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Only three hacks are core — built from this repo, installed directly via `install.sh`: Push Manager (web file browser + display control, port 7701), Push Display (LD_PRELOAD display hook), Push Hack Catalog (on-device installer for community hacks, port 7702). Everything else is optional and installed via Push Hack Catalog rather than built from this repo — see `catalog/catalog.json` — including Automation (LFO/CC curve sequencer, port 7703), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), and Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes, port 7705).
+`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Only three hacks are core — built from this repo, installed directly via `install.sh`: Push Manager (web file browser + display control, port 7701), Push Display (LD_PRELOAD display hook), Push Hack Catalog (on-device installer for community hacks, port 7702). Everything else is optional and installed via Push Hack Catalog rather than built from this repo — see `catalog/catalog.json` — including Automation (LFO/CC curve sequencer), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), and Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes). Push-catalog assigns each of these a port dynamically at install time — see "Ports" below.
 
 `core/` is a shared Go module (see "Core shared library" below) that push-manager, automation and keyboard-visualizer all depend on via `require`+`replace` — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across the three hacks.
 
@@ -147,11 +147,24 @@ explicitly:
 ## Adding a New Hack
 
 1. `mkdir -p hacks/<id>/src`
-2. Copy + edit `hack.json` — update id, name, port, binary
+2. Copy + edit `hack.json` — update id, name, binary
 3. Go source + `Makefile` with `GOOS=linux GOARCH=amd64`
 4. `./scripts/install.sh --hack <id>`
 
-Ports: 7706+ (7701=push-manager, 7702=push-catalog, 7703=automation, 7704=browser-bridge, 7705=keyboard-visualizer).
+`./scripts/install.sh` does not assign a port for you — for local testing,
+put any free port `>= 7711` in `hack.json`. That value only matters for
+local testing: once you publish the hack to the catalog, `push-catalog
+install` overwrites it with a dynamically assigned one on every install
+(see `catalog/schema.md`).
+
+### Ports
+
+- 7701 = push-manager, 7702 = push-catalog. Fixed, never reassigned.
+- 7701–7710 is reserved for the framework as a block (also covers Browser
+  Bridge's fixed `127.0.0.1:7704` Remote Script socket). Do not assign a
+  hack a port in this range.
+- 7711+ is for catalog hacks. `push-catalog install` assigns these
+  automatically — do not hardcode a port in a hack's own `hack.json`.
 
 ## Releases
 

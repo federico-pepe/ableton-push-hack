@@ -21,7 +21,7 @@ func writeHack(t *testing.T, dir, id, body string) {
 // hardware only ever gets 8 tabs.
 func TestResolveUIEntries(t *testing.T) {
 	dir := t.TempDir()
-	writeHack(t, dir, "automation", `{"id":"automation","name":"Automation","port":7703,
+	writeHack(t, dir, "automation", `{"id":"automation","name":"Automation","port":7711,
 		"web_ui":{"label":"Automation","path":"/"},
 		"shadow_ui":{"label":"AUTO","path":"/api/shadow"}}`)
 	writeHack(t, dir, "push-display", `{"id":"push-display","name":"Push Display","port":0}`)
@@ -94,67 +94,15 @@ func TestResolveUIEntries(t *testing.T) {
 	}
 }
 
-// Two hacks on one port: only one can bind it, so both get flagged and the
-// full map is reported. A built-in pointing at the same port is not a clash
-// — it binds nothing.
-func TestPortConflicts(t *testing.T) {
-	dir := t.TempDir()
-	writeHack(t, dir, "keyboard-visualizer", `{"id":"keyboard-visualizer","name":"KV","port":7705,
-		"web_ui":{"label":"KV","path":"/"}}`)
-	writeHack(t, dir, "push-store", `{"id":"push-store","name":"Store","port":7705,
-		"web_ui":{"label":"Store","path":"/"}}`)
-	writeHack(t, dir, "screensaver", `{"id":"screensaver","name":"Saver","port":7706,
-		"web_ui":{"label":"Saver","path":"/"}}`)
-	// Same port as the built-in CATALOG entry points at — not a conflict.
-	writeHack(t, dir, "push-catalog", `{"id":"push-catalog","name":"Catalog","port":7702,
-		"web_ui":{"label":"Catalog","path":"/"}}`)
-
-	hacksDir = dir
-	uiTabsPath = filepath.Join(dir, "ui_tabs.json")
-	initdDir = filepath.Join(dir, "init.d") // doesn't exist: everything reads as enabled
-	rcdGlob = filepath.Join(dir, "rc*.d")
-	defer func() {
-		hacksDir = "/data/push-hack/hacks"
-		initdDir, rcdGlob = "/etc/init.d", "/etc/rc*.d"
-	}()
-
-	conf := portConflicts()
-	if len(conf) != 1 || len(conf[7705]) != 2 {
-		t.Fatalf("want exactly one conflict on 7705, got %v", conf)
-	}
-
-	byID := map[string]uiEntry{}
-	for _, e := range resolveUIEntries() {
-		byID[e.ID] = e
-	}
-	if got := byID["keyboard-visualizer"].PortConflict; len(got) != 1 || got[0] != "push-store" {
-		t.Errorf("keyboard-visualizer should name its rival, got %v", got)
-	}
-	if got := byID["push-store"].PortConflict; len(got) != 1 || got[0] != "keyboard-visualizer" {
-		t.Errorf("conflict should be reported on both sides, got %v", got)
-	}
-	if got := byID["screensaver"].PortConflict; len(got) != 0 {
-		t.Errorf("screensaver is alone on 7706, got %v", got)
-	}
-	if got := byID["push-catalog"].PortConflict; len(got) != 0 {
-		t.Errorf("a built-in pointing at 7702 binds nothing, got %v", got)
-	}
-	if !byID["catalog"].HasWeb {
-		t.Error("built-in catalog entry lost its web link")
-	}
-}
-
 // A hack disabled through the catalog (its service stopped, boot-autostart
 // removed, files kept) must drop out of the menu bar and the Shadow UI
-// tab strip — its link would otherwise point at nothing running. It must
-// also stop being counted as a port claimant, so it can't turn a healthy
-// port-mate into a false conflict.
+// tab strip — its link would otherwise point at nothing running.
 func TestDisabledHackExcluded(t *testing.T) {
 	dir := t.TempDir()
-	writeHack(t, dir, "automation", `{"id":"automation","name":"Automation","port":7703,
+	writeHack(t, dir, "automation", `{"id":"automation","name":"Automation","port":7711,
 		"web_ui":{"label":"Automation","path":"/"},
 		"shadow_ui":{"label":"AUTO","path":"/api/shadow"}}`)
-	writeHack(t, dir, "keyboard-visualizer", `{"id":"keyboard-visualizer","name":"KV","port":7705,
+	writeHack(t, dir, "keyboard-visualizer", `{"id":"keyboard-visualizer","name":"KV","port":7712,
 		"web_ui":{"label":"KV","path":"/"}}`)
 
 	hacksDir = dir

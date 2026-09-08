@@ -476,7 +476,6 @@ func main() {
 	// Shadow UI tab order + web/shadow visibility switches (see ui_tabs.go)
 	uiTabsPath = filepath.Join(filepath.Dir(*configPath), "ui_tabs.json")
 	loadUITabs()
-	warnPortConflicts()
 
 	// Browser Bridge preset index — filesystem scan, off Live's audio thread.
 	// Warm-load the cache for an instant UI, then rescan fresh in the background.

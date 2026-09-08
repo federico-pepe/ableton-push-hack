@@ -150,7 +150,6 @@ Create `hacks/my-hack/hack.json`:
 {
   "id": "my-hack",
   "name": "My Hack",
-  "port": 7706,
   "binary": "my-hack",
   "enabled": true,
   "allowed_roots": [],
@@ -169,7 +168,7 @@ Write your service in `hacks/my-hack/src/`, then:
 ./scripts/install.sh --hack my-hack
 ```
 
-The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. Ports: start from 7706 (7701 = push-manager, 7702 = push-catalog, 7703 = automation, 7704 = browser-bridge, 7705 = keyboard-visualizer).
+The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. `./scripts/install.sh` (unlike `push-catalog install`) does not assign a port for you — add `"port": <n>` to `hack.json` for local testing, any free value `>= 7711` (7701–7710 is reserved for the framework: 7701 = push-manager, 7702 = push-catalog). Once you publish through `push-catalog`, it assigns a port automatically on every install and overwrites this value, so you can drop the field entirely from what you publish.
 
 Prefer not building/deploying it yourself? [`push-catalog`](hacks/push-catalog/) is an on-device installer — browse and install community-published hacks straight from your phone. See `catalog/PUBLISHING.md` for how to publish your own hack into it.
 
