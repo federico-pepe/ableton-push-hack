@@ -268,6 +268,21 @@ Push already has `usb-storage` kernel module registered and udev rules for auto-
 
 **Supported filesystems:** ext4, vfat/FAT32, NTFS, HFS+ (all built into kernel).
 
+**exFAT not supported — confirmed dead end, not just untested.** Checked on-device
+(kernel `5.15.48-intel-pk-preempt-rt`, x86_64, sysvinit):
+- No `exfat` kernel module (`modprobe exfat` → `FATAL: Module exfat not found`).
+- No FUSE support at all — `modprobe fuse` also fails, no `fusermount`, no
+  `/usr/lib/*fuse*`. So the usual `exfat-fuse` userspace fallback is unavailable too.
+- No package manager (`opkg`/`apt`/`dpkg`/`rpm`) to install either piece, and no
+  compiler (`gcc`/`cc`/`musl-gcc`) on-device to build a kernel module in place.
+
+The mount pipeline (`/etc/udev/scripts/mount.sh`) dispatches by `$ID_FS_TYPE` and
+would mount exfat fine if the kernel understood it — the blocker is purely
+kernel-side. Adding support would mean cross-building `exfat.ko` against this
+exact kernel build and pushing it into `/lib/modules/`, which is outside the scope
+of a userspace hack and adjacent to the `/boot/`-modification hard safety rule.
+Treat exFAT as unsupported; tell users to reformat as FAT32 or NTFS.
+
 **Unmount via software:**  
 `syscall.Unmount(path, 0)` works but bypasses udev — the `remove` event never fires, so the lock file at `/tmp/.automount-<name>` is NOT cleaned up. On the next physical plug-in, `mount.sh` finds the lock file and skips mounting. Fix: explicitly `os.Remove("/tmp/.automount-" + name)` after `syscall.Unmount`.
 

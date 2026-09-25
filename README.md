@@ -47,7 +47,7 @@ With Push Manager you can:
 
 - File management:
   - **Browse, upload, download, rename, delete, copy** files and folders on Push
-  - **USB drive support**. Plug in a FAT32/NTFS drive on the USB-A port, then copy files from/to Push
+  - **USB drive support**. Plug in a FAT32/NTFS drive on the USB-A port, then copy files from/to Push. (exFAT is not supported — Push's kernel has no exFAT or FUSE driver. Use FAT32 or NTFS.)
   - **Preset browser** — Push's library is accessible in the browser: fast keyboard search, filter by category / device / source / favourites, free-form tags and ★ favourites, and one-click Load onto the selected track. **⚠️ LOADING presets requires Push 2.4+ and the installation of the PushHackBrowser Remote Script**.
 - Display controls:
   - Take over Push 3's screen. You can load **images and videos**
