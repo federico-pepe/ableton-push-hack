@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- Catalog: Arrangement (alpha), by federico-pepe. It shows the Live Arrangement of the open set on the Push screen, with zoom. It comes with a Remote Script that needs a one-time activation in Live.
+
 ## [0.1.10-alpha] - 2026-09-08
 
 ### Changed

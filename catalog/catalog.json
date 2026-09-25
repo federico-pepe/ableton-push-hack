@@ -76,6 +76,16 @@
       "github_repo": "itsrave/push-hack-screensaver",
       "default_branch": "main",
       "asset_name": "screensaver.tar.gz"
+    },
+    {
+      "id": "arrangement",
+      "name": "Arrangement (alpha)",
+      "description": "Live Arrangement view on Push's screen for the open set, with horizontal and vertical zoom. Shift+Session toggles it (uses MIDI intercept); jog moves the playhead, Play and Back to Arrangement work. Needs push-manager + push-display. Includes a Remote Script that you enable once in Live.",
+      "author": "federico-pepe",
+      "homepage": "https://github.com/federico-pepe/push-hack-arrangement",
+      "github_repo": "federico-pepe/push-hack-arrangement",
+      "default_branch": "main",
+      "asset_name": "arrangement.tar.gz"
     }
   ]
 }
