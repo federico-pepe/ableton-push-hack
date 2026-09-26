@@ -58,48 +58,44 @@ There are three required *base modules*:
 2. **Push Display**: this module is required to fully control the screen and be able to draw on it.
 3. **Push Catalog**: an on-device installer for modules made by the community.
 
-### Push Manager
+#### Push Manager
 **Push Manager** was originally inspired by *Move Manager* and it is a mobile-friendly web app running on Push and accessible from any device on the same network (or Push's Wi-Fi hotspot).
 
 With Push Manager you can:
 
 - File management:
   - **Browse, upload, download, rename, delete, copy** files and folders on Push
-  - **USB drive support**. Plug in a FAT32/NTFS drive on the USB-A port, then copy files from/to Push. (exFAT is not supported — Push's kernel has no exFAT or FUSE driver. Use FAT32 or NTFS.)
+  - **USB drive support**. Plug in a FAT32/NTFS drive on the USB-A port, then copy files from/to Push. (exFAT is not supported by Push's kernel)
   - **Preset browser** — Push's library is accessible in the browser: fast keyboard search, filter by category / device / source / favourites, free-form tags and ★ favourites, and one-click Load onto the selected track. **⚠️ LOADING presets requires Push 2.4+ and the installation of the PushHackBrowser Remote Script**.
 - Display controls:
   - Take over Push 3's screen. You can load **images and videos**
-  - **Draw** — draw in the browser with mouse or finger; strokes stream to Push display in real time (~10fps)
+  - **Draw** — draw in the browser with mouse or finger
 - MIDI:
   - **MIDI Monitor** — live stream of all MIDI events via SSE; filterable by type; **Intercept** toggle blocks events from reaching Live while still receiving them
-  - **Hardware chords** — hold two Push buttons simultaneously to trigger actions (e.g. Intercept toggle); shows OSD feedback on Push display for 2 seconds
+  - **Hardware chords** — hold two Push buttons simultaneously to trigger actions (e.g. Intercept toggle)
   - **LED control** — set any button or pad LED color
 - Other:
   - **System stats** — CPU, memory, disk, IP addresses, hotspot password
 
 **Port:** 7701 → `http://push.local:7701`
 
-### Shadow UI (installed with Push Manager)
+####  Shadow UI (installed with Push Manager)
 Hardware-driven on-device interface rendered directly on Push 3's screen; no computer needed. Same features as Push Manager. Navigate with jog wheel and D-pad.
 
 Use `Shift + Preference` to open/close the Shadow UI.
 
----
-
-### Push Hack Catalog — install community hacks 
-On-device homebrew-style installer. Browse a catalog of community hacks, each published from its own GitHub repo, not hosted by this project — and install/remove them without SSH or a build toolchain.
+#### Push Hack Catalog — install community hacks 
+On-device homebrew-style installer. Browse a catalog of community hacks, each published from its own GitHub repo, not hosted by this project and install/remove them without SSH or a build toolchain.
 
 - Web UI lists every hack's **name, description, author, live version, and last-updated date** (fetched fresh from that hack's own repo on every page load), plus its `requires` (other hacks it depends on).
-- **Install/Update/Remove**, one tap, with the shell output shown in a log pane — Update appears once an installed hack falls behind the catalog's live version.
-- No sha256 pinning — the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once," the same model as `go get` or a Homebrew tap. See [`catalog/ARCHITECTURE.md`](catalog/ARCHITECTURE.md).
+- **Install/Update/Remove**, one tap, with the shell output shown in a log pane. Update appears once an installed hack falls behind the catalog's live version.
+- No sha256 pinning, the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once," the same model as `go get` or a Homebrew tap. See [`catalog/ARCHITECTURE.md`](catalog/ARCHITECTURE.md).
 - Want to publish your own hack into it? See [`catalog/PUBLISHING.md`](catalog/PUBLISHING.md).
-- Example catalog hacks: Automation (LFO/CC sequencer), Keyboard Visualizer (on-screen piano keyboard), and [Browser Bridge](https://github.com/federico-pepe/push-hack-browser-bridge) (load Live presets onto a track from Push Manager's preset browser — needs a one-time manual activation step in Live's Preferences).
+- Example catalog hacks: [Automation](https://github.com/federico-pepe/push-hack-automation) (LFO/CC sequencer), [Keyboard Visualizer](https://github.com/federico-pepe/push-hack-keyboard-visualizer) (on-screen piano keyboard), and [Browser Bridge](https://github.com/federico-pepe/push-hack-browser-bridge) (load Live presets onto a track from Push Manager's preset browser).
 
 **Port:** 7702 → `http://push.local:7702`
 
----
-
-### Push Display — LD_PRELOAD display hook
+#### Push Display — LD_PRELOAD display hook
 C shared library injected into Push 3's process via `LD_PRELOAD`. Intercepts `libusb_bulk_transfer` calls to the XMOS co-processor and overlays custom pixels on every display frame.
 
 - **Mode 0** — passthrough (Ableton Live UI shows normally)
