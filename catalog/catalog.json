@@ -4,7 +4,7 @@
     {
       "id": "keyboard-visualizer",
       "name": "Keyboard Visualizer",
-      "description": "Live piano-keyboard on Push's screen, from Live's actual sounding notes.",
+      "description": "Display a live piano-keyboard on Push's screen.",
       "author": "federico-pepe",
       "homepage": "https://github.com/federico-pepe/push-hack-keyboard-visualizer",
       "github_repo": "federico-pepe/push-hack-keyboard-visualizer",
@@ -80,7 +80,7 @@
     {
       "id": "arrangement",
       "name": "Arrangement (alpha)",
-      "description": "Live Arrangement view on Push's screen for the open set, with horizontal and vertical zoom. Shift+Session toggles it (uses MIDI intercept); jog moves the playhead, Play and Back to Arrangement work. Needs push-manager + push-display. Includes a Remote Script that you enable once in Live.",
+      "description": "Live's Arrangement View on Push's screen for the open set. Use Shift+Session to toggles it. Includes a Remote Script that you enable once in Live.",
       "author": "federico-pepe",
       "homepage": "https://github.com/federico-pepe/push-hack-arrangement",
       "github_repo": "federico-pepe/push-hack-arrangement",
