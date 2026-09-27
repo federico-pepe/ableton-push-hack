@@ -11,6 +11,21 @@ between minor versions).
 
 - Catalog: Arrangement (alpha), by federico-pepe. It shows the Live Arrangement of the open set on the Push screen, with zoom. It comes with a Remote Script that needs a one-time activation in Live.
 
+### Fixed
+
+- `install.sh` no longer dies with "Permission denied" creating
+  `<data-dir>/push-hack/hacks` on a freshly factory-reset device. It now
+  retries the top-level `mkdir` as root and hands ownership to `ableton`
+  instead of failing outright.
+- `install.sh` per-hack directory ownership normalization was chowning to
+  `${PUSH_USER}` instead of the fixed on-device runtime user. Running
+  `install.sh --user root` (e.g. to work around the mkdir failure above)
+  left hack directories `root`-owned, which broke push-display's hook:
+  it runs as `ableton` and could no longer create `framebuf`/`midiflt`
+  inside its own hack dir ("open failed" in `push-hook.log`). Now
+  hardcoded to `ableton`, independent of which user the deploy script
+  connects over SSH as.
+
 ## [0.1.10-alpha] - 2026-09-08
 
 ### Changed
