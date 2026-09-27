@@ -189,11 +189,17 @@ deploy_hack() {
     # Create remote directories
     maybe push_exec "mkdir -p '${remote_hack_dir}' '${log_dir}'"
 
-    # Ensure the hack dir is owned by the deploy user. A prior root-owned `.so`
-    # copy (via push_copy_root) or a standalone deploy.sh run can leave the dir
-    # as root:root; the mkdir above is then a no-op and the non-root hack.json
-    # copy below fails with "Permission denied". Normalise ownership as root.
-    maybe push_exec_root "chown '${PUSH_USER:-ableton}:users' '${remote_hack_dir}'"
+    # Ensure the hack dir is owned by the on-device runtime user. A prior
+    # root-owned `.so` copy (via push_copy_root) or a standalone deploy.sh run
+    # can leave the dir as root:root; the mkdir above is then a no-op and the
+    # non-root hack.json copy below fails with "Permission denied". Normalise
+    # ownership as root. Hardcoded to "ableton" — the device's fixed runtime
+    # user — rather than ${PUSH_USER}: PUSH_USER is whichever SSH login was
+    # used to reach the device (e.g. "root" via --user for a first-boot
+    # bootstrap) and must never leak into the *owner* the deployed files end
+    # up with, or push-display's hook (running as ableton) loses write access
+    # to its own hack dir.
+    maybe push_exec_root "chown 'ableton:users' '${remote_hack_dir}'"
 
     # Stop service first so running binary isn't locked during copy
     local svc_name
@@ -404,8 +410,17 @@ main() {
     PUSH_HACK_REMOTE_DIR="${USER_DATA}/push-hack"
     info "Install target: ${PUSH_HACK_REMOTE_DIR}"
 
-    # Create top-level structure
-    maybe push_exec "mkdir -p '${PUSH_HACK_REMOTE_DIR}/hacks' '${PUSH_HACK_REMOTE_DIR}/logs'"
+    # Create top-level structure. On a freshly factory-reset device the data
+    # dir may not yet be writable by the deploy user, so plain mkdir as
+    # ableton fails with "Permission denied". Fall back to creating it as
+    # root, then hand ownership to ableton — never leave it root-owned, or
+    # later per-hack writes (and push-display's hook) inherit the same
+    # "Permission denied".
+    if ! maybe push_exec "mkdir -p '${PUSH_HACK_REMOTE_DIR}/hacks' '${PUSH_HACK_REMOTE_DIR}/logs'"; then
+        warn "mkdir as ${PUSH_USER:-ableton} failed — retrying as root, then handing ownership to ableton"
+        maybe push_exec_root "mkdir -p '${PUSH_HACK_REMOTE_DIR}/hacks' '${PUSH_HACK_REMOTE_DIR}/logs'"
+        maybe push_exec_root "chown -R ableton:users '${PUSH_HACK_REMOTE_DIR}'"
+    fi
 
     # Collect hacks to deploy
     local hacks_to_deploy=()
