@@ -50,163 +50,28 @@ This hack can't interact directly with what's happening inside Live on Push (unl
 
 ### Main components
 
-The main component is the `core library`: a shared Go module that can be used and referenced by any additional modules. As the name implies, the core library includes
+The main component is the `core library`: a shared Go module that can be used and referenced by any additional modules.
 
 There are three required *base modules*:
 
-1. **Push Manager**: it's the main component of the hack. It looks like a mobile-friendly web app inspired by *Move Manager* but under the hood it does many different things (see below for all the details)
-2. **Push Display**: this module is required to fully control the screen and be able to draw on it.
-3. **Push Catalog**: an on-device installer for modules made by the community.
-
-#### Push Manager
-**Push Manager** was originally inspired by *Move Manager* and it is a mobile-friendly web app running on Push and accessible from any device on the same network (or Push's Wi-Fi hotspot).
-
-With Push Manager you can:
-
-- File management:
-  - **Browse, upload, download, rename, delete, copy** files and folders on Push
-  - **USB drive support**. Plug in a FAT32/NTFS drive on the USB-A port, then copy files from/to Push. (exFAT is not supported by Push's kernel)
-  - **Preset browser** — Push's library is accessible in the browser: fast keyboard search, filter by category / device / source / favourites, free-form tags and ★ favourites, and one-click Load onto the selected track. **⚠️ LOADING presets requires Push 2.4+ and the installation of the PushHackBrowser Remote Script**.
-- Display controls:
-  - Take over Push 3's screen. You can load **images and videos**
-  - **Draw** — draw in the browser with mouse or finger
-- MIDI:
-  - **MIDI Monitor** — live stream of all MIDI events via SSE; filterable by type; **Intercept** toggle blocks events from reaching Live while still receiving them
-  - **Hardware chords** — hold two Push buttons simultaneously to trigger actions (e.g. Intercept toggle)
-  - **LED control** — set any button or pad LED color
-- Other:
-  - **System stats** — CPU, memory, disk, IP addresses, hotspot password
-
-**Port:** 7701 → `http://push.local:7701`
-
-####  Shadow UI (installed with Push Manager)
-Hardware-driven on-device interface rendered directly on Push 3's screen; no computer needed. Same features as Push Manager. Navigate with jog wheel and D-pad.
-
-Use `Shift + Preference` to open/close the Shadow UI.
-
-#### Push Hack Catalog — install community hacks 
-On-device homebrew-style installer. Browse a catalog of community hacks, each published from its own GitHub repo, not hosted by this project and install/remove them without SSH or a build toolchain.
-
-- Web UI lists every hack's **name, description, author, live version, and last-updated date** (fetched fresh from that hack's own repo on every page load), plus its `requires` (other hacks it depends on).
-- **Install/Update/Remove**, one tap, with the shell output shown in a log pane. Update appears once an installed hack falls behind the catalog's live version.
-- No sha256 pinning, the trust boundary is "this repo is on GitHub, its catalog entry was PR-reviewed once," the same model as `go get` or a Homebrew tap. See [`catalog/ARCHITECTURE.md`](catalog/ARCHITECTURE.md).
-- Want to publish your own hack into it? See [`catalog/PUBLISHING.md`](catalog/PUBLISHING.md).
-- Example catalog hacks: [Automation](https://github.com/federico-pepe/push-hack-automation) (LFO/CC sequencer), [Keyboard Visualizer](https://github.com/federico-pepe/push-hack-keyboard-visualizer) (on-screen piano keyboard), and [Browser Bridge](https://github.com/federico-pepe/push-hack-browser-bridge) (load Live presets onto a track from Push Manager's preset browser).
-
-**Port:** 7702 → `http://push.local:7702`
-
-#### Push Display — LD_PRELOAD display hook
-C shared library injected into Push 3's process via `LD_PRELOAD`. Intercepts `libusb_bulk_transfer` calls to the XMOS co-processor and overlays custom pixels on every display frame.
-
-- **Mode 0** — passthrough (Ableton Live UI shows normally)
-- **Mode 1** aka Debug mode — orange bar overlay at top of screen
-- **Mode 2** — full frame takeover (push-manager writes any image here)
-- **Startup splash** — "Push Hack loaded..." text shown a few seconds into each Push boot, then passthrough is restored. The hook stays passive during the USB/hub bring-up window (8s), then briefly takes over to show the splash
+1. **[Push Manager](hacks/push-manager/README.md)**: it's the main component of the hack. It looks like a mobile-friendly web app inspired by *Move Manager* but under the hood it does many different things (see below for all the details)
+2. **[Push Display](hacks/push-display/README.md)**: this module is required to fully control the screen and be able to draw on it.
+3. **[Push Catalog](hacks/push-catalog/README.md)**: an on-device installer for modules made by the community.
 
 ---
 
-## Requirements
+## Install and uninstall Push Hack
 
-- Ableton Push 3 Standalone with SSH access enabled (`http://push.local/ssh`)
-- Go 1.21+ (for building hacks locally)
-- Docker (for building `push_hook.so` — cross-compiles linux/amd64 via `gcc:12-bullseye`)
-- macOS or Linux development machine
+To install and uninstall Push Hack on your Push 3 Standalone you have two options:
 
----
-
-## Quick start: Install
-
-```bash
-# 1. Deploy all hacks (pre-built binaries, no Go/Docker toolchain needed)
-#    The installer will guide you through SSH key setup if needed,
-#    then ask you to accept a disclaimer before proceeding.
-./scripts/install.sh
-
-# 2. Open Push Manager in browser
-open http://push.local:7701
-```
-
----
-
-## Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `./scripts/discover.sh` | Probe Push OS — init system, paths, processes, ports |
-| `./scripts/install.sh` | Build + deploy all (or one) hack, register service |
-| `./scripts/uninstall.sh` | Remove all hacks and services cleanly |
-
-```bash
-./scripts/discover.sh  --host 192.168.1.67   # use IP instead of hostname
-./scripts/install.sh   --hack push-manager   # deploy one hack only
-./scripts/install.sh   --build               # build from source (default: use pre-built)
-./scripts/install.sh   --dry-run             # print actions without executing
-./scripts/uninstall.sh --purge               # also delete /data/push-hack data
-./scripts/uninstall.sh --yes                 # skip confirmation prompt
-```
-
-**push-display** is handled by `./scripts/install.sh` — its `service.initd` copies `push_hook.so`, patches `LD_PRELOAD` into Push3's init script, and restarts push3 automatically. For standalone re-deploys:
-```bash
-hacks/push-display/deploy.sh           # build + deploy + restart
-hacks/push-display/deploy.sh --no-build  # deploy pre-built .so only
-```
+1. Use the new cross-platform [Push Hack Installer](https://github.com/federico-pepe/push-hack-installer)
+2. Use the included scrips. See [docs/scripts.md](docs/scripts.md) for every flag and standalone `push-display` re-deploy.
 
 ---
 
 ## Adding a new hack
 
-```bash
-mkdir -p hacks/my-hack/src
-```
-
-Create `hacks/my-hack/hack.json`:
-```json
-{
-  "id": "my-hack",
-  "name": "My Hack",
-  "binary": "my-hack",
-  "enabled": true,
-  "allowed_roots": [],
-  "settings": {}
-}
-```
-
-Create `hacks/my-hack/Makefile`:
-```makefile
-all:
-	cd src && GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ../my-hack .
-```
-
-Write your service in `hacks/my-hack/src/`, then:
-```bash
-./scripts/install.sh --hack my-hack
-```
-
-The framework auto-generates a sysvinit init.d script and registers it with `update-rc.d`. Your hack survives reboots. For no-binary hacks (shell scripts, udev rules), set `"binary": ""` and provide a `service.initd` template. `./scripts/install.sh` (unlike `push-catalog install`) does not assign a port for you — add `"port": <n>` to `hack.json` for local testing, any free value `>= 7711` (7701–7710 is reserved for the framework: 7701 = push-manager, 7702 = push-catalog). Once you publish through `push-catalog`, it assigns a port automatically on every install and overwrites this value, so you can drop the field entirely from what you publish.
-
-Prefer not building/deploying it yourself? [`push-catalog`](hacks/push-catalog/) is an on-device installer — browse and install community-published hacks straight from your phone. See `catalog/PUBLISHING.md` for how to publish your own hack into it.
-
-### Core shared library
-
-Before hand-rolling ALSA MIDI, HTTP boilerplate, or SSE for a new hack, check `core/` — a shared Go module with the pieces push-manager/automation/keyboard-visualizer all reuse: Push 3 constants (`core/push3`), image drawing (`core/gfx`), the display shm codec (`core/display`), HTTP middleware (`core/httpx`), config loading (`core/hackcfg`), SSE broadcasting (`core/sse`), an HTTP client for push-manager's display/tempo API (`core/pmclient`), and the ALSA sequencer layer (`core/alsaseq`) — open a port, send/receive MIDI, enumerate devices, all without touching an ioctl directly. See `core/README.md`.
-
-Pull it in from `hacks/my-hack/src/go.mod`:
-```
-require github.com/federico-pepe/ableton-push-hack/core v0.0.0
-replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
-```
-
----
-
-## Uninstall
-
-```bash
-# Remove services + binaries, keep /data/push-hack directory
-./scripts/uninstall.sh
-
-# Full removal including all data
-./scripts/uninstall.sh --purge --yes
-```
+See [docs/adding-a-hack.md](docs/adding-a-hack.md) for the full walkthrough — folder layout, `hack.json`/`Makefile` examples, port rules, and the `core/` shared library.
 
 ---
 
@@ -217,6 +82,8 @@ replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
 **Framework and API** (`docs/`):
 - `docs/architecture.md` — deploy framework, hack structure, `core/` shared library, per-hack file layout
 - `docs/api-reference.md` — HTTP routes, the RemotePanel contract, the push-display shared-memory protocol
+- `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`
+- `docs/adding-a-hack.md` — full walkthrough for a new hack: folder layout, `hack.json`/`Makefile` examples, port rules, `core/` shared library
 
 **Push hardware / OS** (`docs/`):
 - `docs/push3-internals.md` — OS, filesystem, XMOS USB protocol, display, MIDI routing

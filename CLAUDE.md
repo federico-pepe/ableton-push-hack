@@ -151,6 +151,9 @@ explicitly:
 3. Go source + `Makefile` with `GOOS=linux GOARCH=amd64`
 4. `./scripts/install.sh --hack <id>`
 
+See [docs/adding-a-hack.md](docs/adding-a-hack.md) for the full walkthrough
+with `hack.json`/`Makefile` examples and the `core/` shared library.
+
 `./scripts/install.sh` does not assign a port for you — for local testing,
 put any free port `>= 7711` in `hack.json`. That value only matters for
 local testing: once you publish the hack to the catalog, `push-catalog
@@ -193,6 +196,8 @@ publish step.
 Framework and API (`docs/`):
 - `docs/architecture.md` — framework layer, hack structure convention, `core/` shared library, per-hack file layout, deployed directory layout, Push 3 hardware/OS facts
 - `docs/api-reference.md` — HTTP routes for push-manager and push-catalog, the RemotePanel contract, the push-display shared-memory protocol
+- `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`
+- `docs/adding-a-hack.md` — full walkthrough for a new hack: folder layout, `hack.json`/`Makefile` examples, port rules, `core/` shared library
 
 Push hardware / OS (`docs/`):
 - `docs/push3-internals.md` — OS, filesystem, XMOS USB protocol, display, MIDI routing
