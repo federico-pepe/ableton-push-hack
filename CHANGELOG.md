@@ -9,7 +9,6 @@ between minor versions).
 
 ### Added
 
-- Catalog: Arrangement (alpha), by federico-pepe. It shows the Live Arrangement of the open set on the Push screen, with zoom. It comes with a Remote Script that needs a one-time activation in Live.
 - `docs/scripts.md` — full flag reference for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`, moved out of README.md.
 - `docs/adding-a-hack.md` — full walkthrough for a new hack, moved out of README.md.
 
