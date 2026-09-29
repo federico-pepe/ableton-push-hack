@@ -13,6 +13,11 @@ between minor versions).
 - `docs/scripts.md` — full flag reference for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`, moved out of README.md.
 - `docs/adding-a-hack.md` — full walkthrough for a new hack, moved out of README.md.
 
+### Changed
+
+- MANUAL.md now points to the [Push Hack Installer](https://github.com/federico-pepe/push-hack-installer) as the easiest way to install Push Hack.
+- MANUAL.md's Browser Bridge and Automation setup steps (with screenshots) moved to their own repos: [push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge) and [push-hack-automation](https://github.com/federico-pepe/push-hack-automation).
+
 ### Fixed
 
 - `install.sh` no longer dies with "Permission denied" creating

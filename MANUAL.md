@@ -18,6 +18,12 @@ I don't provide support for this but if you need help, join the [Discord Server]
 These instructions are written for users of the macOS operating system. Windows users, see the [Windows section](#windows-users) below before starting.
 
 ## Installing
+
+You have two ways to install Push Hack:
+
+1. Use the [Push Hack Installer](https://github.com/federico-pepe/push-hack-installer) — a cross-platform app that guides you through pairing and installation. This is the easiest option.
+2. Use the included scripts, as described below.
+
 Your computer and Push 3 Standalone must be connected to the same Wi‑Fi network. Make sure the connection is **stable** and that it doesn't drop during installation. If you're concerned about network reliability, you can enable the hotspot directly on Push from the settings and connect to it instead.
 
 At the end of the installation, Push will automatically reboot. Make sure to save any important files before proceeding.
@@ -70,35 +76,7 @@ If this happens: hold down the power button on Push for a few seconds until it t
 Some hacks required additional set up to work properly. Please follow these instructions.
 
 ### Browser Bridge Hack
-To use the **Browser** feature in Push Manager or Push Hack's Shadow UI to be able to load presets from Live's library, you need to enable the **PushHackBrowser** Remote Script.
+The **Browser Bridge** hack is not installed by default — install it from the Push Hack Catalog. For the setup steps and screenshots, see its own repo: [push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge).
 
-You'll need Live 12.4 or later installed on Push.
-
-![Screenshot of the MIDI Preferences Tab on Push 3 Standalone. To showcase how to configure the PushHackBrowser remote script](resources/push-hack-browser-bridge-remote-scritp.png)
-
-1. Make sure the **browser-bridge** hack is installed — via Push Hack Catalog, not installed by default.
-2. Open **MIDI Preferences*** on Push
-3. Use the top-left knob to select  `Control Scripts`
-4. Select an empty slot
-5. Use the third knob to scroll through the **Control Surface** list, then select `PushHackBrowser`.
-6. Leave *Input* and *Output* set to **None**
-7. Reboot Push for the setting to take effect.
-
-###  Automation Hack
-To use the **Automation** feature, open Push Manager and select **Automation** from the menu bar.
-
-You'll need Live 12.4 or later installed on Push.
-
-1. Make sure that **automation** hack is installed — via Push Hack Catalog, not installed by default.
-2. Open **MIDI Preferences** on Push
-3. In the **Input** tab, scroll to select **Push Hack Automation** and enable the **Remote** checkbox. Leave Track, Sync and MPE disabled.
-4. In the **Output** tab, scroll to select **Push Hack Clock** and enable the **Sync** checkbox. Leave Track and Remote disabled.
-
-![Screenshot of the Input Tab of the MIDI Preferences on Push with Push Hack Automation Enabled](resources/push-hack-automation-settings-midiin.png)
-![Screenshot of the Output Tab of the MIDI Preferences on Push with Push Hack Clock enabled](resources/push-hack-automation-clock-settings.png)
-
-When writing automation in the browser you'll then need to map them to Push as you'd do with any external MIDI controller.
-
-1. Open **MIDI Preferences** on Push
-2. Select **Mapping**
-3. Select **Add Mapping** and follow the steps on the screen. If the automation is active you should receive the MIDI CC automatically.
+### Automation Hack
+The **Automation** hack is not installed by default — install it from the Push Hack Catalog. For the setup steps and screenshots, see its own repo: [push-hack-automation](https://github.com/federico-pepe/push-hack-automation).
