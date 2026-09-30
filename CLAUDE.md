@@ -6,11 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **Writing-style rule:** When writing or editing code comments, use the `caveman` skill. When writing or editing technical documentation (`docs/`, README files, hack-level READMEs, `CHANGELOG.md`), use the `simple-english` skill.
 
+## Push family context
+
+Shared facts for all Push repos (repo map, git identity, `core/` pinning, cross-repo hardware facts):
+
+@~/.claude/push-family.md
+
 ## Project
 
-`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Only three hacks are core — built from this repo, installed directly via `install.sh`: Push Manager (web file browser + display control, port 7701), Push Display (LD_PRELOAD display hook), Push Hack Catalog (on-device installer for community hacks, port 7702). Everything else is optional and installed via Push Hack Catalog rather than built from this repo — see `catalog/catalog.json` — including Automation (LFO/CC curve sequencer), Browser Bridge (Live MIDI Remote Script to load `.adv`/`.adg` presets — **one-time manual activation required**), and Keyboard Visualizer (on-screen piano keyboard sourced from Live's post-transform notes). Push-catalog assigns each of these a port dynamically at install time — see "Ports" below.
+`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Only three hacks are core — built from this repo, installed directly via `install.sh`: Push Manager (web file browser + display control, port 7701), Push Display (LD_PRELOAD display hook), Push Hack Catalog (on-device installer for community hacks, port 7702). Everything else is optional: each hack lives in its own repo and installs through Push Hack Catalog. The full list of community hacks is in [catalog/catalog.json](catalog/catalog.json). Push-catalog assigns each one a port dynamically at install time — see "Ports" below.
 
-`core/` is a shared Go module (see "Core shared library" below) that push-manager, automation and keyboard-visualizer all depend on via `require`+`replace` — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across the three hacks.
+`core/` is a shared Go module — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across hacks. push-manager uses it via `require`+`replace ../../../core`. Every hack in its own repo, and `push-tethered-app`, pins a tagged version (`core/vX.Y.Z`, currently `v0.2.0`) with **no** `replace`. A `core/` change reaches them only after you tag a new `core/vX.Y.Z` and bump each consumer's pin. See [core/README.md](core/README.md).
 
 **Core constraint:** Push is a live performance tool. Hacks must not crash it, hog CPU, or consume significant memory.
 
@@ -146,16 +152,19 @@ explicitly:
 
 ## Adding a New Hack
 
-1. `mkdir -p hacks/<id>/src`
-2. Copy + edit `hack.json` — update id, name, binary
-3. Go source + `Makefile` with `GOOS=linux GOARCH=amd64`
-4. `./scripts/install.sh --hack <id>`
+New optional hacks live in their **own repo** (`push-hack-<id>`), not in
+`hacks/`. `hacks/` holds only the three core hacks.
+
+1. New repo with `hack.json`, `Makefile` (`GOOS=linux GOARCH=amd64`), `src/`
+2. `src/go.mod` pins `core` to the newest `core/vX.Y.Z` tag — no `replace`
+3. Test on device: `make build`, `scp` binary + `hack.json` to `/data/push-hack/hacks/<id>/`, run it over SSH (pattern: `push-hack-arrangement/scripts/deploy.sh`)
+4. Publish: `v*` tag release workflow + entry in `catalog/catalog.json` (see `catalog/PUBLISHING.md`)
 
 See [docs/adding-a-hack.md](docs/adding-a-hack.md) for the full walkthrough
 with `hack.json`/`Makefile` examples and the `core/` shared library.
 
-`./scripts/install.sh` does not assign a port for you — for local testing,
-put any free port `>= 7711` in `hack.json`. That value only matters for
+Local testing does not assign a port for you — put any free port `>= 7711`
+in `hack.json`. That value only matters for
 local testing: once you publish the hack to the catalog, `push-catalog
 install` overwrites it with a dynamically assigned one on every install
 (see `catalog/schema.md`).

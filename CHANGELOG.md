@@ -14,6 +14,7 @@ between minor versions).
 
 ### Changed
 
+- The docs now describe the split-repo layout. Optional hacks live in their own repos and pin `core` to a tagged version (`core/vX.Y.Z`, currently `v0.2.0`) with no `replace`. Only push-manager keeps `replace ../../../core`. `docs/adding-a-hack.md`, `core/README.md`, `docs/architecture.md`, and `CLAUDE.md` changed. `CLAUDE.md` now links to `catalog/catalog.json` for the list of catalog hacks, and no longer names each hack.
 - MANUAL.md now points to the [Push Hack Installer](https://github.com/federico-pepe/push-hack-installer) as the easiest way to install Push Hack.
 - MANUAL.md's Browser Bridge and Automation setup steps (with screenshots) moved to their own repos: [push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge) and [push-hack-automation](https://github.com/federico-pepe/push-hack-automation).
 
