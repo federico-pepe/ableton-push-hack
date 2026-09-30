@@ -41,11 +41,13 @@ registers the service at `/etc/init.d/push-hack-<id>`.
 
 `core/` is a nested Go module
 (`github.com/federico-pepe/ableton-push-hack/core`, its own `go.mod`).
-push-manager, automation, and keyboard-visualizer each pull it in with
-`require` + `replace ../../../core` in their own `go.mod`. This keeps each
-hack independently buildable. A third-party hack in its own repo could
-`require` the same path without a `replace` and resolve it straight from
-GitHub.
+push-manager pulls it in with `require` + `replace ../../../core`, so it
+always builds against the `core/` in the same commit. Hacks in their own
+repos (automation, keyboard-visualizer, and the other catalog hacks) and
+`push-tethered-app` pin a tagged version (`core/vX.Y.Z`) with no `replace`.
+Go resolves the tag from GitHub. A `core/` change reaches those repos only
+after a new tag and a pin bump in each repo. See
+[core/README.md](../core/README.md).
 
 See `discovery/push-core-refactor.md` for the extraction plan and the
 reasoning behind it.
@@ -108,8 +110,8 @@ For the shared-memory layout and display geometry, see
 Browser Bridge (the `PushHackBrowser` MIDI Remote Script that push-manager's
 `live_bridge.go` talks to over TCP port 7704) lives outside this repo — see
 [federico-pepe/push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge).
-It installs through Push Hack Catalog, like Automation and Keyboard
-Visualizer.
+It installs through Push Hack Catalog, like every other optional hack. See
+[catalog/catalog.json](../catalog/catalog.json) for the full list.
 
 ## Push Hack Catalog (`hacks/push-catalog/`)
 

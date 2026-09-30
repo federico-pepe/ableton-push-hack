@@ -1,23 +1,33 @@
 # core
 
-Shared Go module for push-hack. push-manager, automation, and
-keyboard-visualizer each pull this in via `require`+`replace` in their own
-`go.mod` — every hack still builds and runs independently; `core` just stops
-them from re-implementing the same ALSA ioctls, HTTP boilerplate, and SSE
-plumbing three times over. See `../discovery/push-core-refactor.md` for the
-extraction rationale and history, and `../CLAUDE.md`'s "Core shared library"
-section for the same table kept in sync there.
+Shared Go module for push-hack. Every hack still builds and runs
+independently; `core` stops them from re-implementing the same ALSA ioctls,
+HTTP boilerplate, and SSE plumbing. See `../discovery/push-core-refactor.md`
+for the extraction rationale and history, and
+[`../docs/architecture.md`](../docs/architecture.md#core-shared-library-core)
+for the same package table kept in sync there.
 
-**Using this from a new hack** — add to `hacks/<id>/src/go.mod`:
+Two kinds of consumers use it:
+
+- The core hacks in this repo (push-manager) use `require` + `replace
+  ../../../core`, so they always build against the `core/` in the same
+  commit.
+- Hacks in their own repos (automation, keyboard-visualizer, and every
+  other catalog hack) and `push-tethered-app` pin a tagged version, with
+  **no** `replace`.
+
+**Using this from a new hack in its own repo** — add to `src/go.mod`:
 ```
-require github.com/federico-pepe/ableton-push-hack/core v0.0.0
-replace github.com/federico-pepe/ableton-push-hack/core => ../../../core
+require github.com/federico-pepe/ableton-push-hack/core v0.2.0
 ```
-A third-party hack living outside this repo can `require` the same import
-path with **no** `replace` — `go get` resolves it from GitHub (tag prefix
-`core/vX.Y.Z`) once tagged. That's why `core/go.mod`'s module path is
-domain-qualified (`github.com/federico-pepe/ableton-push-hack/core`) rather
-than a bare local name.
+Use the newest `core/vX.Y.Z` tag. `go get` resolves it from GitHub. That is
+why `core/go.mod`'s module path is domain-qualified
+(`github.com/federico-pepe/ableton-push-hack/core`) rather than a bare local
+name.
+
+**Releasing a `core` change:** merge it, then tag `core/vX.Y.Z` and push the
+tag. Consumers in other repos see the change only after they bump their pin
+(`go get github.com/federico-pepe/ableton-push-hack/core@vX.Y.Z`).
 
 ## Packages
 
