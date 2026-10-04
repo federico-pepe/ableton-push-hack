@@ -495,6 +495,7 @@ func main() {
 		waitForBootSettle()
 		initMidiOut()
 		startMidiReader()
+		go watchInterceptOff()
 	}()
 
 	// Routes
