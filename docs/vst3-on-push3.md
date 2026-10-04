@@ -381,8 +381,33 @@ performances convert, and three of them (Whisper, Wicked, Water Orchestra) were
 loaded on Push and sound like the originals.
 
 The factory dump has 192 entries: 64 performances and 128 single patches
-(messages at `02 00 xx 00`). The script converts only the performances. It is not
-known yet how the plugin stores a single patch.
+(messages at `02 00 xx 00`). The plugin loads a patch into the **Upper** part of
+the current performance: the performance data and the Lower tone stay as they
+were, and only the tone at `01 00 40 00` changes. So a patch preset is a preset
+the plugin saved after you selected a patch, with that one tone replaced. Save
+one patch from the plugin as a second template (here `Split.vstpreset`) and add
+`--patch-template`:
+
+```bash
+./scripts/VST/je8086-syx-to-vstpreset.py Factory_presets.syx \
+    --template Chariot.vstpreset --patch-template Split.vstpreset \
+    --out resources/VST/JP8086/presets
+```
+
+This writes `Performances/` (64 files) and `Patches/` (128 files). A patch tone
+is converted like a performance tone (address, extra `0x00` byte, checksum). Two
+patches share a name with a performance ("Feedback Lead", "Stargate"). Those two
+files get a ` (patch)` suffix, because Browser Bridge loads a preset by name.
+
+The patch manager data at the end of the state holds an MD5 of the loaded
+performance or patch: the MD5 of the dump's data bytes (each message cut to its
+data, joined). The script refreshes it. The bank and program numbers next to it
+are only labels of the patch manager. The script leaves them as in the template,
+and they do not change the sound.
+
+Converting "Chariots" (a performance) and "Spit'n Slide Bs" (a patch) gave files
+that are byte for byte the presets the plugin saved. Three performances and
+three patches were loaded on Push and sound like the originals.
 
 ## Convert Dexed cartridges (`.syx`)
 
