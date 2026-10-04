@@ -9,6 +9,7 @@ between minor versions).
 
 ### Added
 
+- `docs/vst3-on-push3.md` and `scripts/make-vst3-preset.py` — Live on Push 3 can load Linux VST3 instruments itself. The guide shows how to turn on VST3 scanning and make a preset file without a Mac. Tested with Surge XT; the generated preset is not yet confirmed on the device. The script can list a plugin's parameters (`--list-params`, using `scripts/vst3_params.py` run on Push) and write an encoder map (`--params`, by ID or by title). A map saved on a Mac works on Push.
 - `docs/scripts.md` — full flag reference for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`, moved out of README.md.
 - `docs/adding-a-hack.md` — full walkthrough for a new hack, moved out of README.md.
 
