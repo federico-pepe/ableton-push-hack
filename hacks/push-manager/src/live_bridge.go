@@ -61,6 +61,46 @@ func liveSampleLoad(name string) error {
 	return err
 }
 
+// bridgePlugin is one entry of the Remote Script's list_plugins reply: a
+// scanned plugin and the preset files Live has indexed for it. Needs
+// PushHackBrowser with plugin support (load_plugin / list_plugins).
+type bridgePlugin struct {
+	Vendor  string   `json:"vendor"`
+	Name    string   `json:"name"`
+	Presets []string `json:"presets"`
+}
+
+// livePlugins asks the Remote Script which plugins Live has scanned.
+func livePlugins() ([]bridgePlugin, error) {
+	reply, err := bridgeSend("list_plugins")
+	if err != nil {
+		return nil, err
+	}
+	var r struct {
+		Plugins []bridgePlugin `json:"plugins"`
+	}
+	if err := json.Unmarshal([]byte(reply), &r); err != nil {
+		// An older script answers an unknown command with "OK" or "ERROR".
+		return nil, fmt.Errorf("list_plugins: unexpected reply %q (update Browser Bridge)", reply)
+	}
+	return r.Plugins, nil
+}
+
+// livePluginLoad loads a plugin onto the selected track, with one of its
+// presets when preset is non-empty, else with its default patch. The command
+// is colon-separated, so a colon in either name cannot be sent.
+func livePluginLoad(plugin, preset string) error {
+	if strings.Contains(plugin, ":") || strings.Contains(preset, ":") {
+		return fmt.Errorf("a name with ':' cannot be loaded this way")
+	}
+	cmd := "load_plugin:" + plugin
+	if preset != "" {
+		cmd += ":" + preset
+	}
+	_, err := bridgeSend(cmd)
+	return err
+}
+
 // liveBridgeAlive reports whether the Remote Script is reachable (ping/pong).
 func liveBridgeAlive() bool {
 	reply, err := bridgeSend("ping")
@@ -165,7 +205,8 @@ func handleLiveLoad(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name     string `json:"name"`
 		Category string `json:"category"`
-		Type     string `json:"type"` // "sample" or "" / "preset"
+		Type     string `json:"type"`   // "sample", "plugin", or "" / "preset"
+		Preset   string `json:"preset"` // type "plugin" only: a preset of that plugin
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
@@ -174,6 +215,8 @@ func handleLiveLoad(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if body.Type == "sample" {
 		err = liveSampleLoad(body.Name)
+	} else if body.Type == "plugin" {
+		err = livePluginLoad(body.Name, body.Preset)
 	} else {
 		err = liveLoad(body.Name, PresetCategory(body.Category))
 	}
@@ -182,4 +225,17 @@ func handleLiveLoad(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, map[string]interface{}{"ok": true})
+}
+
+// GET /api/live/plugins — plugins Live has scanned, each with its presets.
+func handleLivePlugins(w http.ResponseWriter, r *http.Request) {
+	plugins, err := livePlugins()
+	if err != nil {
+		jsonResponse(w, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	if plugins == nil {
+		plugins = []bridgePlugin{}
+	}
+	jsonResponse(w, map[string]interface{}{"ok": true, "plugins": plugins})
 }
