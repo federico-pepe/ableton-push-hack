@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `docs/vst3-on-push3.md` now covers plugins that need data files, with JE8086 (JP-8000 emulation) as the tested example: where the firmware goes on Push, and that the folder name is case-sensitive.
+
 ## [0.1.12-alpha] - 2026-10-04
 
 ### Added

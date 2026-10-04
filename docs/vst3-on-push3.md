@@ -35,6 +35,7 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Surge XT 1.4 (instrument) | Scans, loads, plays, presets and encoder map work |
 | Dragonfly Reverb 3.2.10 (Early Reflections, Hall, Plate, Room; effects) | All four scan and are listed. Load them on an **audio** track. |
 | Dexed 1.0.1 (instrument) | The official Linux download does **not** load: it needs glibc 2.38 and Push has 2.35. Built from source on Ubuntu 22.04 it scans and is listed. |
+| JE8086 2.2.25 by The Usual Suspects (JP-8000 emulation, instrument) | Scans, loads and plays once its firmware is in the right folder. See [Plugins that need data files](#plugins-that-need-data-files). |
 
 Rule of thumb: use a plugin built on Ubuntu 22.04 (glibc 2.35) or older. The
 error in `PluginScanner.txt` for a build that is too new is
@@ -272,6 +273,31 @@ Notes:
 - A plugin whose code has no Linux build at all (a Windows-only or Mac-only
   plugin) cannot be built this way.
 - Check the plugin's licence before you copy a build you made to other people.
+
+## Plugins that need data files
+
+Some plugins need files that are not in the `.vst3`, such as a ROM or samples.
+Live runs as the `ableton` user, whose home is `/data`. So a path that a
+plugin's guide gives as `~/.local/share/...` is `/data/.local/share/...` on
+Push. Push also has a case-sensitive file system, so the folder name must match
+exactly what the plugin uses.
+
+Tested with **JE8086**, a JP-8000 emulation. It makes no sound without the
+firmware that you get from Roland (the JP-8000 update files,
+`_00001.mid` to `_00008.mid`). The firmware is not part of this project and
+must not be committed to the repository. Steps:
+
+1. Copy `JE8086.vst3` to `/data/.vst3/` and restart Live, as in [Steps](#steps).
+2. Load JE8086 once. The plugin creates
+   `/data/.local/share/The Usual Suspects/JE8086/` with a `roms` folder.
+3. Copy the 8 firmware files into that `roms` folder.
+4. Load JE8086 again on a fresh track. The plugin reads the ROM only when it
+   starts, so an instance that was loaded before you copied the files stays silent.
+
+The plugin's guide names the folder `je8086` in lower case. On Linux the plugin
+really uses `JE8086`. Files in the lower-case folder were ignored and the plugin
+was silent. If a plugin is silent, look at the folders it created under
+`/data/.local/share/` and `/data/.config/` to see the exact names it uses.
 
 ## Plugin presets (`.vstpreset`)
 
