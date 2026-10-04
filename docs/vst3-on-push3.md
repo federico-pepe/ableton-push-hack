@@ -36,14 +36,11 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Dragonfly Reverb 3.2.10 (Early Reflections, Hall, Plate, Room; effects) | All four scan and are listed. Load them on an **audio** track. |
 | Dexed 1.0.1 (instrument) | The official Linux download does **not** load: it needs glibc 2.38 and Push has 2.35. Built from source on Ubuntu 22.04 it scans and is listed. |
 
-Rule of thumb: build a plugin on Ubuntu 22.04 (glibc 2.35) or older. The error
-in `PluginScanner.txt` for a build that is too new is
-`version 'GLIBC_2.38' not found`. To build Dexed, use an `ubuntu:22.04`
-container (`--platform linux/amd64` on an Apple Silicon Mac) with
-`libasound2-dev`, `libfreetype-dev`, `libfontconfig1-dev`, the X11 dev
-packages, `libgl1-mesa-dev` and `libjack-jackd2-dev` (JUCE needs the JACK
-header to compile). Build the `Dexed_VST3` target. If the link step fails with
-`write jobserver: Bad file descriptor`, run the same build again with `-j1`.
+Rule of thumb: use a plugin built on Ubuntu 22.04 (glibc 2.35) or older. The
+error in `PluginScanner.txt` for a build that is too new is
+`version 'GLIBC_2.38' not found`. If a plugin has no Linux x86_64 `.vst3`, or
+its build is too new, build it yourself. See
+[Build a plugin from source](#build-a-plugin-from-source-docker).
 
 ## How it works
 
@@ -205,6 +202,76 @@ inside an instrument rack:
 The template is `scripts/templates/vst3-instrument.adg.xml`. The schema is
 in `/opt/push3/products/live/Live/AppLive/Resources/Schema/` on Push
 (`Vst3PluginInfo`, `Vst3Preset`, `PluginDevice`).
+
+## Build a plugin from source (Docker)
+
+Many plugins ship no Linux `.vst3`, or ship one built on a new distribution.
+You can build it in an Ubuntu 22.04 container. Its glibc is 2.35, the same as
+Push, so the result loads. You need Docker. On an Apple Silicon Mac the
+container runs as x86_64 under emulation (`--platform linux/amd64`). This is
+slow: the Dexed build below took more than 20 minutes.
+
+We tested this recipe with **Dexed 1.0.1**. Other plugins need other
+packages and a different target name, so treat it as a starting point.
+
+1. Save this as `build.sh`. Change `REPO`, `TAG` and `TARGET` for your plugin.
+   JUCE plugins use the CMake target `<Name>_VST3`.
+
+   ```bash
+   set -eo pipefail
+   export DEBIAN_FRONTEND=noninteractive
+   REPO=https://github.com/asb2m10/dexed.git
+   TAG=v1.0.1
+   TARGET=Dexed_VST3
+   BUNDLE=Dexed.vst3
+
+   apt-get update -qq
+   apt-get install -y -qq git cmake build-essential pkg-config \
+     libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev \
+     libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+     libgl1-mesa-dev libjack-jackd2-dev libcurl4-openssl-dev ca-certificates
+   git clone --depth 1 --branch "$TAG" --recurse-submodules \
+     --shallow-submodules "$REPO" /src
+   cd /src
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+   # The link step can fail under a parallel build ("write jobserver: Bad
+   # file descriptor"). The second, serial run only redoes the link.
+   cmake --build build --target "$TARGET" -j4 || true
+   cmake --build build --target "$TARGET" -j1
+   cp -r "$(find build -type d -name "$BUNDLE" | head -1)" /out/
+   ```
+
+2. Run it:
+
+   ```bash
+   mkdir -p out
+   docker run --rm --platform linux/amd64 \
+     -v "$PWD/build.sh:/build.sh:ro" -v "$PWD/out:/out" \
+     ubuntu:22.04 bash /build.sh
+   ```
+
+3. Check the result before you copy it. The highest `GLIBC_` version must be
+   2.35 or lower:
+
+   ```bash
+   objdump -T out/Dexed.vst3/Contents/x86_64-linux/Dexed.so \
+     | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+   ```
+
+4. Copy the whole `.vst3` folder to Push and restart Live, as in
+   [Steps](#steps), step 2.
+
+Notes:
+
+- The `.vst3` is a folder. The file inside it,
+  `Contents/x86_64-linux/<Name>.so`, is the plugin. Copy the folder, not the
+  `.so`.
+- The packages in step 1 are the ones JUCE needs. The JACK header
+  (`libjack-jackd2-dev`) is only for compiling. The Dexed binary does not link
+  against JACK.
+- A plugin whose code has no Linux build at all (a Windows-only or Mac-only
+  plugin) cannot be built this way.
+- Check the plugin's licence before you copy a build you made to other people.
 
 ## Plugin presets (`.vstpreset`)
 

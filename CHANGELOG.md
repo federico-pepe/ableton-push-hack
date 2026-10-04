@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `docs/vst3-on-push3.md` now has a "Build a plugin from source (Docker)" section: a build script for plugins that have no Linux `.vst3`, or one built on a newer glibc than Push has. Tested with Dexed.
+
 ## [0.1.11-alpha] - 2026-10-04
 
 ### Added
