@@ -8,19 +8,19 @@ the ID and a name. Parameters and patch state use the plugin's own defaults.
 Two ways to give the plugin ID:
 
   # Read every scanned VST3 instrument from Push (needs ssh as root@push.local)
-  ./scripts/make-vst3-preset.py --from-device push.local --install
+  ./scripts/VST/make-vst3-preset.py --from-device push.local --install
 
   # List a plugin's parameters (runs a small VST3 loader on Push), then map some
-  ./scripts/make-vst3-preset.py --from-device push.local --name "Surge XT" --list-params --filter cutoff
-  ./scripts/make-vst3-preset.py --from-device push.local --name "Surge XT" --install \\
+  ./scripts/VST/make-vst3-preset.py --from-device push.local --name "Surge XT" --list-params --filter cutoff
+  ./scripts/VST/make-vst3-preset.py --from-device push.local --name "Surge XT" --install \\
       --params "A Filter 1 Cutoff,A Filter 1 Resonance,643940465"
 
   # Without Push: pass the ID and parameter IDs by hand
-  ./scripts/make-vst3-preset.py --name "Surge XT" --uid abcdef01-9182-faeb-566d-624153675854 \\
+  ./scripts/VST/make-vst3-preset.py --name "Surge XT" --uid abcdef01-9182-faeb-566d-624153675854 \\
       --params 643940465,627352114,627352115
 
   # Or pass the ID by hand (dashed or plain 32 hex digits)
-  ./scripts/make-vst3-preset.py --name "Surge XT" --uid abcdef01-9182-faeb-566d-624153675854
+  ./scripts/VST/make-vst3-preset.py --name "Surge XT" --uid abcdef01-9182-faeb-566d-624153675854
 
 Only instruments are supported. See docs/vst3-on-push3.md for the full steps.
 """

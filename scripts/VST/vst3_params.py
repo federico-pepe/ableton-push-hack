@@ -4,7 +4,7 @@
 Runs on Push (Linux x86_64), started over ssh by make-vst3-preset.py. It also
 runs on a Mac against the Mac build of a plugin (same parameter IDs):
 
-    ssh root@push.local python3 - /data/.vst3/Foo.vst3 < scripts/vst3_params.py
+    ssh root@push.local python3 - /data/.vst3/Foo.vst3 < scripts/VST/vst3_params.py
 
 It loads the plugin, creates its edit controller, and reads each
 ParameterInfo. It never opens audio, never shows a window, and does not
