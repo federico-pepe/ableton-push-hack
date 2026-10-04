@@ -15,7 +15,7 @@ request; it returns a PNG of the current framebuffer with an
 `X-Display-Mode` header), `/api/midi/{events,stream,filter,ports,subscribe,
 chords,led,palette,mapping,mapping/config}` (`ports?writable=1` lists output
 destinations), `/api/presets`, `/api/presets/{refresh,facets,meta}`,
-`/api/live/load`, `/api/live/tempo`, `/api/live/playing`, `/api/live/play`,
+`/api/live/load`, `/api/live/plugins`, `/api/live/tempo`, `/api/live/playing`, `/api/live/play`,
 `/api/live/stop`, `/api/hacks/installed`, `/api/ui/tabs` (GET and POST).
 
 ### RemotePanel contract

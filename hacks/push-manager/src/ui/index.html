@@ -447,6 +447,7 @@
       <button id="br-type-all"     class="br-toggle active" onclick="brSetType('')">All</button>
       <button id="br-type-preset"  class="br-toggle"        onclick="brSetType('preset')">Presets</button>
       <button id="br-type-sample"  class="br-toggle"        onclick="brSetType('sample')">Samples</button>
+      <button id="br-type-plugin"  class="br-toggle"        onclick="brSetType('plugin')">Plugins</button>
     </div>
 
     <div id="br-preset-filters" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
@@ -459,6 +460,14 @@
     <div id="br-sample-filters" style="display:none;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <select id="br-source-sample" onchange="brReload()" class="br-sel"></select>
       <button id="br-fav-sample" onclick="brToggleFav()" class="br-toggle">★ Favourites</button>
+    </div>
+
+    <div id="pl-box" style="display:none;margin:6px 0 14px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+        <button onclick="plReload()" class="br-sel" title="Ask Live for its scanned plugins">↻ Refresh plugins</button>
+        <span id="pl-note" style="font-size:12px;color:var(--grey-mid)"></span>
+      </div>
+      <div id="pl-list"></div>
     </div>
 
     <div id="br-subtypes" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>

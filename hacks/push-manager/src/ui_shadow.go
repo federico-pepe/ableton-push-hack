@@ -164,6 +164,7 @@ var panelDefs = []struct {
 	{"stats", "STATS", "", func() Panel { return newStatsPanel() }},
 	{"midi", "MIDI", "", func() Panel { return newMidiPanel() }},
 	{"browser", "BROWSER", "browser-bridge", func() Panel { return newBrowserPanel() }},
+	{"plugins", "PLUGINS", "browser-bridge", func() Panel { return newPluginsPanel() }},
 	{"catalog", "CATALOG", "", func() Panel { return newCatalogPanel() }},
 }
 

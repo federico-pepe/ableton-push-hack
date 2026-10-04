@@ -1697,6 +1697,7 @@ function showBrowser() {
 }
 
 async function brInit() {
+  plReload();
   if (!BR.facetsLoaded) {
     try {
       const f = await api('GET', '/api/presets/facets');
@@ -1728,15 +1729,20 @@ function brSetType(t) {
   BR.type = t;
   BR.subtype = '';
   // Update type button active states
-  ['', 'preset', 'sample'].forEach(v => {
+  ['', 'preset', 'sample', 'plugin'].forEach(v => {
     const btn = $('br-type-' + (v||'all'));
     if (btn) btn.classList.toggle('active', v === t);
   });
-  // Show/hide preset vs sample filter rows
+  // Show/hide preset vs sample filter rows. The Plugins view has its own
+  // list and only uses the search box.
   const isSample = t === 'sample';
-  $('br-preset-filters').style.display = isSample ? 'none' : 'flex';
+  const isPlugin = t === 'plugin';
+  $('br-preset-filters').style.display = (isSample || isPlugin) ? 'none' : 'flex';
   $('br-sample-filters').style.display = isSample ? 'flex' : 'none';
   $('br-subtypes').style.display = isSample ? 'flex' : 'none';
+  $('br-tags').style.display = isPlugin ? 'none' : 'flex';
+  $('browser-list').style.display = isPlugin ? 'none' : '';
+  $('pl-box').style.display = isPlugin ? '' : 'none';
   // Reset subtype chip active states
   document.querySelectorAll('#br-subtypes .br-chip').forEach(c => c.classList.remove('active'));
   brReload();
@@ -1798,6 +1804,7 @@ function brToggleTag(t) {
 
 async function brReload() {
   BR.q      = $('br-search').value.trim();
+  if (BR.type === 'plugin') { plRender(); return; }
   const isSample = BR.type === 'sample';
   const pc = brParseCat(isSample ? '' : $('br-category').value);
   BR.cat    = pc.cat;
@@ -1903,6 +1910,58 @@ async function brLoad(name, category, type) {
     await api('POST', '/api/live/load', {name, category, type: type||''});
     toast('Loaded "'+name+'" onto the selected track', 'success');
   } catch(e) { toast('Load failed: '+e.message, 'error'); }
+}
+
+// ── Plugins (VST3) ─────────────────────────────────────────────────────────
+// Push's own browser hides plugins; Browser Bridge lists and loads them. Each
+// plugin loads with its default patch, or with one of its indexed presets.
+let PL = { list: [], error: '' };
+
+async function plReload() {
+  try {
+    const r = await api('GET', '/api/live/plugins');
+    if (!r.ok) throw new Error(r.error || 'failed');
+    PL.list = r.plugins || [];
+    PL.error = '';
+  } catch (e) {
+    PL.list = [];
+    PL.error = 'Browser Bridge not answering (needs the plugin-aware version).';
+  }
+  plRender();
+}
+
+// Plugins matching the search box: plugin name, vendor or any preset name.
+function plRender() {
+  $('br-count').textContent = '';
+  const q = $('br-search').value.trim().toLowerCase();
+  const shown = PL.list.map((p, i) => ({p, i})).filter(({p}) => !q ||
+    p.name.toLowerCase().includes(q) || (p.vendor || '').toLowerCase().includes(q) ||
+    (p.presets || []).some(n => n.toLowerCase().includes(q)));
+  $('pl-note').textContent = PL.error ||
+    (PL.list.length ? shown.length + ' of ' + PL.list.length + ' plugins' :
+      'No plugins scanned. See docs/vst3-on-push3.md to turn on VST3 scanning.');
+  $('pl-list').innerHTML = shown.map(({p, i}) => `
+    <div class="br-row">
+      <div style="flex:1;min-width:0">
+        <div class="br-name">${esc(p.name)}</div>
+        <div class="br-meta">${esc(p.vendor || '')}</div>
+      </div>
+      ${(p.presets || []).length ? `<select class="br-sel" id="pl-preset-${i}">
+        ${p.presets.map((n, k) => `<option value="${k}">${esc(n)}</option>`).join('')}
+      </select><button class="br-load" onclick="plLoad(${i}, true)">Load preset</button>` : ''}
+      <button class="br-load" onclick="plLoad(${i}, false)">Load</button>
+    </div>`).join('');
+}
+
+async function plLoad(i, withPreset) {
+  const p = PL.list[i];
+  if (!p) return;
+  const preset = withPreset ? p.presets[$('pl-preset-' + i).value] : '';
+  try {
+    const r = await api('POST', '/api/live/load', {name: p.name, type: 'plugin', preset});
+    if (r && r.ok === false) throw new Error(r.error || 'bridge unreachable');
+    toast('Loaded "' + p.name + (preset ? ' / ' + preset : '') + '" onto the selected track', 'success');
+  } catch (e) { toast('Load failed: ' + e.message, 'error'); }
 }
 
 async function brRefresh() {

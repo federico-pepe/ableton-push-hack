@@ -7,9 +7,12 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.11-alpha] - 2026-10-04
+
 ### Added
 
-- `docs/vst3-on-push3.md` and `scripts/make-vst3-preset.py` — Live on Push 3 can load Linux VST3 instruments itself. The guide shows how to turn on VST3 scanning and make a preset file without a Mac. Tested with Surge XT; the generated preset is not yet confirmed on the device. The script can list a plugin's parameters (`--list-params`, using `scripts/vst3_params.py` run on Push) and write an encoder map (`--params`, by ID or by title). A map saved on a Mac works on Push.
+- PLUGINS tab in the Shadow UI and a Plugins view in the web Browser tab (next to All, Presets and Samples). They list the VST3 plugins Live has scanned, with their `.vstpreset` presets, and load the pick onto the selected track through Browser Bridge. After a load the Shadow UI closes, like it does for presets. New routes: `GET /api/live/plugins` and `POST /api/live/load` with `"type":"plugin"`. Needs a Browser Bridge version with `list_plugins` and `load_plugin`.
+- `docs/vst3-on-push3.md` and `scripts/make-vst3-preset.py` — Live on Push 3 can load Linux VST3 instruments itself. The guide shows how to turn on VST3 scanning and make a preset file without a Mac. Tested with Surge XT; the generated preset is not yet confirmed on the device. The script can list a plugin's parameters (`--list-params`, using `scripts/vst3_params.py` run on Push) and write an encoder map (`--params`, by ID or by title). A map saved on a Mac works on Push. A `.vstpreset` in the User Library loads through Browser Bridge.
 - `docs/scripts.md` — full flag reference for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`, moved out of README.md.
 - `docs/adding-a-hack.md` — full walkthrough for a new hack, moved out of README.md.
 

@@ -18,6 +18,7 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Linux VST3 instrument scanned and loaded | Works (Surge XT) |
 | Plugin plays from the pads | Works |
 | Preset made on a Mac, copied to Push | Works |
+| `.vstpreset` in the User Library, loaded through Browser Bridge | Works (Surge XT) |
 | Preset made by `make-vst3-preset.py` (no Mac) | Written, **not yet confirmed on the device** |
 | Parameters on the encoders, from a preset with a saved map (`.adg` made on a Mac) | Works |
 | Parameters on the encoders without a saved map | Does not work. Same on a Mac. `-_PluginAutoPopulateThreshold=16` did not help. |
@@ -26,6 +27,23 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | CPU load while playing | Not measured. Idle Push uses about 13% (Live) and 6% (Push3). |
 | VST3 effects | Not tested. The script makes instruments only. |
 | VST2 (`.so` files) | Does not work with the system-paths flag. See below. |
+
+## Tested plugins
+
+| Plugin | Result on Push |
+|--------|----------------|
+| Surge XT 1.4 (instrument) | Scans, loads, plays, presets and encoder map work |
+| Dragonfly Reverb 3.2.10 (Early Reflections, Hall, Plate, Room; effects) | All four scan and are listed. Load them on an **audio** track. |
+| Dexed 1.0.1 (instrument) | The official Linux download does **not** load: it needs glibc 2.38 and Push has 2.35. Built from source on Ubuntu 22.04 it scans and is listed. |
+
+Rule of thumb: build a plugin on Ubuntu 22.04 (glibc 2.35) or older. The error
+in `PluginScanner.txt` for a build that is too new is
+`version 'GLIBC_2.38' not found`. To build Dexed, use an `ubuntu:22.04`
+container (`--platform linux/amd64` on an Apple Silicon Mac) with
+`libasound2-dev`, `libfreetype-dev`, `libfontconfig1-dev`, the X11 dev
+packages, `libgl1-mesa-dev` and `libjack-jackd2-dev` (JUCE needs the JACK
+header to compile). Build the `Dexed_VST3` target. If the link step fails with
+`write jobserver: Bad file descriptor`, run the same build again with `-j1`.
 
 ## How it works
 
@@ -187,6 +205,28 @@ inside an instrument rack:
 The template is `scripts/templates/vst3-instrument.adg.xml`. The schema is
 in `/opt/push3/products/live/Live/AppLive/Resources/Schema/` on Push
 (`Vst3PluginInfo`, `Vst3Preset`, `PluginDevice`).
+
+## Plugin presets (`.vstpreset`)
+
+A `.vstpreset` file holds one patch for one plugin. The file starts with the
+text `VST3`, a version number, and the plugin's class ID as 32 hex digits. This
+ID says which plugin the file belongs to. Live reads it and lists the preset
+under that plugin.
+
+To use a preset on Push, copy the file into the **User Library**:
+`/data/Music/Ableton/User Library/`. Live indexes it in about 40 seconds with
+no restart. A file in `~/.vst3/presets/<Vendor>/<Plugin>/` was **not** indexed
+in our test. You can make a `.vstpreset` in Live on a Mac (save the plugin's
+preset from the device).
+
+Push's browser does not list plugins, so Push cannot show the preset either.
+[Browser Bridge](https://github.com/federico-pepe/push-hack-browser-bridge)
+can load it: `load_plugin:Surge XT:Surge-Bass1` loads the plugin with that
+patch, and `list_plugins` lists plugins with their presets. Tested with Surge XT.
+
+push-manager has a **PLUGINS** tab in the Shadow UI and a Plugins list in the
+web Browser view. Both call Browser Bridge, so you do not need SSH to load a
+plugin or a preset.
 
 ## VST2
 

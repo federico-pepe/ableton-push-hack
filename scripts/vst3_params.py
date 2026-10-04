@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """List the parameters of a Linux VST3 plugin as JSON. Stdlib only.
 
-Runs on Push (Linux x86_64), started over ssh by make-vst3-preset.py:
+Runs on Push (Linux x86_64), started over ssh by make-vst3-preset.py. It also
+runs on a Mac against the Mac build of a plugin (same parameter IDs):
 
     ssh root@push.local python3 - /data/.vst3/Foo.vst3 < scripts/vst3_params.py
 
@@ -111,18 +112,23 @@ def make_host():
 def find_module(path):
     if path.endswith(".so"):
         return path
-    hits = glob.glob(os.path.join(path, "Contents", "x86_64-linux", "*.so"))
+    if sys.platform == "darwin":
+        hits = [h for h in glob.glob(os.path.join(path, "Contents", "MacOS", "*"))
+                if os.path.isfile(h)]
+    else:
+        hits = glob.glob(os.path.join(path, "Contents", "x86_64-linux", "*.so"))
     if not hits:
-        sys.exit("no Contents/x86_64-linux/*.so in " + path)
+        sys.exit("no plugin binary inside " + path)
     return hits[0]
 
 
 def list_params(path):
     lib = ctypes.CDLL(find_module(path))
     lib.GetPluginFactory.restype = ctypes.c_void_p
-    if hasattr(lib, "ModuleEntry"):
-        lib.ModuleEntry.argtypes = [ctypes.c_void_p]
-        lib.ModuleEntry(None)
+    entry = "bundleEntry" if sys.platform == "darwin" else "ModuleEntry"
+    if hasattr(lib, entry):
+        getattr(lib, entry).argtypes = [ctypes.c_void_p]
+        getattr(lib, entry)(None)
     factory = lib.GetPluginFactory()
     count = method(factory, 4, ctypes.c_int32)()
     host = make_host()

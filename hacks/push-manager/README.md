@@ -47,7 +47,8 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/midi/mapping/config` | Set remap config. Body: `{enabled, require_intercept, out_client, out_port}`. `enabled` gates all remapping; `require_intercept` restricts it to when MIDI intercept is ON; `out_client`/`out_port` is the destination writable port (from `/api/midi/ports?writable=1`). |
 | `GET` | `/api/presets` | Browser Bridge preset index. Query params `filter` (category: `Instruments`/`Audio Effects`/`MIDI Effects`/`Drums`, empty=all) and `q` (case-insensitive name substring). Returns `{count, total, presets:[{name,path,category,is_rack}]}`. Filesystem-scanned (`src/presets.go`); never touches Live. |
 | `POST` | `/api/presets/refresh` | Rescan the preset index (after installing Packs). Returns `{ok, count}`. |
-| `POST` | `/api/live/load` | Load a preset onto Live's selected track. Body `{"name":"…","category":"Instruments"}`. Sends `load:<root>:<name>` to the PushHackBrowser Remote Script over `127.0.0.1:7704`. Returns `{ok}` or `{ok:false, error}`. Requires the Browser Bridge hack installed + activated in Live. |
+| `POST` | `/api/live/load` | Load a preset onto Live's selected track. Body `{"name":"…","category":"Instruments"}`. Sends `load:<root>:<name>` to the PushHackBrowser Remote Script over `127.0.0.1:7704`. Returns `{ok}` or `{ok:false, error}`. Requires the Browser Bridge hack installed + activated in Live. With `"type":"plugin"` it loads a VST3 plugin: `name` is the plugin and the optional `preset` is one of its presets (sends `load_plugin:<plugin>[:<preset>]`). `{ok:true}` only means the script got the command. |
+| `GET` | `/api/live/plugins` | Plugins Live has scanned: `{ok, plugins:[{vendor,name,presets:[…]}]}`. Sends `list_plugins`. Needs a Browser Bridge version with plugin support. |
 | `GET` | `/api/live/tempo` | Returns the current Live song tempo. Sends `get_tempo` to the PushHackBrowser Remote Script and returns `{ok:true, bpm:124.0}`. Requires Browser Bridge activated in Live. Returns `{ok:false, error}` if the Remote Script is unreachable. |
 | `GET` | `/api/live/playing` | Returns `{ok:true, playing:true\|false}` — whether Live's transport is currently running. Sends `get_playing` to PushHackBrowser. |
 | `POST` | `/api/live/play` | Starts Live's transport. Sends `play` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
@@ -328,6 +329,7 @@ Preset browser backed by the filesystem index (`presets.go`), no Live access for
 - **Tags** — free-form; click `+ tag` on a row to add, `✕` on a chip to remove (`POST /api/presets/meta`). Click a tag chip in the filter row to filter by it.
 - **Favourites** — ★ toggles per preset; persisted to `<hackdir>/preset_meta.json` and shared with the on-device Shadow UI Favourites filter.
 - **Load** — `POST /api/live/load {name,category}` → PushHackBrowser instantiates it onto Live's selected track (fire-and-forget; toast confirms send).
+- **Plugins** — a list above the preset rows. Each scanned VST3 plugin has **Load** (default patch) and, if it has indexed `.vstpreset` files, a preset menu with **Load preset**. Data comes from `GET /api/live/plugins`. See `docs/vst3-on-push3.md`.
 - Rows capped at 300 (`BR_CAP`) with a "showing N of M" count.
 
 ### Stats page (System)

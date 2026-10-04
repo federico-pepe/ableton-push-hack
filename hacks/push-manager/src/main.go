@@ -536,6 +536,7 @@ func main() {
 	mux.HandleFunc("/api/presets/facets", handlePresetFacets)
 	mux.HandleFunc("/api/presets/meta", handlePresetMeta)
 	mux.HandleFunc("/api/live/load", handleLiveLoad)
+	mux.HandleFunc("/api/live/plugins", handleLivePlugins)
 	mux.HandleFunc("/api/live/tempo", handleLiveTempo)
 	mux.HandleFunc("/api/live/playing", handleLivePlaying)
 	mux.HandleFunc("/api/live/play", handleLivePlay)
