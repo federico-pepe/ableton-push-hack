@@ -772,6 +772,27 @@ typedef struct __attribute__((packed)) {
 
 `push-manager` mmaps this file R/W and exposes `POST /api/midi/filter` and `GET /api/midi/filter/status`. Intercept state persists in the file across push-manager restarts; it is only reset when push_hook.so is reloaded (Push3 restart).
 
+#### LED state after intercept OFF (2026-10-04)
+
+Push3 does not track LEDs that another process wrote. `clearAllLEDs` (intercept
+ON) sets every button and pad LED to 0 through the Live Port. Push3 sends an LED
+only when its own state changes, so after intercept goes OFF the buttons and the
+pad grid stay dark until something changes in the app. Tested on device:
+
+- A **Shift** press makes Push3 repaint all **button** LEDs.
+- A **pad-mode change** (press Session, then Note, or the reverse) makes it
+  repaint the **pad grid**. Pressing the mode button you are already in does
+  nothing.
+- You can send these presses yourself. Push3's own MIDI input is the ALSA port
+  `Ableton Internal Input` (client "RtMidi Input Client", client 128 on the
+  tested device, `W` capability). A CC written to it reaches the app as if the
+  hardware sent it. Find it by name, not by number. The Push hardware itself is
+  client 16, and Push3's output port `Ableton Internal Output` (client 129) is
+  not subscribable.
+
+`led_restore.go` in push-manager uses this: 600 ms after intercept goes OFF it
+taps Shift, then the other pad-mode button, then the current one.
+
 **Reference implementation:** [schwung-spi](https://github.com/charlesvestal/schwung-spi) does this for Ableton Move (SPI instead of USB) — same shadow-buffer + callback pattern.
 
 **Risk:** Requires Push3 restart. Hook bugs could crash Push3 / Live. Keep hook minimal and always call-through to real libusb.
