@@ -35,7 +35,7 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Surge XT 1.4 (instrument) | Scans, loads, plays, presets and encoder map work |
 | Dragonfly Reverb 3.2.10 (Early Reflections, Hall, Plate, Room; effects) | All four scan and are listed. Load them on an **audio** track. |
 | Dexed 1.0.1 (instrument) | The official Linux download does **not** load: it needs glibc 2.38 and Push has 2.35. Built from source on Ubuntu 22.04 it scans and is listed. |
-| JE8086 2.2.25 by The Usual Suspects (JP-8000 emulation, instrument) | Scans, loads and plays once its firmware is in the right folder. See [Plugins that need data files](#plugins-that-need-data-files). |
+| JE8086 2.2.25 by The Usual Suspects (JP-8000 emulation, instrument) | Scans, loads and plays once its firmware is in the right folder. See [Plugins that need data files](#plugins-that-need-data-files). Factory performances load as presets. |
 
 Rule of thumb: use a plugin built on Ubuntu 22.04 (glibc 2.35) or older. The
 error in `PluginScanner.txt` for a build that is too new is
@@ -124,7 +124,7 @@ Push cannot list the plugin, so make a preset file for it. Use either way.
 **Without a Mac (script):**
 
 ```bash
-./scripts/make-vst3-preset.py --from-device push.local --install
+./scripts/VST/make-vst3-preset.py --from-device push.local --install
 ```
 
 The script reads each scanned VST3 instrument from Live's plugin database,
@@ -133,7 +133,7 @@ writes one `.adg` for each, and copies them to
 class ID, you can skip the device:
 
 ```bash
-./scripts/make-vst3-preset.py --name "Surge XT" \
+./scripts/VST/make-vst3-preset.py --name "Surge XT" \
     --uid abcdef01-9182-faeb-566d-624153675854
 ```
 
@@ -167,7 +167,7 @@ The script loads the plugin on Push, reads its parameter list, and prints it.
 It never opens audio and never shows a window.
 
 ```bash
-./scripts/make-vst3-preset.py --from-device push.local --name "Surge XT" \
+./scripts/VST/make-vst3-preset.py --from-device push.local --name "Surge XT" \
     --list-params --filter cutoff
 ```
 
@@ -175,7 +175,7 @@ Then write the preset. Give each parameter as an ID or as its exact title
 (case does not matter). Push shows them in this order, 8 per page:
 
 ```bash
-./scripts/make-vst3-preset.py --from-device push.local --name "Surge XT" --install \
+./scripts/VST/make-vst3-preset.py --from-device push.local --name "Surge XT" --install \
     --params "A Filter 1 Cutoff,A Filter 1 Resonance,A Osc 1 Pitch"
 ```
 
@@ -200,7 +200,7 @@ inside an instrument rack:
   per parameter, with `Index`, `VisualIndex` and `ParameterId`.
 - The file reference has a Mac path when saved on a Mac. Push ignores it.
 
-The template is `scripts/templates/vst3-instrument.adg.xml`. The schema is
+The template is `scripts/VST/templates/vst3-instrument.adg.xml`. The schema is
 in `/opt/push3/products/live/Live/AppLive/Resources/Schema/` on Push
 (`Vst3PluginInfo`, `Vst3Preset`, `PluginDevice`).
 
@@ -320,6 +320,107 @@ patch, and `list_plugins` lists plugins with their presets. Tested with Surge XT
 push-manager has a **PLUGINS** tab in the Shadow UI and a Plugins list in the
 web Browser view. Both call Browser Bridge, so you do not need SSH to load a
 plugin or a preset.
+
+## Convert Surge XT patches (`.fxp`) to presets
+
+Surge XT ships its factory patches as `.fxp` files. Push can load a
+`.vstpreset`, so `scripts/VST/surge-fxp-to-vstpreset.py` converts them. It needs
+no Live and no Surge. We read the layout from a `.vstpreset` that Live saved for
+Surge XT:
+
+- A `.fxp` is a 60-byte `CcnK` header followed by the patch data (it starts
+  with `sub3`).
+- The `.vstpreset` state chunk (`Comp`) is that same patch data, then 16 zero
+  bytes and the text `JUCEPrivateData`. Surge loads both with the same code.
+- The rest of the `.vstpreset` is `VST3`, a version number, the plugin class
+  ID, an empty `Cont` chunk, an `Info` chunk with plugin metadata, and a chunk
+  list.
+
+```bash
+./scripts/VST/surge-fxp-to-vstpreset.py \
+    "/Library/Application Support/Surge XT/patches_factory" \
+    --out resources/VST/SurgeXT/presets --subdir "" --folders
+```
+
+`--folders` keeps the category folders (Basses, Pads ...). `--install push.local`
+copies the result to the User Library on Push instead. File names are
+`<Category> - <Patch>` because Browser Bridge finds a preset by name, and two
+categories can have a patch with the same name. All 637 factory patches convert.
+Four of them (a bass, an FX, a pad and a polysynth) were loaded on Push and
+sounded right. The factory files are an older Surge format. Surge upgrades them
+when it loads them.
+
+The recipe is specific to Surge. Another plugin has another state format. To do
+the same for it, save one patch as `.vstpreset` in Live and compare its `Comp`
+chunk with the plugin's own patch file.
+
+## Convert JE8086 performances (`.syx`)
+
+The JE8086 plugin keeps its state as MIDI System Exclusive messages: the
+temporary performance, as Roland DT1 messages at address `01 00 xx xx`. A
+`.syx` performance dump holds the same messages at `03 pp xx xx`.
+`scripts/VST/je8086-syx-to-vstpreset.py` swaps them into a preset that the plugin
+saved once:
+
+```bash
+./scripts/VST/je8086-syx-to-vstpreset.py Factory_presets.syx \
+    --template Chariot.vstpreset --out resources/VST/JP8086/presets/Performances
+```
+
+What changes from the dump to the state:
+
+- The address `03 pp xx xx` becomes `01 00 xx xx`.
+- Each tone message (251 bytes) gets one extra `0x00` data byte, so it has 240
+  data bytes.
+- The checksum is recomputed.
+
+Everything else (the system message, the plugin header, the trailing data) is
+copied from the template. Converting the first factory performance, "Chariots",
+gave a file that is byte for byte the preset the plugin saved. All 64 factory
+performances convert, and three of them (Whisper, Wicked, Water Orchestra) were
+loaded on Push and sound like the originals.
+
+The factory dump has 192 entries: 64 performances and 128 single patches
+(messages at `02 00 xx 00`). The script converts only the performances. It is not
+known yet how the plugin stores a single patch.
+
+## Convert Dexed cartridges (`.syx`)
+
+A Dexed cartridge is a 32-voice DX7 dump (4,104 bytes). Dexed saves its state as
+XML that holds the whole loaded cartridge and the current voice, both as JUCE
+base64 text, plus the voice number:
+
+```xml
+<dexedState ... currentProgram="N" ...>
+  <dexedBlob base64:sysex="4104.<cartridge>" base64:program="161.<voice>"/>
+```
+
+`scripts/VST/dexed-syx-to-vstpreset.py` makes one preset per voice: the same
+cartridge, `currentProgram` set to N, and voice N unpacked from the DX7's packed
+128-byte form to Dexed's 161-byte layout (the last 6 bytes are 0 in a saved
+state). JUCE's base64 is the size, a dot, then 6-bit groups taken from the low
+bits of each byte, with the alphabet `.A-Za-z0-9+`.
+
+```bash
+./scripts/VST/dexed-syx-to-vstpreset.py Cartridges \
+    --template "Say Again.vstpreset" --out resources/VST/Dexed/presets
+```
+
+Rebuilding the template's own cartridge and voice gives the template back byte
+for byte. 33 cartridges (1,056 voices) converted. Four voices (a piano, a
+harpsichord, pipes and a pad) were loaded on Push and sounded right. File names
+are `<Cartridge> - <slot> <voice>`, so they stay unique for Browser Bridge.
+
+## Presets for another plugin
+
+The same steps work for any plugin whose patches exist as files:
+
+1. Save one patch from the plugin as a `.vstpreset` in Live. This is the template.
+2. Read its `Comp` chunk. The three container chunks (`Comp`, `Cont`, `Info`) are
+   the same for every plugin, as in `vstpreset()` in the scripts.
+3. Find which part of `Comp` changes with the patch, and how it relates to the
+   plugin's own patch file. A second saved patch helps.
+4. Write the conversion, and check that it rebuilds the template byte for byte.
 
 ## VST2
 

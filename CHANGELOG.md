@@ -7,8 +7,14 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
+
 ### Added
 
+- `scripts/VST/je8086-syx-to-vstpreset.py` and `scripts/VST/dexed-syx-to-vstpreset.py` turn JE8086 performance dumps and Dexed cartridges into `.vstpreset` files, one per performance or voice. Both rebuild a preset the plugin saved byte for byte. JE8086 single patches are not converted yet. Tested on device: three JE8086 performances and four Dexed voices sound like the originals.
+- `scripts/VST/surge-fxp-to-vstpreset.py` converts Surge XT `.fxp` patches into `.vstpreset` files for the Push User Library, so the factory patches load from the PLUGINS tab. Tested on device with four factory patches; all 637 convert.
 - `docs/vst3-on-push3.md` now covers plugins that need data files, with JE8086 (JP-8000 emulation) as the tested example: where the firmware goes on Push, and that the folder name is case-sensitive.
 
 ## [0.1.12-alpha] - 2026-10-04
