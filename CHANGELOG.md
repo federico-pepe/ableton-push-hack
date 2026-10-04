@@ -7,6 +7,14 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `docs/vst3-on-push3.md` now has a "Build a plugin from source (Docker)" section: a build script for plugins that have no Linux `.vst3`, or one built on a newer glibc than Push has. Tested with Dexed.
+
+### Fixed
+
+- After the Shadow UI closed, Push's button LEDs and pad grid stayed dark until you pressed a button. This happened after a chord exit and after a preset or plugin load. push-manager now repaints them when MIDI intercept turns off: it presses Shift, then the other pad mode and your current one, straight into Push3's MIDI input. You end up in the pad mode you were in.
+
 ## [0.1.11-alpha] - 2026-10-04
 
 ### Added

@@ -724,6 +724,7 @@ func processFixedEvent(evType uint8, data []byte) {
 			go shadowUIHandleCC(ccNum, ccVal)
 		}
 		if ccVal == 0x7F {
+			trackModeButton(ccNum)
 			chordCCPressed(ccNum)
 			// Dispatch LED mode when MIDI intercept is active.
 			// When intercept is off, Push firmware manages its own LED state.
@@ -1493,6 +1494,7 @@ var allButtonCCs = []uint8{
 // Also resets ledToggleState, preserving exceptCC if it was active.
 // Intended to be called in a goroutine.
 func clearAllLEDs(exceptCC uint8) {
+	ledsCleared.Store(true) // see led_restore.go
 	// CC buttons
 	for _, cc := range allButtonCCs {
 		if cc == exceptCC {
