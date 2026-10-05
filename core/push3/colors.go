@@ -2,6 +2,7 @@ package push3
 
 import (
 	"image/color"
+	"strconv"
 	"strings"
 )
 
@@ -189,9 +190,8 @@ type PaletteEntry struct {
 // only ever need the index (NamedColors/ColorByName), never this table.
 //
 // Not all 128 raw hardware indices are here: see the package doc above on
-// unnamed near-duplicate shades. Use ColorForIndex for a raw 0-127 value —
-// it resolves to the nearest defined entry at or below the index, so every
-// one of the 128 slots still lands on a real, close color.
+// unnamed near-duplicate shades. Use ColorForIndex for a raw 0-127 value. It
+// returns the exact color of every one of the 128 slots.
 var Palette = []PaletteEntry{
 	{Index: 0, Name: "off", RGB: color.NRGBA{R: 0, G: 0, B: 0, A: 255}},
 	{Index: 1, Name: "red", RGB: color.NRGBA{R: 255, G: 64, B: 50, A: 255}},
@@ -285,16 +285,19 @@ var Palette = []PaletteEntry{
 	{Index: 127, Name: "pure_red", RGB: color.NRGBA{R: 255, G: 0, B: 0, A: 255}},
 }
 
-// ColorForIndex maps a raw hardware palette index (0-127) to the nearest
-// defined Palette entry at or below it — every index resolves to a real,
-// named entry, even the ones this table has no exact match for.
+// ColorForIndex maps a raw hardware palette index (0-127) to its color. The
+// RGB is exact for all 128 values (hardwareRGB). Name is the Palette name when
+// the index has one, else "hw_<index>". An index above 127 gives index 127.
 func ColorForIndex(idx uint8) PaletteEntry {
-	best := Palette[0]
+	if idx > 127 {
+		idx = 127
+	}
+	name := "hw_" + strconv.Itoa(int(idx))
 	for _, e := range Palette {
-		if e.Index > idx {
+		if e.Index == idx {
+			name = e.Name
 			break
 		}
-		best = e
 	}
-	return best
+	return PaletteEntry{Index: idx, Name: name, RGB: hardwareRGB[idx]}
 }
