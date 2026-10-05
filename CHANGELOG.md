@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Fixed
+
+- `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
+
 ### Changed
 
 - The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
