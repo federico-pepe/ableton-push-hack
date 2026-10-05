@@ -257,3 +257,87 @@ curl http://push.local:7701/api/midi/palette | jq .
 ---
 
 **Use the hardware palette table above as the definitive source for MIDI values.**
+
+---
+
+## Addendum (2026-10-05): pad colors versus screen colors
+
+Found while building the `bcaseq` process module (`pta-module-bcaseq`). It
+draws the same track colors on the pads and on the screen. They did not match.
+There were three causes.
+
+### 1. A palette with only the named entries is wrong for most dark colors
+
+`core/push3.Palette` (and the `palette.json` that `cmd/genpalette` writes from
+it) holds only the 90 named entries. `ColorForIndex` returns the nearest named
+entry at or below the index. For an index with no name, such as 41, 43 or 67,
+that is the wrong color. 38 of the 128 indices differ from the table above.
+The 26 primary colors (1-26) are correct.
+
+If a module draws any index above 40 on the screen, build its palette from the
+"Full Hardware Palette" table in this file. `bcaseq` does this with
+`scripts/gen_palette.py`, which reads the table rows and writes all 128
+entries.
+
+### 2. The screen draws a track color differently from the pad LED
+
+The original Push draws each of the 26 primary colors on its screen with
+different RGB values than the LED palette. The two are close for the reds,
+yellows and greens. They differ for the blues, teals, violets and pinks. Index
+25 is crimson on the pads and pink on the screen. Index 26 is hot pink on the
+pads and red on the screen.
+
+Method: in Live, set 26 MIDI tracks to palette indices 1 to 26, in order. Take
+a screenshot of the Push screen. The track name text is drawn in the track
+color. The text peaks at 96% of the real color. This was measured with the
+solid fill of the selected track and the "No device" header. Each value in the
+table is the brightest text pixel divided by 0.96. The three selected tracks
+(1, 16 and 24) use their solid fill.
+
+To match the original Push, draw the screen color from the "Screen" column, and
+send the index in the "Pad" column to the LED.
+
+### 3. Dim pad shades
+
+The palette has "very dark" entries from index 65 on. They come in pairs of
+neighbors for each hue family. On the pads, the second entry of each pair gave
+the best "empty step" look for a sequencer (full color for a step that is on,
+dim for an empty step, white for the selected step). Color 2 is the exception:
+it uses 68.
+
+| Index | Pad (palette) | Screen (original Push) | Dim index | Dim (palette) |
+|-------|---------------|------------------------|-----------|---------------|
+| 1 | `#FF4032` | `#ED5938` | 66 | `#210806` |
+| 2 | `#800400` | `#D31709` | 68 | `#280000` |
+| 3 | `#C93C00` | `#FB6200` | 70 | `#200D00` |
+| 4 | `#AC1F00` | `#FF3300` | 72 | `#1C0800` |
+| 5 | `#8C5018` | `#AA7320` | 74 | `#1C130A` |
+| 6 | `#491804` | `#844913` | 76 | `#0D0602` |
+| 7 | `#FADC3B` | `#F7E33E` | 78 | `#201C07` |
+| 8 | `#FFC516` | `#E1C000` | 80 | `#211902` |
+| 9 | `#B6FF0E` | `#93FD17` | 82 | `#172101` |
+| 10 | `#79FF18` | `#00EB32` | 84 | `#0F2103` |
+| 11 | `#34C216` | `#009F33` | 86 | `#061902` |
+| 12 | `#4F8A04` | `#34A013` | 88 | `#0A1100` |
+| 13 | `#62FF55` | `#00BE56` | 90 | `#0C210B` |
+| 14 | `#297D53` | `#007450` | 92 | `#081910` |
+| 15 | `#269E72` | `#00D08C` | 94 | `#00180E` |
+| 16 | `#31ADFF` | `#00BBAD` | 96 | `#061621` |
+| 17 | `#3663FC` | `#0072A6` | 98 | `#070C20` |
+| 18 | `#1A34FF` | `#006CCE` | 100 | `#030621` |
+| 19 | `#1C0CE6` | `#4A33B6` | 102 | `#03011D` |
+| 20 | `#153999` | `#005C64` | 104 | `#040B1E` |
+| 21 | `#3937FF` | `#5362E1` | 106 | `#070721` |
+| 22 | `#5722FF` | `#AE51FF` | 108 | `#0B0421` |
+| 23 | `#972BFF` | `#E559E7` | 110 | `#130521` |
+| 24 | `#852178` | `#88425B` | 112 | `#11040F` |
+| 25 | `#FF1032` | `#FF4B99` | 114 | `#210206` |
+| 26 | `#FF2BD4` | `#FF1E33` | 116 | `#21051B` |
+
+The dim index was chosen by eye on a Push (user test, 2026-10-05). The screen
+values come from screenshots, so they have an error of about 3%.
+
+Tool: the `colorlab-py` example module in `push-tethered-app`
+(`examples/modules/colorlab-py`) lets you pick a pad color and a dim shade on
+the pads and compare screen swatches on the Push. It writes a `colors.json`
+file.
