@@ -10,7 +10,7 @@ own README has full request/response detail for every route below.
 
 `/api/list`, `/api/download`, `/api/upload`, `/api/delete`, `/api/rename`,
 `/api/copy`, `/api/unmount`, `/api/stats`, `/api/assets/<path>`,
-`/api/display/{status,mode,image,screenshot}` (`screenshot` is a GET
+`/api/display/{status,mode,image,screenshot,direct}` (`screenshot` is a GET
 request; it returns a PNG of the current framebuffer with an
 `X-Display-Mode` header), `/api/midi/{events,stream,filter,ports,subscribe,
 chords,led,palette,mapping,mapping/config}` (`ports?writable=1` lists output

@@ -7,6 +7,11 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- push-manager can drive the Push screen over USB while Push3 is stopped. `POST /api/display/direct {"enabled": true}` claims the screen. From then on every frame push-manager writes (`/api/display/image`, Shadow UI, OSD) goes straight to the screen. `{"enabled": false}` releases it. Turn it off before you start Push3 again. It fails with 409 while Push3 is running. `GET /api/display/status` now also returns `direct`. This is the first part of a Mixxx mode (see `plans/2026-10-12-mixxx-mode.md`). Tested on device.
+- `core/display`: `USB` (`OpenUSB`/`Set`/`Close`) sends frames to the screen's USB interface, and `ToWire` applies the screen's XOR pattern. Needs a `core/v*` tag before consumers outside this repo get it.
+
 ### Fixed
 
 - `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.

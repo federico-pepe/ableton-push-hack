@@ -63,3 +63,16 @@ func FromBGR565(px []byte) *image.NRGBA {
 	}
 	return img
 }
+
+// wireXOR is the Push 2/3 display signal shaping, indexed by byte offset
+// from the start of the frame.
+var wireXOR = [4]byte{0xE7, 0xF3, 0xE7, 0xFF}
+
+// ToWire XORs raw BGR565 pixels (as from ToBGR565) into dst, the bytes
+// that go out on display endpoint 0x01. dst must be at least len(px) long.
+// push_hook.c does the same per chunk; USB does it when no hook is around.
+func ToWire(dst, px []byte) {
+	for i, b := range px {
+		dst[i] = b ^ wireXOR[i&3]
+	}
+}
