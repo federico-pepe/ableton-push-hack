@@ -231,6 +231,14 @@ func handleDisplayDirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	// another app takes the screen (e.g. started from a shadow UI tab):
+	// close the shadow UI, and intercept off so push3 gets midi when back.
+	if body.Enabled {
+		if filt := ensureMidiFilt(); filt != nil {
+			filt[4] = 0
+		}
+		shadowUIStop()
+	}
 	jsonResponse(w, map[string]interface{}{"direct": directDisplayOn()})
 }
 

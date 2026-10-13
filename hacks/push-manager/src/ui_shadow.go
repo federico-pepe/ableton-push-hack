@@ -316,8 +316,8 @@ func shadowUIReload() {
 func shadowUIStart() {
 	shadowUI.mu.Lock()
 	defer shadowUI.mu.Unlock()
-	if shadowUI.active {
-		return
+	if shadowUI.active || directDisplayOn() {
+		return // direct mode: the screen belongs to another app
 	}
 	shadowUI.buildTabs()
 	shadowUI.panelIdx = 0

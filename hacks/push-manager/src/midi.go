@@ -1330,6 +1330,11 @@ func chordCCPressed(cc uint8) {
 	}
 	midiChordMu.Unlock()
 
+	// direct mode: another app (mixxx) owns the screen + buttons. chords
+	// would clear its LEDs, draw OSD over it, open the shadow UI.
+	if directDisplayOn() {
+		return
+	}
 	for _, chord := range toFire {
 		go chord.action()
 	}

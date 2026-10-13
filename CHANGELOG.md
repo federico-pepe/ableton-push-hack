@@ -14,6 +14,7 @@ between minor versions).
 
 ### Fixed
 
+- push-manager no longer interferes with another app that owns the screen in direct mode. While direct mode is on, the Shift+Set and Shift+Settings chords do nothing, and the Shadow UI does not open. Before, a chord in Mixxx mode cleared every LED, drew an OSD over Mixxx and opened the Shadow UI. Turning direct mode on also closes an open Shadow UI and turns MIDI intercept off, so Push3 gets its MIDI again after you switch back. This lets a hack's Shadow UI tab start an app that takes over the screen.
 - `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
 
 ### Changed
