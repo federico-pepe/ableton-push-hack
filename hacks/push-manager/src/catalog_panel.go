@@ -152,6 +152,9 @@ func (p *CatalogPanel) act(verb, id string) {
 		}
 		p.mu.Unlock()
 		p.refresh() // reload installed set (keeps status unless it was a load msg)
+		if ok {
+			shadowUIReload() // the hack's own tab appears / goes, no reopen needed
+		}
 	}()
 }
 
