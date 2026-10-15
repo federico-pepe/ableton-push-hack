@@ -10,10 +10,12 @@ between minor versions).
 ### Added
 
 - push-manager can drive the Push screen over USB while Push3 is stopped. `POST /api/display/direct {"enabled": true}` claims the screen. From then on every frame push-manager writes (`/api/display/image`, Shadow UI, OSD) goes straight to the screen. `{"enabled": false}` releases it. Turn it off before you start Push3 again. It fails with 409 while Push3 is running. `GET /api/display/status` now also returns `direct`. This is the first part of a Mixxx mode (see `plans/2026-10-12-mixxx-mode.md`). Tested on device.
+- push-manager's CATALOG tab shows a download bar with MB done and total while it installs a hack. push-catalog serves the numbers at `GET /api/progress`.
 - `core/display`: `USB` (`OpenUSB`/`Set`/`Close`) sends frames to the screen's USB interface, and `ToWire` applies the screen's XOR pattern. Needs a `core/v*` tag before consumers outside this repo get it.
 
 ### Fixed
 
+- An install from push-manager's CATALOG tab no longer fails after 3 minutes. Large hacks (Mixxx Mode is about 170 MB) take longer over Wi-Fi. The limit is now 30 minutes.
 - push-manager no longer interferes with another app that owns the screen in direct mode. While direct mode is on, the Shift+Set and Shift+Settings chords do nothing, and the Shadow UI does not open. Before, a chord in Mixxx mode cleared every LED, drew an OSD over Mixxx and opened the Shadow UI. Turning direct mode on also closes an open Shadow UI and turns MIDI intercept off, so Push3 gets its MIDI again after you switch back. This lets a hack's Shadow UI tab start an app that takes over the screen.
 - `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
 

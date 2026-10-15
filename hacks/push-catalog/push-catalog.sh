@@ -124,11 +124,22 @@ PY
 
 # Fetch via python3 urllib — the Push has no curl, and this one path handles
 # http/https AND file:// (used by --self-test), so no per-scheme branching.
+# Writes "<done> <total>" bytes to $PROGRESS_FILE per MB (total 0 = unknown);
+# the daemon's GET /api/progress serves it to push-manager's progress bar.
+PROGRESS_FILE=/tmp/push-catalog-progress # main.go progressFile
 fetch() {
-  python3 - "$1" "$2" <<'PY' || die "download failed: $1"
-import sys,urllib.request,shutil
+  python3 - "$1" "$2" "$PROGRESS_FILE" <<'PY' || die "download failed: $1"
+import os,sys,urllib.request
+prog = sys.argv[3]
 with urllib.request.urlopen(sys.argv[1], timeout=60) as r, open(sys.argv[2],"wb") as f:
-    shutil.copyfileobj(r, f)
+    total, done = int(r.headers.get("Content-Length") or 0), 0
+    while chunk := r.read(1 << 20):
+        f.write(chunk); done += len(chunk)
+        try:
+            with open(prog + ".tmp", "w") as p: p.write(f"{done} {total}")
+            os.replace(prog + ".tmp", prog)
+        except OSError:
+            pass  # progress is a nicety, never fail a download over it
 PY
 }
 

@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -27,6 +28,9 @@ var indexHTML []byte
 
 // Hack ids flow from HTTP straight into a shell argument — validate hard.
 var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// progressFile: same default as PROGRESS_FILE in push-catalog.sh.
+const progressFile = "/tmp/push-catalog-progress"
 
 type config struct {
 	Port     int `json:"port"`
@@ -127,6 +131,19 @@ func main() {
 			writeJSON(w, map[string]any{"ok": err == nil, "output": out})
 		}
 	}
+	// progress of the running download: fetch() in push-catalog.sh writes
+	// "<done> <total>" bytes. push-manager polls it for its progress bar.
+	mux.HandleFunc("/api/progress", func(w http.ResponseWriter, r *http.Request) {
+		var p struct {
+			Done  int64 `json:"done"`
+			Total int64 `json:"total"`
+		}
+		if b, err := os.ReadFile(progressFile); err == nil {
+			fmt.Sscan(string(b), &p.Done, &p.Total) //nolint:errcheck // unreadable = 0 0
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(p) //nolint:errcheck
+	})
 	mux.HandleFunc("/api/install", action("install"))
 	mux.HandleFunc("/api/remove", action("remove"))
 	mux.HandleFunc("/api/disable", action("disable"))

@@ -62,4 +62,9 @@ client in `core/pmclient`.
 
 `GET /`, `GET /api/catalog`, `GET /api/installed`, `POST /api/install?id=<id>`,
 `POST /api/remove?id=<id>`, `POST /api/disable?id=<id>`,
-`POST /api/enable?id=<id>`.
+`POST /api/enable?id=<id>`, `GET /api/progress`.
+
+`GET /api/progress` returns `{"done": <bytes>, "total": <bytes>}` for the
+newest download. `total` is 0 when the server did not send a size. The
+values stay after a download ends, so read them only while an install runs.
+push-manager's CATALOG tab polls it to draw its download bar.
