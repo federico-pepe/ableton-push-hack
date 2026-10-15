@@ -11,6 +11,7 @@ between minor versions).
 
 - push-manager can drive the Push screen over USB while Push3 is stopped. `POST /api/display/direct {"enabled": true}` claims the screen. From then on every frame push-manager writes (`/api/display/image`, Shadow UI, OSD) goes straight to the screen. `{"enabled": false}` releases it. Turn it off before you start Push3 again. It fails with 409 while Push3 is running. `GET /api/display/status` now also returns `direct`. This is the first part of a Mixxx mode (see `plans/2026-10-12-mixxx-mode.md`). Tested on device.
 - push-manager's CATALOG tab shows a download bar with MB done and total while it installs a hack. push-catalog serves the numbers at `GET /api/progress`.
+- Catalog: Mixxx Mode (`itsrave/push-mixxx-mode`). DJ with Mixxx on the Push, with the screen driven through push-manager's direct mode above.
 - `core/display`: `USB` (`OpenUSB`/`Set`/`Close`) sends frames to the screen's USB interface, and `ToWire` applies the screen's XOR pattern. Needs a `core/v*` tag before consumers outside this repo get it.
 
 ### Fixed
