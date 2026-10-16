@@ -443,6 +443,32 @@ offset 16: [12]uint8 data    (for fixed events: note[0]=ch, [1]=note, [2]=vel; C
 
 For SysEx (`flags & 0x04` set): the 28-byte header is followed by a variable-length block whose length is `data[4..7]` as a uint32 LE pointer-sized field; Go reads the extra bytes off the socket in a second `read()`.
 
+#### Sending MIDI into Live, and clock out of Live (2026-10-16)
+
+Tested on AbletonOS v3.23 with Live 12.4.15b7. A hack can be a MIDI device
+for Live, with no change to Live:
+
+- **Live picks up a new port by itself.** A hack opens an ALSA sequencer
+  port with `CapRead | CapSubsRead`. Within about 20 seconds, Live creates
+  its own input port (`Ableton Live:midi_out_N`) and connects it to the
+  hack's port. Live does not need to restart. In Push's MIDI settings, the
+  port is listed as an input under its **port** name.
+- **Notes play on the selected track.** Send to `alsaseq.Subscribers`, the
+  address that reaches every port connected to yours. The selected track
+  plays the notes, and Push lights its pads for them.
+- **Clock needs one setting.** A port with `CapWrite | CapSubsWrite` is
+  listed in Push's MIDI settings as an **output**, with Sync off. When the
+  user turns Sync on, Live connects to the port. While the transport
+  runs, Live sends Start (event type 30), 24 clock pulses per beat (36),
+  and Stop (32). Nothing arrives while the transport is stopped.
+
+On v3.23, client numbers moved again. `RtMidi Input Client` (128) holds
+Push3's `Ableton Internal Input`, `RtMidi Output Client` (129) holds
+`Ableton Internal Output`, and `Ableton Live` is client 130. Live 130 has
+one `midi_in_N` or `midi_out_N` port per device. Find ports by name, not by
+number. `core/alsaseq/testdata/seq_clients_device_v323.txt` is a real
+capture of this layout.
+
 #### SysEx manufacturer / known messages
 
 SysEx manufacturer ID: `00 21 1D` (Ableton). Known constants from `Push2/sysex.pyc`:

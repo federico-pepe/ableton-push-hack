@@ -22,6 +22,7 @@ func TestEventTypesMatchKernel(t *testing.T) {
 		{"START", EvStart, 30},
 		{"CONTINUE", EvContinue, 31},
 		{"STOP", EvStop, 32},
+		{"SONGPOS", EvSongPos, 33},
 		{"CLOCK", EvClock, 36},
 		{"SENSING", EvSensing, 40},
 		{"SYSEX", EvSysEx, 130},
