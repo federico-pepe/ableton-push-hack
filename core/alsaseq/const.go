@@ -87,8 +87,8 @@ const (
 	EvChanPress  = uint8(12)  // channel aftertouch
 	EvPitchBend  = uint8(13)
 	EvStart      = uint8(30)
-	EvStop       = uint8(31)
-	EvContinue   = uint8(32)
+	EvContinue   = uint8(31)
+	EvStop       = uint8(32) // was 31 until 2026-10-16; Live's Stop arrives as 32 on device
 	EvClock      = uint8(36)
 	EvSensing    = uint8(40)  // active sensing
 	EvSysEx      = uint8(130) // variable length

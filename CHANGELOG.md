@@ -9,6 +9,7 @@ between minor versions).
 
 ### Fixed
 
+- `core/alsaseq`: `EvStop` and `EvContinue` were swapped. The kernel uses 31 for Continue and 32 for Stop, so a hack that follows Live's MIDI clock read Stop as Continue. Checked against the kernel header and on a Push 3, where Live's Stop arrives as type 32. A new test keeps all event type numbers equal to the kernel's. Needs a `core/v*` tag before consumers get it.
 - `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
 
 ### Changed
