@@ -199,6 +199,45 @@ func (c *Client) MidiFilterStatus() (FilterStatus, error) {
 	return st, nil
 }
 
+// Scale is the Set's scale, the one Push's Scale button edits.
+type Scale struct {
+	Supported bool   // false on a Live without the scale API
+	Root      int    // 0-11, 0 = C
+	Name      string // Live's name: "Minor", "Dorian", ...
+	Intervals []int  // semitones from Root
+	Mode      bool   // Scale Mode (Push's "In Key")
+}
+
+// LiveScale reads the Set's scale (GET /api/live/scale). It needs the
+// Browser Bridge Remote Script (0.3 or later) active in Live; without it
+// the error says why.
+func (c *Client) LiveScale() (Scale, error) {
+	var body struct {
+		OK        bool   `json:"ok"`
+		Error     string `json:"error"`
+		Supported bool   `json:"supported"`
+		Root      int    `json:"root"`
+		Name      string `json:"name"`
+		Intervals []int  `json:"intervals"`
+		Mode      bool   `json:"mode"`
+	}
+	resp, err := c.HTTP.Get(c.Base + "/api/live/scale")
+	if err != nil {
+		return Scale{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Scale{}, fmt.Errorf("live/scale: unexpected status %s (update Push Hack)", resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return Scale{}, err
+	}
+	if !body.OK {
+		return Scale{}, fmt.Errorf("live/scale: %s", body.Error)
+	}
+	return Scale{Supported: body.Supported, Root: body.Root, Name: body.Name, Intervals: body.Intervals, Mode: body.Mode}, nil
+}
+
 // PushFrame sends one 960x160 frame as raw pixels to POST
 // /api/display/frame: encoded with display.EncodeFrame, no PNG on either
 // side. Measured on device, a PNG frame through PushImage costs ~11 ms;

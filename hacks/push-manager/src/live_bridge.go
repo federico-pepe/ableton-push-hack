@@ -130,6 +130,33 @@ func liveTempo() (float64, error) {
 	return bpm, nil
 }
 
+// LiveScale is the Set's scale -- the one Push's Scale button edits --
+// as PushHackBrowser's get_scale reports it.
+type LiveScale struct {
+	Supported bool   `json:"supported"`
+	Root      int    `json:"root"` // 0-11, 0 = C
+	Name      string `json:"name"`
+	Intervals []int  `json:"intervals"` // semitones from the root
+	Mode      bool   `json:"mode"`      // Scale Mode, Push's "In Key"
+}
+
+// liveScale asks the Remote Script for the Set's scale. Needs
+// PushHackBrowser >= 0.3 (get_scale); an older script answers "ERROR".
+func liveScale() (LiveScale, error) {
+	var sc LiveScale
+	reply, err := bridgeSend("get_scale")
+	if err != nil {
+		return sc, err
+	}
+	if err := json.Unmarshal([]byte(reply), &sc); err != nil {
+		return sc, fmt.Errorf("get_scale: unexpected reply %q (update Browser Bridge to 0.3)", reply)
+	}
+	if sc.Supported && (sc.Root < 0 || sc.Root > 11 || len(sc.Intervals) == 0) {
+		return sc, fmt.Errorf("get_scale: implausible scale %+v", sc)
+	}
+	return sc, nil
+}
+
 // liveBeat asks the Remote Script for the current song time in beats.
 func liveBeat() (float64, error) {
 	reply, err := bridgeSend("get_beat")
@@ -183,6 +210,19 @@ func handleLivePlaying(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, map[string]interface{}{"ok": true, "playing": playing})
+}
+
+// GET /api/live/scale — the Set's scale, the one Push's Scale button edits:
+// {ok, supported, root, name, intervals, mode}. supported is false on a
+// Live without the scale API.
+func handleLiveScale(w http.ResponseWriter, r *http.Request) {
+	sc, err := liveScale()
+	if err != nil {
+		jsonResponse(w, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	jsonResponse(w, map[string]interface{}{"ok": true, "supported": sc.Supported, "root": sc.Root,
+		"name": sc.Name, "intervals": sc.Intervals, "mode": sc.Mode})
 }
 
 // GET /api/live/tempo — returns the current Live song tempo as JSON.

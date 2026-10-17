@@ -22,6 +22,8 @@ between minor versions).
 
 ### Added
 
+- `push-manager`: `GET /api/live/scale`, the Set's scale (the one Push's Scale button edits): root, name, intervals and Scale Mode. `core/pmclient`: `LiveScale`. Needs Browser Bridge 0.3 or later (`get_scale`).
+
 - Support for hacks that own the whole Push surface:
   - `push-display`: buttons listed in the new `pass_cc` bitmap still reach Live while MIDI intercept is on (Play 85 and Record 86, for example). Push3's own LED writes are held back while intercept is on, so a hack keeps its pad colours.
   - `push-manager`: `/api/midi/filter` takes `pass_cc`. Enabling intercept through the API makes push-manager repaint Live's LEDs when it goes off. New `/api/display/frame` takes one raw frame: about 1 ms a frame on device, against about 11 ms for a PNG.
