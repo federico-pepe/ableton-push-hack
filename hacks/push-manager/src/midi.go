@@ -707,6 +707,7 @@ func processFixedEvent(evType uint8, data []byte) {
 			emitMidi([]byte{0x90 | ch, note, vel})
 		}
 		applyRemap("note", ch, note, vel)
+		surfaceInputPad(note, vel) // Home's pad columns, while Home is open
 	case alsaseq.EvNoteOff:
 		emitMidi([]byte{0x80 | data[0], data[1], data[2]})
 		applyRemap("note", data[0], data[1], 0)
@@ -721,7 +722,10 @@ func processFixedEvent(evType uint8, data []byte) {
 		ccNum := uint8(param & 0x7F)
 		ccVal := uint8(value & 0x7F)
 		applyRemap("cc", ch, ccNum, ccVal)
-		if shadowUIIsActive() {
+		// Push Hack Home first (surface_io.go): its gesture, and every
+		// press while Home is open. What it takes, nothing else acts on.
+		took := surfaceInputCC(ccNum, ccVal)
+		if shadowUIIsActive() && !took {
 			go shadowUIHandleCC(ccNum, ccVal)
 		}
 		if ccVal == 0x7F {
@@ -731,7 +735,8 @@ func processFixedEvent(evType uint8, data []byte) {
 			// When intercept is off, Push firmware manages its own LED state.
 			// While the Shadow UI is active it fully owns the 4 under-screen
 			// buttons (press + release), so skip the generic toggle for them.
-			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) {
+			// Not while Home or an app owns the surface: they paint their own.
+			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) && surface.Outside() {
 				if filt := ensureMidiFilt(); filt != nil && filt[4] == 1 {
 					ledConfigMu.Lock()
 					cfg, hasCfg := ledConfigs[ccNum]
@@ -752,7 +757,7 @@ func processFixedEvent(evType uint8, data []byte) {
 		} else if ccVal == 0 {
 			chordCCReleased(ccNum)
 			// Handle momentary release — turn off LED when button is released.
-			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) {
+			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) && surface.Outside() {
 				if filt := ensureMidiFilt(); filt != nil && filt[4] == 1 {
 					ledConfigMu.Lock()
 					cfg, ok := ledConfigs[ccNum]
@@ -1331,6 +1336,12 @@ func chordCCPressed(cc uint8) {
 	}
 	midiChordMu.Unlock()
 
+	// push-manager's chords open the Shadow UI over whatever owns the
+	// surface; inside Push Hack Home or an app they do nothing, or they
+	// would draw over it (Shift + Set over Riffs did, 2026-10-17).
+	if !surface.Outside() {
+		return
+	}
 	for _, chord := range toFire {
 		go chord.action()
 	}
@@ -1775,6 +1786,10 @@ func handleMidiFilter(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Enabled && shuttingDown.Load() { // release.go: Push3 needs the buttons now
 		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go
+		http.Error(w, why, http.StatusConflict)
 		return
 	}
 	var pass []int

@@ -9,6 +9,8 @@ between minor versions).
 
 ### Fixed
 
+- Two hacks could react to one button combination: Riffs opened with Shift + Set, which is also push-manager's `browser_open` chord, so one press started the Shadow UI and Riffs at once, both drawing on the screen (device log, 2026-10-17). Push Hack Home (below) gives every app one way in, and push-manager's chords no longer fire while an app owns the surface.
+
 - A hack that owned the surface could leave Push unusable. With its screen showing and the MIDI intercept on, Live's questions on the power button ("save changes?") could be neither seen nor answered, so only holding the power button turned Push off. The intercept flag then survived into the next start, and Live's "recover your work?" could not be answered either. push-manager now clears the intercept and the display at its start, gives both back to Push3 as soon as the power button is pressed (it watches `/data/settings/.shutdown`, which `power.sh` writes), and refuses a hack's takeover until the device is off.
 
 - MIDI intercept could do nothing at all. push-manager runs as root, and when it created `midiflt` before Push3 did, the file was `root`, mode 0644, and the hook (running as `ableton`) could not open it. push-manager now keeps the file at mode 0666, owned like its folder, and the hook retries the open every 2 seconds.
@@ -21,6 +23,10 @@ between minor versions).
 - The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
 
 ### Added
+
+- **Push Hack Home**, one switcher for every hack that uses Push's screen, buttons and pads, and for the Shadow UI's tools. **Shift + Help** opens it from anywhere; **Shift + Help, Help** (hold Shift, tap Help twice) opens the superstar entry directly, and goes back to Live from inside it. Home shows eight entries a page under the top buttons, the starred ones first; the pad columns open them too. STAR stars an entry, Shift + STAR makes it the superstar; both are also on the web UI's Display → Tabs page. push-manager now owns the surface and lends it to one app at a time: while Home or an app owns it, `/api/display/mode`, `/api/midi/filter` and frames from anyone but the owning app get 409, and push-manager's own chords do nothing. An app that stops while it owns the surface gives it back to Home, which says so; pressing a stopped app starts it through push-catalog, and it opens when it connects. A hack becomes an app by declaring `"surface": {"label", "color"}` in `hack.json` and holding a session (`GET /api/surface/session`, server-sent events). `core/pmclient`: `Client.App`, `RunSurface`, `SurfaceStatus`, `SurfaceInput`, `SurfaceLeave`, `SurfaceOpen`, `HasSwitcher`. Needs a `core/v*` tag before consumers get it. Design: `plans/2026-10-17-push-hack-switcher.md`.
+
+- `push-catalog`: a hack that declares only `surface` gets a port, like one with `web_ui` or `shadow_ui`. push-manager lists only hacks with a port.
 
 - `push-manager`: `/api/live/listen` turns a listen track on and off: a silent MIDI track whose input follows the selected track and whose output is a hack's port, so a hack gets the notes played on Push's pads, which no MIDI input carries. `core/pmclient`: `LiveListen`. Needs Browser Bridge 0.4 or later.
 

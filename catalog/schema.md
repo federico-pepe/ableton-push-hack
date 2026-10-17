@@ -175,6 +175,31 @@ Omit a hook entirely for a hack that has no such UI (a Remote Script, or
 push-display). That is how a hack opts out — it then never appears in that
 navigation or in the settings list for it.
 
+### `surface` — an app of Push Hack Home
+
+```json
+"surface": { "label": "RIFFS", "color": "sky" }
+```
+
+A hack that takes Push's whole screen, buttons and pads declares
+`surface`. It then appears in Push Hack Home (push-manager's switcher,
+opened with Shift + Help) as an **app**, and push-manager lends it the
+surface when the user picks it. The hack has no button combination of its
+own; it holds a session with push-manager and draws only while it owns
+the surface (push-manager's README, "Push Hack Home", has the protocol;
+`core/pmclient`'s `RunSurface` does it).
+
+| Field | Meaning |
+|-------|---------|
+| `label` | The name on the app's card in Home. ASCII; at most 7 letters fit the large type. Defaults to the hack's `name`. |
+| `color` | A name from Push's palette (`core/push3` `NamedColors`, for example `sky`, `amber`, `lime`, `violet`): the card's stripe and the pad column's LEDs. |
+
+`surface` needs the hack's `port` like the other two hooks, and a running
+service: Home starts a stopped app through push-catalog's `enable`. Like
+the other hooks it is a request: the user can star the app, make it the
+superstar (Shift + Help, Help), or order it on push-manager's Display →
+Tabs page.
+
 ### Ports are assigned by the store
 
 Both hooks build their URL from the hack's own `port` — but a hack no
@@ -187,7 +212,7 @@ push-catalog, and a couple of fixed internal ports — see `CLAUDE.md`) and
 is never handed out. A reinstalled/updated hack keeps the port it already
 had rather than getting reshuffled.
 
-Only a hack that declares `web_ui` or `shadow_ui` gets a port at all — a
+Only a hack that declares `web_ui`, `shadow_ui` or `surface` gets a port at all — a
 binary alone isn't enough. A hack with a binary but neither hook (a
 background service with no HTTP surface, e.g. one that just loads a kernel
 module) is left with no `port` field, same as one with `"binary": ""`.

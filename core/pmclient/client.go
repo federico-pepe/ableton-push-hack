@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"time"
@@ -23,7 +24,32 @@ type Client struct {
 	Base string
 	HTTP *http.Client
 
+	// App is the hack's id when it is an app of Push Hack Home (its
+	// hack.json declares "surface"). Every call that writes to the screen
+	// or the intercept then says so (the X-Push-Hack-App header), and
+	// push-manager lets it through only while this app owns the surface.
+	App string
+
 	frame []byte // PushFrame's reusable buffer
+}
+
+// AppHeader is the header that names the app a call comes from.
+const AppHeader = "X-Push-Hack-App"
+
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	if c.App != "" {
+		req.Header.Set(AppHeader, c.App)
+	}
+	return c.HTTP.Do(req)
+}
+
+func (c *Client) post(url, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodPost, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	return c.do(req)
 }
 
 // New returns a Client with a 3s timeout HTTP client, matching every
@@ -41,7 +67,7 @@ func (c *Client) SetMode(mode int) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -78,7 +104,7 @@ func (c *Client) PushImage(img image.Image) error {
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -128,7 +154,7 @@ func (c *Client) SetMidiFilter(enabled bool) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -150,7 +176,7 @@ func (c *Client) SetMidiFilterPass(enabled bool, passCC []int) error {
 	if err != nil {
 		return err
 	}
-	resp, err := c.HTTP.Post(c.Base+"/api/midi/filter", "application/json", bytes.NewReader(body))
+	resp, err := c.post(c.Base+"/api/midi/filter", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -262,7 +288,7 @@ func (c *Client) LiveListen(on bool, port string) (Listen, error) {
 	if err != nil {
 		return Listen{}, err
 	}
-	resp, err := c.HTTP.Post(c.Base+"/api/live/listen", "application/json", bytes.NewReader(body))
+	resp, err := c.post(c.Base+"/api/live/listen", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return Listen{}, err
 	}
@@ -292,7 +318,7 @@ func (c *Client) PushFrame(img *image.NRGBA) error {
 		c.frame = make([]byte, display.FrameBytes)
 	}
 	display.EncodeFrame(img, c.frame)
-	resp, err := c.HTTP.Post(c.Base+"/api/display/frame", "application/octet-stream", bytes.NewReader(c.frame))
+	resp, err := c.post(c.Base+"/api/display/frame", "application/octet-stream", bytes.NewReader(c.frame))
 	if err != nil {
 		return err
 	}

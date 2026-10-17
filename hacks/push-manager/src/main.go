@@ -463,6 +463,7 @@ func main() {
 	// (release.go).
 	clearStaleSurface()
 	go watchShutdown()
+	go runSurface() // Push Hack Home: Shift + Help (surface.go)
 
 	// Mark Live's own Log.txt once Live is up so support can confirm push-hack is
 	// installed straight from the standard Live log. See live_log.go.
@@ -514,6 +515,13 @@ func main() {
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/hacks/installed", handleHacksInstalled)
 	mux.HandleFunc("/api/ui/tabs", handleUITabs)
+	mux.HandleFunc("/api/surface", handleSurface)
+	mux.HandleFunc("/api/surface/session", handleSurfaceSession)
+	mux.HandleFunc("/api/surface/status", handleSurfaceStatus)
+	mux.HandleFunc("/api/surface/input", handleSurfaceInput)
+	mux.HandleFunc("/api/surface/leave", handleSurfaceLeave)
+	mux.HandleFunc("/api/surface/open", handleSurfaceOpen)
+	mux.HandleFunc("/api/surface/star", handleSurfaceStar)
 	mux.HandleFunc("/api/rename", handleRename)
 	mux.HandleFunc("/api/copy", handleCopy)
 	mux.HandleFunc("/api/unmount", handleUnmount)

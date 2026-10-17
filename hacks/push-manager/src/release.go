@@ -82,6 +82,7 @@ func watchShutdown() {
 				continue
 			}
 			shuttingDown.Store(true)
+			surface.Power() // Home or an app gives up the surface, and nobody gets it again
 			log.Printf("release: power button pressed; the surface goes back to Push3 until it is off")
 		}
 		releaseSurface()

@@ -1,7 +1,19 @@
 # Push Hack Home: one switcher for every hack that uses Push's surface
 
-Status: design, waiting for approval. Branch `feat/hack-switcher`, stacked
-on `feat/live-listen` (#37).
+Status: built and tested on the device (2026-10-17). Branch
+`feat/hack-switcher`, stacked on `feat/live-listen` (#37).
+
+Changes from the design, found while building it:
+
+- The switcher owns only the states it creates (Home, an app). Everything
+  else (Live, the Shadow UI, an older hack) is one state, "outside", run
+  exactly as before, so push-manager's other paths that flip the intercept
+  (chords, the MIDI panel, the web UI, preset loads) did not change.
+- Home tracks Shift from every Shift press. The release that fires Shift
+  + Help goes to the gesture, and Home kept thinking Shift was held, so
+  the next STAR became Shift + STAR (found on the device).
+- push-catalog now gives a port to a hack that declares only `surface`.
+- A stopped card shows PRESS TO START without the LAST tag (they overlapped).
 
 ## The problem
 

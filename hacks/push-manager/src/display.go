@@ -152,6 +152,10 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
 		return
 	}
+	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go
+		http.Error(w, why, http.StatusConflict)
+		return
+	}
 	// When entering takeover mode (2) with no content yet, clear framebuf to
 	// black so stale pixels from a previous session don't show.
 	if body.Mode == ModeTakeover && shmGetMode() != ModeTakeover {
@@ -183,6 +187,10 @@ func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
+	if !surface.FrameAllowed(r.Header.Get(appHeader)) { // surface.go: one writer
+		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
+		return
+	}
 	img, format, err := image.Decode(f)
 	if err != nil {
 		http.Error(w, "decode image: "+err.Error(), http.StatusBadRequest)
@@ -222,6 +230,10 @@ func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
 	if err != nil || len(frame) != coredisplay.FrameBytes {
 		http.Error(w, fmt.Sprintf("want exactly %d bytes of BGR565 at stride %d",
 			coredisplay.FrameBytes, coredisplay.Stride), http.StatusBadRequest)
+		return
+	}
+	if !surface.FrameAllowed(r.Header.Get(appHeader)) { // surface.go: one writer
+		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
 		return
 	}
 	if err := shm.WriteFrame(frame); err != nil {
