@@ -14,12 +14,16 @@ import (
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/display"
 )
 
 // Client talks to a push-manager instance over HTTP.
 type Client struct {
 	Base string
 	HTTP *http.Client
+
+	frame []byte // PushFrame's reusable buffer
 }
 
 // New returns a Client with a 3s timeout HTTP client, matching every
@@ -88,6 +92,10 @@ func (c *Client) PushImage(img image.Image) error {
 // Status is push-manager's GET /api/display/status response.
 type Status struct {
 	Connected bool `json:"connected"`
+	// Mode is the display mode push-display is in: 0 Live's own screen,
+	// 2 takeover. A hack that holds takeover can see a Push3 restart (the
+	// hook starts in 0) and take the display again.
+	Mode int `json:"mode"`
 }
 
 // DisplayStatus reports whether push-display's shared-memory framebuffer is
@@ -127,6 +135,54 @@ func (c *Client) SetMidiFilter(enabled bool) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("midi/filter: unexpected status %s", resp.Status)
+	}
+	return nil
+}
+
+// SetMidiFilterPass is SetMidiFilter with buttons that still reach Live
+// while intercept is on: passCC lists CC numbers (0-87) -- typically Play
+// (85, which also stops) and Record (86) -- so a hack that owns the
+// surface leaves the transport with Live. Turning the filter off clears the
+// list. Needs push-display and push-manager from the same release; an older
+// pair ignores the list and blocks every button, as before.
+func (c *Client) SetMidiFilterPass(enabled bool, passCC []int) error {
+	body, err := json.Marshal(map[string]any{"enabled": enabled, "pass_cc": passCC})
+	if err != nil {
+		return err
+	}
+	resp, err := c.HTTP.Post(c.Base+"/api/midi/filter", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("midi/filter: unexpected status %s", resp.Status)
+	}
+	return nil
+}
+
+// PushFrame sends one 960x160 frame as raw pixels to POST
+// /api/display/frame: encoded with display.EncodeFrame, no PNG on either
+// side. Measured on device, a PNG frame through PushImage costs ~11 ms;
+// this is the path for a hack that redraws many times a second. Not safe
+// for concurrent use: it reuses one buffer per Client. Set display mode 2
+// (SetMode) first, as with PushImage.
+func (c *Client) PushFrame(img *image.NRGBA) error {
+	if img.Rect != image.Rect(0, 0, display.VisW, display.VisH) {
+		return fmt.Errorf("PushFrame: want a %dx%d image at the origin, got %v",
+			display.VisW, display.VisH, img.Rect)
+	}
+	if c.frame == nil {
+		c.frame = make([]byte, display.FrameBytes)
+	}
+	display.EncodeFrame(img, c.frame)
+	resp, err := c.HTTP.Post(c.Base+"/api/display/frame", "application/octet-stream", bytes.NewReader(c.frame))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("display/frame: unexpected status %s", resp.Status)
 	}
 	return nil
 }

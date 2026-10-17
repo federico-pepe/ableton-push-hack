@@ -9,6 +9,8 @@ between minor versions).
 
 ### Fixed
 
+- MIDI intercept could do nothing at all. push-manager runs as root, and when it created `midiflt` before Push3 did, the file was `root`, mode 0644, and the hook (running as `ableton`) could not open it. push-manager now keeps the file at mode 0666, owned like its folder, and the hook retries the open every 2 seconds.
+- `push-manager`: the comment on `/api/display/image` said it sets takeover mode; it does not.
 - `core/alsaseq`: `EvStop` and `EvContinue` were swapped. The kernel uses 31 for Continue and 32 for Stop, so a hack that follows Live's MIDI clock read Stop as Continue. Checked against the kernel header and on a Push 3, where Live's Stop arrives as type 32. A new test keeps all event type numbers equal to the kernel's. Needs a `core/v*` tag before consumers get it.
 - `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
 
@@ -17,6 +19,13 @@ between minor versions).
 - The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
 
 ### Added
+
+- Support for hacks that own the whole Push surface:
+  - `push-display`: buttons listed in the new `pass_cc` bitmap still reach Live while MIDI intercept is on (Play 85 and Record 86, for example). Push3's own LED writes are held back while intercept is on, so a hack keeps its pad colours.
+  - `push-manager`: `/api/midi/filter` takes `pass_cc`. Enabling intercept through the API makes push-manager repaint Live's LEDs when it goes off. New `/api/display/frame` takes one raw frame: about 1 ms a frame on device, against about 11 ms for a PNG.
+  - `core/display`: `EncodeFrame` (no allocation, 13 times faster than the general path) and `Shm.WriteFrame`. `ToBGR565` uses the fast path for 960x160 NRGBA images.
+  - `core/pmclient`: `PushFrame`, `SetMidiFilterPass`, and `Status.Mode`.
+  - `docs/push3-internals.md`: how Push3 writes LEDs, taking the surface on a button release, and restarting Push3 safely.
 
 - `core/alsaseq`: raw MIDI support for ported tools. `EncodeMIDI` and `DecodeMIDI` turn raw MIDI bytes (notes, CC, program change, pressure, pitch bend, clock, start, continue, stop, song position) into sequencer events and back. `SendMIDI` sends raw bytes. `Subscribers` is the address for every port connected to yours. `SetName` names the client. New tests check the event layouts, the ioctl numbers, and the parser against a real capture from a Push 3 (`testdata/seq_clients_device_v323.txt`).
 - `docs/push3-internals.md`: how a hack sends MIDI into Live and gets clock out of Live, tested on a Push 3. Live picks up a new port by itself, and a Sync switch in Push's MIDI settings sends clock to a hack's port.

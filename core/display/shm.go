@@ -187,6 +187,26 @@ func (s *Shm) CompareAndSetMode(from, to uint32) bool {
 	return true
 }
 
+// WriteFrame writes ONE frame (FrameBytes, as EncodeFrame makes it) into
+// both halves of the shm buffer -- Push 3 sends each frame twice -- and
+// increments frame_seq. Half the bytes a caller has to send compared to
+// WritePixels, with the duplication done here, once.
+func (s *Shm) WriteFrame(frame []byte) error {
+	if len(frame) != FrameBytes {
+		return fmt.Errorf("expected %d bytes, got %d", FrameBytes, len(frame))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.buf == nil {
+		return fmt.Errorf("display hook not connected")
+	}
+	copy(s.buf[offPixels:], frame)
+	copy(s.buf[offPixels+FrameBytes:], frame)
+	seq := binary.LittleEndian.Uint32(s.buf[offFrameSeq:]) + 1
+	binary.LittleEndian.PutUint32(s.buf[offFrameSeq:], seq)
+	return nil
+}
+
 // WritePixels writes a full (both-halves-duplicated) BGR565 frame into shm
 // and increments frame_seq. pixels must be TotalBytes long.
 func (s *Shm) WritePixels(pixels []byte) error {

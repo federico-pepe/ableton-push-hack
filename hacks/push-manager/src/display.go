@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"image"
 	"image/color"
 	"image/draw"
@@ -163,8 +164,8 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/display/image  multipart field "image" = PNG or JPEG
-// Scales image to 960×160, converts to BGR565, writes to shm.
-// Also auto-sets mode to 2 (takeover) if currently in passthrough/bar.
+// Scales image to 960×160, converts to BGR565, writes to shm. The caller
+// sets mode 2 (takeover) first; this handler never changes the mode.
 func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
@@ -199,6 +200,31 @@ func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 		"size":   fmt.Sprintf("%dx%d", dispVisW, dispH),
 		"mode":   shmGetMode(),
 	})
+}
+
+// POST /api/display/frame  body = one raw frame, application/octet-stream:
+// FrameBytes (327680) of BGR565 little-endian at the framebuffer's
+// 1024-pixel stride, as core/display.EncodeFrame (or pmclient.PushFrame)
+// makes it. No decoding and no scaling: the bytes are copied into both
+// halves of shm. For hacks that redraw many times a second, where a PNG
+// through /api/display/image costs ~11 ms a frame. Like /image, it never
+// changes the mode.
+func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	frame, err := io.ReadAll(http.MaxBytesReader(w, r.Body, coredisplay.FrameBytes+1))
+	if err != nil || len(frame) != coredisplay.FrameBytes {
+		http.Error(w, fmt.Sprintf("want exactly %d bytes of BGR565 at stride %d",
+			coredisplay.FrameBytes, coredisplay.Stride), http.StatusBadRequest)
+		return
+	}
+	if err := shm.WriteFrame(frame); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // ── Startup splash ────────────────────────────────────────────────────────

@@ -469,6 +469,25 @@ one `midi_in_N` or `midi_out_N` port per device. Find ports by name, not by
 number. `core/alsaseq/testdata/seq_clients_device_v323.txt` is a real
 capture of this layout.
 
+#### Push3's LED writes and the surface takeover (2026-10-17)
+
+Traced with `strace` on Push3 while Live played notes: Push3 writes pad and
+button LEDs as note-on and controller events straight to its
+`/dev/snd/seq` file descriptor, next to its periodic SysEx status
+messages. A filter on libasound's `snd_seq_event_output*` functions did not
+catch them; push-display now filters `write()` on that descriptor while
+intercept is on. With it on, 22 of 22 LED events in 4 s of playback went
+out as `SND_SEQ_EVENT_NONE`.
+
+Two more facts for a hack that owns the surface:
+
+- **Take it on a release.** Switching intercept on in the middle of a
+  button chord hides the releases from Push3, which then believes the
+  buttons are still held. Seen on device: Shift + Help to open, then Play
+  acted as Shift + Play (the button lit, nothing played).
+- **Push's User button sends no MIDI** in standalone. It never reaches the
+  sequencer, so it cannot be part of a hack's chord.
+
 #### SysEx manufacturer / known messages
 
 SysEx manufacturer ID: `00 21 1D` (Ableton). Known constants from `Push2/sysex.pyc`:
@@ -826,6 +845,21 @@ taps Shift, then the other pad-mode button, then the current one.
 **`usbmon` not available** — kernel module not present in `5.15.48-intel-pk-preempt-rt`. Cannot sniff traffic non-destructively.
 
 ---
+
+## Restarting Push3 safely (2026-10-17)
+
+`/etc/init.d/push3 stop` runs `kill -9` on Push3's launcher and every
+process under it, Live included. Live then reports "Detected a prior
+crash" at its next start, offers to recover the set, and loses
+preferences it had not saved (for example Sync on a hack's MIDI port).
+push-hack's `install.sh` and push-display's service restart Push3 this way
+(three times per push-display install).
+
+Ableton's own scripts ask Live to quit gracefully with SIGTERM:
+`/opt/push3/power.sh` (power button) and `/opt/push3/reboot.sh` (used by the
+software updater). `reboot.sh` only makes Live quit; the updater does the
+reboot. Run outside an update, Live stays down until the next power cycle.
+The safe way to restart today is the Push's own power button.
 
 ## Notes for hack authors
 
