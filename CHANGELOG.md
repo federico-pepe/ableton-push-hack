@@ -24,7 +24,7 @@ between minor versions).
   - `push-display`: buttons listed in the new `pass_cc` bitmap still reach Live while MIDI intercept is on (Play 85 and Record 86, for example). Push3's own LED writes are held back while intercept is on, so a hack keeps its pad colours.
   - `push-manager`: `/api/midi/filter` takes `pass_cc`. Enabling intercept through the API makes push-manager repaint Live's LEDs when it goes off. New `/api/display/frame` takes one raw frame: about 1 ms a frame on device, against about 11 ms for a PNG.
   - `core/display`: `EncodeFrame` (no allocation, 13 times faster than the general path) and `Shm.WriteFrame`. `ToBGR565` uses the fast path for 960x160 NRGBA images.
-  - `core/pmclient`: `PushFrame`, `SetMidiFilterPass`, and `Status.Mode`.
+  - `core/pmclient`: `PushFrame`, `SetMidiFilterPass`, and `Status.Mode`. `MidiFilterStatus` tells whether push-manager has these features, so a hack can ask the user to update Push Hack instead of failing silently.
   - `core/push3`: `LEDButtons`, every button with an LED (push-manager's list plus the 8 scene buttons), and `IsRGBButton`, so a hack can set all of them.
   - `docs/push3-internals.md`: how Push3 writes LEDs, taking the surface on a button release, and restarting Push3 safely.
 

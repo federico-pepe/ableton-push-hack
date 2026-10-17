@@ -161,6 +161,44 @@ func (c *Client) SetMidiFilterPass(enabled bool, passCC []int) error {
 	return nil
 }
 
+// FilterStatus is push-manager's MIDI intercept state (GET
+// /api/midi/filter/status).
+type FilterStatus struct {
+	Enabled bool
+	PassCC  []int
+	// SurfaceOwning is true when push-manager knows pass_cc -- the release
+	// with pass-through buttons, LED hold-back and /api/display/frame. An
+	// older push-manager answers without the field: a hack that owns the
+	// surface would then lose Play to the filter and get a 404 per frame,
+	// so it should say "update Push Hack" instead of starting.
+	SurfaceOwning bool
+}
+
+// MidiFilterStatus reads the intercept state, and from it whether this
+// push-manager supports hacks that own the surface.
+func (c *Client) MidiFilterStatus() (FilterStatus, error) {
+	var raw struct {
+		Enabled bool   `json:"enabled"`
+		PassCC  *[]int `json:"pass_cc"`
+	}
+	resp, err := c.HTTP.Get(c.Base + "/api/midi/filter/status")
+	if err != nil {
+		return FilterStatus{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return FilterStatus{}, fmt.Errorf("midi/filter/status: unexpected status %s", resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return FilterStatus{}, err
+	}
+	st := FilterStatus{Enabled: raw.Enabled, SurfaceOwning: raw.PassCC != nil}
+	if raw.PassCC != nil {
+		st.PassCC = *raw.PassCC
+	}
+	return st, nil
+}
+
 // PushFrame sends one 960x160 frame as raw pixels to POST
 // /api/display/frame: encoded with display.EncodeFrame, no PNG on either
 // side. Measured on device, a PNG frame through PushImage costs ~11 ms;
