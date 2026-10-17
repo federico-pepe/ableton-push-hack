@@ -489,6 +489,13 @@ has seen Shift go down and up, so it does not think Shift is still held.
 If you press another button while holding Shift, the gesture does not
 fire: that combination is the other button's own shortcut.
 
+When Home takes the buttons from Live, push-manager first tells Push3
+that Shift and Help are up (through Push3's own MIDI input) and waits
+120 ms before it switches the intercept on. Without this, the intercept
+could swallow your Shift release before Push3 read it: Live then thought
+Shift was still held, and Play inside an app arrived as Shift + Play,
+which does nothing.
+
 ### Home
 
 Home shows eight entries a page, one in each screen column under its top

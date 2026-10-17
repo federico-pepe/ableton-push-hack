@@ -14,6 +14,10 @@ Changes from the design, found while building it:
   the next STAR became Shift + STAR (found on the device).
 - push-catalog now gives a port to a hack that declares only `surface`.
 - A stopped card shows PRESS TO START without the LAST tag (they overlapped).
+- Taking the buttons from Live waits 120 ms and tells Push3 Shift and Help
+  are up first (`settleLive`). push-manager switched the intercept on so
+  fast that the hook swallowed the Shift release before Push3 read it; Live
+  kept Shift held, and Play in Riffs did nothing (found by the user).
 
 ## The problem
 

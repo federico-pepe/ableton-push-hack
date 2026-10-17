@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
 )
 
 // surface is push-manager's one owner of Push's surface (surface.go).
@@ -146,7 +148,36 @@ func (d *deviceIO) forget() {
 	d.mu.Unlock()
 }
 
+// liveSettle is how long push-manager waits, after the gesture that takes
+// the buttons from Live, before switching the intercept on.
+const liveSettle = 120 * time.Millisecond
+
+// settleLive runs before the intercept goes on while Live has the buttons.
+// The gesture fires on Shift's release, and push-manager reads that
+// release in the same moment Push3 does -- then switches the intercept on
+// in microseconds, often before Push3 has taken the release, which the hook
+// then swallows. Live keeps believing Shift is held, and Play arrives as
+// Shift + Play: the button lights, nothing runs (seen on device in Riffs,
+// 2026-10-17; Stacks hit the same before Home). So: tell Push3 Shift and
+// Help are up, through its own input, and give it time to read them.
+func settleLive() {
+	if data := ensureMidiFilt(); data == nil || data[4] != 0 {
+		return // the intercept is on already: Live sees no buttons anyway
+	}
+	if p, ok := alsaseq.FindByName(appInputPortName, alsaseq.CapWrite); ok {
+		midiOutMu.Lock()
+		c := midiOut
+		midiOutMu.Unlock()
+		if c != nil {
+			c.SendCC(p.Addr, 0, CCHelp, 0)  //nolint:errcheck
+			c.SendCC(p.Addr, 0, CCShift, 0) //nolint:errcheck
+		}
+	}
+	time.Sleep(liveSettle)
+}
+
 func (d *deviceIO) take(pass []int) {
+	settleLive()
 	d.intercept(true, pass)
 	d.forget()
 	clearAllLEDs(CCHelp) // the owner paints its own; Help stays lit
@@ -190,6 +221,7 @@ func (d *deviceIO) homeShow(v homeView) {
 func (d *deviceIO) homeHide() { d.forget() }
 
 func (d *deviceIO) openTool(id string) {
+	settleLive()
 	d.intercept(true, nil)
 	d.forget()
 	if !shadowUIIsActive() {
