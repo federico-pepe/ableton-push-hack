@@ -861,6 +861,14 @@ software updater). `reboot.sh` only makes Live quit; the updater does the
 reboot. Run outside an update, Live stays down until the next power cycle.
 The safe way to restart today is the Push's own power button.
 
+`power.sh` touches `/data/settings/.shutdown` before it asks Live to quit.
+That file is a command, not a log: when Live exits and the file exists, the
+launcher powers the device off and deletes it. Never create it to test
+something. push-manager watches it for a change: from the press on, it
+gives the display and the MIDI intercept back to Push3 and refuses a hack
+that asks for them, because Live may ask a question first ("save
+changes?") on Push's own screen, answered with Push's own buttons.
+
 ## Notes for hack authors
 
 - **Install to `/data/push-hack/`** — writable by `ableton`, survives firmware updates that only touch `/opt`

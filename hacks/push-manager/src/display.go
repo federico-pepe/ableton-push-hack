@@ -148,6 +148,10 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "mode must be 0 (off), 1 (bar) or 2 (custom)", http.StatusBadRequest)
 		return
 	}
+	if body.Mode != ModePassthrough && shuttingDown.Load() { // release.go: Push3 needs its screen
+		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
+		return
+	}
 	// When entering takeover mode (2) with no content yet, clear framebuf to
 	// black so stale pixels from a previous session don't show.
 	if body.Mode == ModeTakeover && shmGetMode() != ModeTakeover {

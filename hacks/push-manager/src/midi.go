@@ -1773,6 +1773,10 @@ func handleMidiFilter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "midi_filt shm not available — is push-display deployed?", http.StatusServiceUnavailable)
 		return
 	}
+	if body.Enabled && shuttingDown.Load() { // release.go: Push3 needs the buttons now
+		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
+		return
+	}
 	var pass []int
 	if body.Enabled {
 		pass = setMidiFiltPass(data, body.PassCC)

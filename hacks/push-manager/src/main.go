@@ -459,6 +459,11 @@ func main() {
 	// Connect to push-display shared memory (non-fatal if hook not running)
 	initDisplayShm()
 
+	// Nobody holds the surface at start, and the power button takes it back
+	// (release.go).
+	clearStaleSurface()
+	go watchShutdown()
+
 	// Mark Live's own Log.txt once Live is up so support can confirm push-hack is
 	// installed straight from the standard Live log. See live_log.go.
 	go startLiveLogMarker()

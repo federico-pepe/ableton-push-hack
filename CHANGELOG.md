@@ -9,6 +9,8 @@ between minor versions).
 
 ### Fixed
 
+- A hack that owned the surface could leave Push unusable. With its screen showing and the MIDI intercept on, Live's questions on the power button ("save changes?") could be neither seen nor answered, so only holding the power button turned Push off. The intercept flag then survived into the next start, and Live's "recover your work?" could not be answered either. push-manager now clears the intercept and the display at its start, gives both back to Push3 as soon as the power button is pressed (it watches `/data/settings/.shutdown`, which `power.sh` writes), and refuses a hack's takeover until the device is off.
+
 - MIDI intercept could do nothing at all. push-manager runs as root, and when it created `midiflt` before Push3 did, the file was `root`, mode 0644, and the hook (running as `ableton`) could not open it. push-manager now keeps the file at mode 0666, owned like its folder, and the hook retries the open every 2 seconds.
 - `push-manager`: the comment on `/api/display/image` said it sets takeover mode; it does not.
 - `core/alsaseq`: `EvStop` and `EvContinue` were swapped. The kernel uses 31 for Continue and 32 for Stop, so a hack that follows Live's MIDI clock read Stop as Continue. Checked against the kernel header and on a Push 3, where Live's Stop arrives as type 32. A new test keeps all event type numbers equal to the kernel's. Needs a `core/v*` tag before consumers get it.
