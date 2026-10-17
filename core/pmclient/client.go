@@ -238,6 +238,45 @@ func (c *Client) LiveScale() (Scale, error) {
 	return Scale{Supported: body.Supported, Root: body.Root, Name: body.Name, Intervals: body.Intervals, Mode: body.Mode}, nil
 }
 
+// Listen is the listen track's state, as Browser Bridge reports it.
+type Listen struct {
+	OK         bool     `json:"ok"`
+	Error      string   `json:"error"`
+	On         bool     `json:"on"`
+	Track      bool     `json:"track"`      // the "Stacks Listen" track exists
+	Input      string   `json:"input"`      // what its input is, e.g. "1-Piano"
+	Channel    string   `json:"channel"`    // "Post FX"
+	Output     string   `json:"output"`     // the hack's port
+	Monitoring int      `json:"monitoring"` // 0 In, 1 Auto, 2 Off
+	Source     string   `json:"source"`     // the track it listens to
+	Outputs    []string `json:"outputs"`    // on failure: the MIDI outputs Live offers
+}
+
+// LiveListen turns the listen track on or off: a silent MIDI track in the
+// Set whose input follows the selected track and whose output is port, so
+// a hack receives the notes played on Push's pads (POST /api/live/listen).
+// Needs Browser Bridge 0.4 or later active in Live. A reply with OK false
+// carries the reason in Error.
+func (c *Client) LiveListen(on bool, port string) (Listen, error) {
+	body, err := json.Marshal(map[string]any{"on": on, "port": port})
+	if err != nil {
+		return Listen{}, err
+	}
+	resp, err := c.HTTP.Post(c.Base+"/api/live/listen", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return Listen{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Listen{}, fmt.Errorf("live/listen: unexpected status %s (update Push Hack)", resp.Status)
+	}
+	var st Listen
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		return Listen{}, err
+	}
+	return st, nil
+}
+
 // PushFrame sends one 960x160 frame as raw pixels to POST
 // /api/display/frame: encoded with display.EncodeFrame, no PNG on either
 // side. Measured on device, a PNG frame through PushImage costs ~11 ms;

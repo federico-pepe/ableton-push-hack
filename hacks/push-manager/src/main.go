@@ -546,6 +546,7 @@ func main() {
 	mux.HandleFunc("/api/live/plugins", handleLivePlugins)
 	mux.HandleFunc("/api/live/tempo", handleLiveTempo)
 	mux.HandleFunc("/api/live/scale", handleLiveScale)
+	mux.HandleFunc("/api/live/listen", handleLiveListen)
 	mux.HandleFunc("/api/live/playing", handleLivePlaying)
 	mux.HandleFunc("/api/live/play", handleLivePlay)
 	mux.HandleFunc("/api/live/stop", handleLiveStop)

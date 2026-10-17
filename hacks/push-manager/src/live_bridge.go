@@ -212,6 +212,48 @@ func handleLivePlaying(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{"ok": true, "playing": playing})
 }
 
+// GET  /api/live/listen — the listen track's state (Browser Bridge get_listen).
+// POST /api/live/listen {"on": true, "port": "Stacks Listen"} — make or find
+// a silent MIDI track whose input follows the selected track and whose output
+// is that MIDI port (listen_on), or stop it ({"on": false}, listen_off). The
+// reply is the Remote Script's own JSON: on, track, input, channel, output,
+// monitoring, source -- and on failure ok:false, error and the outputs Live
+// offers. Needs PushHackBrowser 0.4 or later.
+func handleLiveListen(w http.ResponseWriter, r *http.Request) {
+	cmd := "get_listen"
+	if r.Method == http.MethodPost {
+		var body struct {
+			On   bool   `json:"on"`
+			Port string `json:"port"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad JSON: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		switch {
+		case !body.On:
+			cmd = "listen_off"
+		case body.Port == "" || strings.ContainsAny(body.Port, "\n\r"):
+			http.Error(w, "port: a MIDI port name is needed", http.StatusBadRequest)
+			return
+		default:
+			cmd = "listen_on:" + body.Port
+		}
+	}
+	reply, err := bridgeSend(cmd)
+	if err != nil {
+		jsonResponse(w, map[string]interface{}{"ok": false, "error": err.Error()})
+		return
+	}
+	var st map[string]interface{}
+	if err := json.Unmarshal([]byte(reply), &st); err != nil {
+		jsonResponse(w, map[string]interface{}{"ok": false,
+			"error": fmt.Sprintf("%s: unexpected reply %q (update Browser Bridge to 0.4)", cmd, reply)})
+		return
+	}
+	jsonResponse(w, st)
+}
+
 // GET /api/live/scale — the Set's scale, the one Push's Scale button edits:
 // {ok, supported, root, name, intervals, mode}. supported is false on a
 // Live without the scale API.

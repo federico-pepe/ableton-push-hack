@@ -22,6 +22,8 @@ between minor versions).
 
 ### Added
 
+- `push-manager`: `/api/live/listen` turns a listen track on and off: a silent MIDI track whose input follows the selected track and whose output is a hack's port, so a hack gets the notes played on Push's pads, which no MIDI input carries. `core/pmclient`: `LiveListen`. Needs Browser Bridge 0.4 or later.
+
 - `push-manager`: `GET /api/live/scale`, the Set's scale (the one Push's Scale button edits): root, name, intervals and Scale Mode. `core/pmclient`: `LiveScale`. Needs Browser Bridge 0.3 or later (`get_scale`).
 
 - Support for hacks that own the whole Push surface:
