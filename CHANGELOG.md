@@ -17,6 +17,7 @@ between minor versions).
 
 ### Added
 
+- Catalog: Riffs, a riff generator and performance sequencer: six engines with 32 flavors write riffs over chord loops into six lanes, played from a block grid on Push's screen, pads and buttons. It opens from Push Hack Home (Shift + Help), so it needs push-manager and push-display with Push Hack Home.
 - Catalog: Stacks, a chord-progression tool ported from Ableton Move. It uses Push's screen, pads and buttons, and plays into Live. It needs push-manager and push-display with pass-through buttons and raw frames.
 - `catalog/PUBLISHING.md`: how to build a hack that has C code (cgo) as a static binary.
 
