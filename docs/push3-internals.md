@@ -869,6 +869,22 @@ gives the display and the MIDI intercept back to Push3 and refuses a hack
 that asks for them, because Live may ask a question first ("save
 changes?") on Push's own screen, answered with Push's own buttons.
 
+## The notes played on the pads (2026-10-17)
+
+The pads do not reach Live as a MIDI input. Push3 turns a pad into a pitch
+with its own layout (scale, root, octave, In Key or Chromatic) and plays it
+on the selected track by its own path. In `/proc/asound/seq/clients` the
+Push's Live Port goes to Push3's RtMidi client, not to Live. Live's tracks
+default to the input "Ext: All Ins", and that input hears none of the pads.
+
+A track can take another track as its input, though, and then gets what
+that track plays, the notes played on the pads included, after its MIDI
+effects with the channel "Post FX". This is how a hack hears the pads:
+Browser Bridge's `listen_on` (push-manager `POST /api/live/listen`) keeps a
+silent track whose input follows the selected track and whose output is
+the hack's MIDI port. For Live to offer that port to a track, switch
+**Track** on for it in Push's Settings > MIDI, once.
+
 ## Notes for hack authors
 
 - **Install to `/data/push-hack/`** — writable by `ableton`, survives firmware updates that only touch `/opt`
