@@ -17,6 +17,9 @@ between minor versions).
 
 ### Added
 
+- Catalog: Stacks, a chord-progression tool ported from Ableton Move. It uses Push's screen, pads and buttons, and plays into Live. It needs push-manager and push-display with pass-through buttons and raw frames.
+- `catalog/PUBLISHING.md`: how to build a hack that has C code (cgo) as a static binary.
+
 - `docs/push3-led-colors.md`: addendum on pad versus screen colors. It covers the incomplete named palette, the measured screen RGB for the 26 primary colors and the dim pad shades.
 - `scripts/VST/je8086-syx-to-vstpreset.py` and `scripts/VST/dexed-syx-to-vstpreset.py` turn JE8086 performance dumps and Dexed cartridges into `.vstpreset` files, one per performance or voice. Both rebuild a preset the plugin saved byte for byte. The JE8086 converter also writes the 128 single patches with `--patch-template`. Tested on device: three JE8086 performances, three JE8086 patches and four Dexed voices sound like the originals.
 - `scripts/VST/surge-fxp-to-vstpreset.py` converts Surge XT `.fxp` patches into `.vstpreset` files for the Push User Library, so the factory patches load from the PLUGINS tab. Tested on device with four factory patches; all 637 convert.

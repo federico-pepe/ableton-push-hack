@@ -59,6 +59,26 @@ Add `.github/workflows/release.yml`, triggered on `v*` tags, that:
 [`federico-pepe/push-hack-keyboard-visualizer`](https://github.com/federico-pepe/push-hack-keyboard-visualizer)
 has a working example of this workflow — copy it as a starting point.
 
+### If your hack has C code (cgo)
+
+`CGO_ENABLED=0` is not possible when your hack links C code. Link the
+binary **statically** instead. Push 3 has glibc 2.35, and a dynamic cgo
+binary built against a newer glibc fails to start on Push. Build in a Go
+container (Debian, amd64) with:
+
+```bash
+docker run --rm -v "$PWD":/w -w /w/src -e CGO_ENABLED=1 golang:1.25 \
+  go build -trimpath -tags netgo,osusergo \
+    -ldflags "-s -w -linkmode external -extldflags -static" -o ../<id> .
+```
+
+- `netgo` and `osusergo` keep the network and user lookups in Go, so a
+  static binary does not need glibc's NSS at run time.
+- Check the result in the workflow, and fail if it is not static:
+  `file <id> | grep -q "statically linked"`.
+- [`rgeissen/push-hack-stacks`](https://github.com/rgeissen/push-hack-stacks)
+  has a working workflow for a hack with a C core.
+
 ## 3. Cut your first release
 
 ```bash
