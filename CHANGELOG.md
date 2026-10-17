@@ -9,6 +9,8 @@ between minor versions).
 
 ### Fixed
 
+- `push-catalog`: an install or update could leave a hack stopped. The service's `stop` sent the signal and returned at once, so a hack that takes more than a second to exit still held its port when the new one started, and the new one quit with "address already in use". `stop` now waits for the hack to exit (up to 5 seconds, then `SIGKILL`). Found on a Push 3 with Stacks, which saves its state on exit. `--self-test` checks it. Hacks installed before this keep the old service script until they are reinstalled or updated.
+
 - `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
 
 ### Changed
