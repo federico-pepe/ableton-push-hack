@@ -315,9 +315,6 @@ static void shm_init(void) {
 
 /* ── MIDI filter shm init ────────────────────────────────────────────────── */
 
-/* Controller decisions logged since the filter last went on. */
-static int filt_logged = 0;
-
 /* Set when an open failed; the first failure is logged, retries are not. */
 static int    midi_filt_failed = 0;
 static time_t midi_filt_retry  = 0;
@@ -436,7 +433,7 @@ static write_fn real_write = NULL;
 
 #define FD_CACHE 4096
 static unsigned char fd_kind[FD_CACHE]; /* 0 unknown, 1 seq, 2 other */
-static unsigned long led_held = 0;
+static unsigned long led_held = 0, led_logged = 0;
 static time_t        led_next_log = 0;
 
 static int fd_is_seq(int fd) {
@@ -475,8 +472,9 @@ ssize_t write(int fd, const void *buf, size_t n) {
             if (fd_is_seq(fd)) {
                 filter_seq_write((unsigned char *)buf, n);
                 time_t now = time(NULL);
-                if (led_held && now >= led_next_log) {
+                if (led_held != led_logged && now >= led_next_log) { /* only when it grew */
                     led_next_log = now + 10;
+                    led_logged = led_held;
                     hook_logf("led_filter: %lu LED events held back so far\n", led_held);
                 }
             } else {
@@ -499,10 +497,7 @@ int snd_seq_event_input(void *seq, void **ev) {
     if (!hook_active) return ret;
     if (!midi_filt) midi_filt_retry_maybe();
     if (ret < 0 || !ev || !*ev) return ret;
-    if (!midi_filt || !midi_filt->enabled) {
-        filt_logged = 0; /* log the next filter-on session's first events */
-        return ret;
-    }
+    if (!midi_filt || !midi_filt->enabled) return ret;
 
     /* snd_seq_event_t: type byte is at offset 0 */
     uint8_t *type_ptr = (uint8_t *)*ev;
@@ -511,17 +506,9 @@ int snd_seq_event_input(void *seq, void **ev) {
         /* data.control.param (the CC number) is a uint32 at offset 20:
          * 16 to the data union, then channel + 3 bytes of padding. */
         uint32_t cc;
-        int32_t  val;
         memcpy(&cc, type_ptr + 20, sizeof cc);
-        memcpy(&val, type_ptr + 24, sizeof val);
         int pass = cc < MIDI_FILT_PASS_MAX &&
                    (midi_filt->pass_cc[cc / 8] & (1u << (cc % 8)));
-        if (filt_logged < 24 || cc == 85 || cc == 86) { /* the first few, and every Play/Record */
-            filt_logged++;
-            hook_logf("midi_filt: cc=%u val=%d src=%u:%u %s (pass bytes %02x %02x)\n",
-                      cc, val, type_ptr[12], type_ptr[13], pass ? "PASSED" : "held",
-                      midi_filt->pass_cc[9], midi_filt->pass_cc[10]);
-        }
         if (pass)
             break;               /* a pass-through button: Live gets it */
         type_ptr[0] = 0;
@@ -632,40 +619,6 @@ static void process_display_out(unsigned char *data, int length) {
          shm ? shm->mode : 99u, hdr);
 }
 
-/* ── USB traffic probe (diagnostic) ───────────────────────────────────────
- *
- * Which endpoint carries Push3's pad and button LEDs? They do not go
- * through the ALSA sequencer (traced 2026-10-16: Push3 writes only SysEx
- * there), so while the filter is on, log the first non-display transfers
- * and count transfers per endpoint. Rate-limited: a handful of lines per
- * filter-on session and one count line every 10 s. Display frames (0x01)
- * are counted, never logged. */
-static unsigned usb_count[256];
-static int      usb_logged = 0;
-static time_t   usb_next_count = 0;
-
-static void usb_probe(const char *how, unsigned char ep, const unsigned char *d, int len) {
-    usb_count[ep]++;
-    if (!midi_filt || !midi_filt->enabled) { usb_logged = 0; return; }
-    if (ep != 0x01 && usb_logged < 40) {
-        usb_logged++;
-        char hex[3 * 24 + 1] = {0};
-        int n = len < 24 ? len : 24, pos = 0;
-        for (int i = 0; i < n; i++)
-            pos += snprintf(hex + pos, sizeof(hex) - pos, "%02x ", d[i]);
-        hook_logf("usb_probe: %s ep=0x%02x len=%d [%s]\n", how, ep, len, hex);
-    }
-    time_t now = time(NULL);
-    if (now >= usb_next_count) {
-        usb_next_count = now + 10;
-        char line[256] = {0};
-        int pos = 0;
-        for (int e = 0; e < 256 && pos < 220; e++)
-            if (usb_count[e]) pos += snprintf(line + pos, sizeof(line) - pos, " 0x%02x:%u", e, usb_count[e]);
-        hook_logf("usb_probe: counts%s\n", line);
-    }
-}
-
 /* ── Hook: libusb_bulk_transfer ─────────────────────────────────────────── */
 
 int libusb_bulk_transfer(
@@ -690,7 +643,6 @@ int libusb_bulk_transfer(
         return real_bulk(dev_handle, endpoint, data, length, actual_length, timeout);
 
     if (data && length > 0) {
-        usb_probe("bulk", endpoint, data, length);
         switch (endpoint) {
         case 0x01:
             process_display_out(data, length);
@@ -741,7 +693,6 @@ int libusb_submit_transfer(struct libusb_transfer *transfer) {
         unsigned char  ep   = transfer->endpoint;
         int            len  = transfer->length;
         unsigned char *data = transfer->buffer;
-        usb_probe("async", ep, data, len);
 
         switch (ep) {
         case 0x01:
