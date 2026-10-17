@@ -25,6 +25,7 @@ between minor versions).
   - `push-manager`: `/api/midi/filter` takes `pass_cc`. Enabling intercept through the API makes push-manager repaint Live's LEDs when it goes off. New `/api/display/frame` takes one raw frame: about 1 ms a frame on device, against about 11 ms for a PNG.
   - `core/display`: `EncodeFrame` (no allocation, 13 times faster than the general path) and `Shm.WriteFrame`. `ToBGR565` uses the fast path for 960x160 NRGBA images.
   - `core/pmclient`: `PushFrame`, `SetMidiFilterPass`, and `Status.Mode`.
+  - `core/push3`: `LEDButtons`, every button with an LED (push-manager's list plus the 8 scene buttons), and `IsRGBButton`, so a hack can set all of them.
   - `docs/push3-internals.md`: how Push3 writes LEDs, taking the surface on a button release, and restarting Push3 safely.
 
 - `core/alsaseq`: raw MIDI support for ported tools. `EncodeMIDI` and `DecodeMIDI` turn raw MIDI bytes (notes, CC, program change, pressure, pitch bend, clock, start, continue, stop, song position) into sequencer events and back. `SendMIDI` sends raw bytes. `Subscribers` is the address for every port connected to yours. `SetName` names the client. New tests check the event layouts, the ioctl numbers, and the parser against a real capture from a Push 3 (`testdata/seq_clients_device_v323.txt`).
