@@ -264,8 +264,8 @@ func drawStar(img *image.NRGBA, cx, cy, r int, c color.NRGBA) {
 // ---- LEDs -----------------------------------------------------------------------
 
 // homeLEDs is what Home lights: pad notes and button CCs to palette
-// indexes. Every column's pads in its entry's colour, dim while the app is
-// stopped, the chosen entry's top pad white.
+// indexes. Every column's pads in its entry's colour, a near-black grey
+// while the app is stopped, the chosen entry's top pad white.
 func homeLEDs(v homeView) (pads map[uint8]uint8, ccs map[uint8]uint8) {
 	idx := func(name string) uint8 { i, _ := push3.ColorByName(name); return i }
 	pads, ccs = map[uint8]uint8{}, map[uint8]uint8{}
@@ -279,7 +279,7 @@ func homeLEDs(v homeView) (pads map[uint8]uint8, ccs map[uint8]uint8) {
 				c = idx("gray_blue")
 			}
 			if e.App && !e.Running && !e.Starting {
-				c = idx("dim")
+				c = idx("dgray") // not "dim": index 1 is a button brightness, red on a pad
 			}
 		}
 		for row := 0; row < 8; row++ {

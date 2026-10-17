@@ -461,6 +461,11 @@ func TestRenderHome(t *testing.T) {
 		if len(pads) != 64 {
 			t.Fatalf("Home lights %d pads, want 64", len(pads))
 		}
+		for n, c := range pads {
+			if c == 1 { // "dim" is a button brightness; on a pad index 1 is red
+				t.Fatalf("pad %d is index 1, red on the hardware", n)
+			}
+		}
 		if ccs[CCPageRight] == 0 && cur < 8 {
 			t.Error("page > should be lit on page 1 of 2")
 		}
