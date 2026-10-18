@@ -163,6 +163,24 @@ explicitly:
   Without this, a hack that silently no-ops every display call because a
   dependency isn't installed is very hard to diagnose from the logs.
 
+## Harmony between hacks
+
+A hack that plays chords or a key can tell other hacks about it with Push
+Hack Harmony (`core/harmony`, spec in
+[docs/harmony-sync.md](docs/harmony-sync.md)). Keep to its rules:
+
+- A sender opens a readable port named `<App> Harmony` and sends only the
+  SysEx messages there, never on its note port.
+- A follower opens its own writable port, connects it to every
+  `* Harmony` port except its own, and tries again every few seconds (the
+  kernel gives a restarted app the same client number, so subscribe again
+  and treat EBUSY as "still connected").
+- Announce a change `delta` clock pulses before it happens; both sides
+  count Live's clock from the same Start.
+- A hack that must keep playing while another app has the surface needs an
+  explicit, off-by-default setting for it (Riffs and Stacks: "plays when
+  closed"). Parked stays the default.
+
 ## Adding a New Hack
 
 New optional hacks live in their **own repo** (`push-hack-<id>`), not in
