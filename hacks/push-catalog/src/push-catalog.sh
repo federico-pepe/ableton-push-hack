@@ -416,7 +416,26 @@ install_service() {
   [ -n "$bin" ] || { info "no binary — nothing to run"; return 0; }
   local svc="push-hack-$id" log="$PUSH_HACK_DIR/logs/$id.log"
   local script; script="$(mktemp)"
-  cat > "$script" <<EOF
+  write_init_script "$script" "$svc" "$id" "$dir" "$bin" "$log"
+  as_root cp "$script" "/etc/init.d/$svc"; rm -f "$script"
+  as_root chmod +x "/etc/init.d/$svc"
+  if command -v update-rc.d >/dev/null 2>&1; then as_root update-rc.d "$svc" defaults >/dev/null 2>&1 || true
+  else for r in 2 3 4 5; do as_root ln -sf "/etc/init.d/$svc" "/etc/rc$r.d/S99$svc" 2>/dev/null || true; done; fi
+  as_root "/etc/init.d/$svc" restart || true
+}
+
+# write_init_script <out> <svc> <id> <dir> <binary> <log>
+#
+# stop() WAITS for the hack to exit (SIGKILL after 5 s). It used to send
+# the signal and return, and restart's `sleep 1` was all that stood
+# between the old process and the new one: a hack that takes longer to
+# exit (Stacks saves its state first) still held its HTTP port when the
+# new one started, which then died on "address in use" -- an install or
+# update left the hack stopped. Found on device. PIDF can be overridden
+# for --self-test, which runs this script unprivileged.
+write_init_script() {
+  local out="$1" svc="$2" id="$3" dir="$4" bin="$5" log="$6"
+  cat > "$out" <<EOF
 #!/bin/sh
 ### BEGIN INIT INFO
 # Provides:          $svc
@@ -426,20 +445,19 @@ install_service() {
 # Default-Stop:      0 1 6
 # Short-Description: push-hack: $id (via push-catalog)
 ### END INIT INFO
-BIN="$dir/$bin"; CFG="$dir/hack.json"; LOG="$log"; PIDF="/var/run/$svc.pid"
+BIN="$dir/$bin"; CFG="$dir/hack.json"; LOG="$log"; PIDF="\${PIDF:-/var/run/$svc.pid}"
 start() { echo "starting $svc"; mkdir -p "\$(dirname "\$LOG")"
   nice -n 19 "\$BIN" -config "\$CFG" >>"\$LOG" 2>&1 &
   echo \$! >"\$PIDF"; }
-stop()  { echo "stopping $svc"; [ -f "\$PIDF" ] && kill "\$(cat "\$PIDF")" 2>/dev/null; rm -f "\$PIDF"; }
-case "\$1" in start) start;; stop) stop;; restart) stop; sleep 1; start;;
+stop()  { echo "stopping $svc"; [ -f "\$PIDF" ] || return 0
+  p="\$(cat "\$PIDF")"; kill "\$p" 2>/dev/null; i=0
+  while kill -0 "\$p" 2>/dev/null && [ \$i -lt 50 ]; do sleep 0.1; i=\$((i+1)); done
+  kill -0 "\$p" 2>/dev/null && kill -9 "\$p" 2>/dev/null
+  rm -f "\$PIDF"; }
+case "\$1" in start) start;; stop) stop;; restart) stop; start;;
   status) [ -f "\$PIDF" ] && kill -0 "\$(cat "\$PIDF")" 2>/dev/null && echo active || echo inactive;;
   *) echo "usage: \$0 {start|stop|restart|status}"; exit 1;; esac
 EOF
-  as_root cp "$script" "/etc/init.d/$svc"; rm -f "$script"
-  as_root chmod +x "/etc/init.d/$svc"
-  if command -v update-rc.d >/dev/null 2>&1; then as_root update-rc.d "$svc" defaults >/dev/null 2>&1 || true
-  else for r in 2 3 4 5; do as_root ln -sf "/etc/init.d/$svc" "/etc/rc$r.d/S99$svc" 2>/dev/null || true; done; fi
-  as_root "/etc/init.d/$svc" restart || true
 }
 
 cmd_remove() {
@@ -551,6 +569,21 @@ self_test() {
   echo "$catjson" | grep -q '"update_available": true' || die "self-test: update_available not flagged"
   echo "$catjson" | grep -q '"port": 7799' || die "self-test: catalog missing installed port"
   echo "$catjson" | grep -q '"label": "Fixture"' || die "self-test: catalog missing installed web_ui"
+
+  # 3b2. the generated init.d script: stop returns only once the hack has
+  #      exited. The dummy hack takes 1.5 s to exit on SIGTERM (as a hack
+  #      saving its state does); the old stop returned at once.
+  local svcdir; svcdir="$(mktemp -d)"
+  printf '#!/bin/sh\ntrap "sleep 1.5; exit 0" TERM\nwhile :; do sleep 0.1; done\n' > "$svcdir/slowhack"
+  chmod +x "$svcdir/slowhack"
+  write_init_script "$svcdir/init" "push-hack-slowhack" slowhack "$svcdir" slowhack "$svcdir/slowhack.log"
+  PIDF="$svcdir/pid" sh "$svcdir/init" start >/dev/null
+  sleep 0.3
+  local spid; spid="$(cat "$svcdir/pid")"
+  kill -0 "$spid" 2>/dev/null || die "self-test: init script did not start the hack"
+  PIDF="$svcdir/pid" sh "$svcdir/init" stop >/dev/null
+  if kill -0 "$spid" 2>/dev/null; then kill -9 "$spid"; die "self-test: init stop returned while the hack was still running"; fi
+  rm -rf "$svcdir"
 
   # 3c. dependency-resolution building blocks (is_core_hack, requires
   #     parsing). A full install_with_deps run needs a privileged
