@@ -60,15 +60,25 @@ type hackUI struct {
 	Path  string `json:"path"`
 }
 
+// hackSurface is hack.json's `surface` hook: the hack is an app that takes
+// Push's screen, buttons and pads when Push Hack Home opens it
+// (surface.go). label is what Home's card says (ASCII, up to 7 letters for
+// the large type), color a push3 palette name for its stripe and pads.
+type hackSurface struct {
+	Label string `json:"label"`
+	Color string `json:"color"`
+}
+
 // hackNav is one installed hack as the UI layer sees it: id for gating a
 // feature button, plus port + whichever nav hooks it declares. Both are nil
 // for a hack with no UI of its own (a Remote Script, push-display).
 type hackNav struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Port     int     `json:"port"`
-	WebUI    *hackUI `json:"web_ui,omitempty"`
-	ShadowUI *hackUI `json:"shadow_ui,omitempty"`
+	ID       string       `json:"id"`
+	Name     string       `json:"name"`
+	Port     int          `json:"port"`
+	WebUI    *hackUI      `json:"web_ui,omitempty"`
+	ShadowUI *hackUI      `json:"shadow_ui,omitempty"`
+	Surface  *hackSurface `json:"surface,omitempty"`
 
 	// Enabled is computed, not decoded from hack.json — see hackEnabled.
 	Enabled bool `json:"enabled"`

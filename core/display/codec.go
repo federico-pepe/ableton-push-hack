@@ -14,6 +14,12 @@ import (
 // little-endian, 1024-pixel stride (960 visible + 64 padding), duplicated
 // into both frame halves (Push 3 sends the frame twice per update).
 func ToBGR565(img image.Image) []byte {
+	if n, ok := img.(*image.NRGBA); ok && n.Rect == image.Rect(0, 0, VisW, VisH) {
+		pixels := make([]byte, TotalBytes)
+		EncodeFrame(n, pixels[:FrameBytes])
+		copy(pixels[FrameBytes:], pixels[:FrameBytes])
+		return pixels
+	}
 	b := img.Bounds()
 	srcW := b.Max.X - b.Min.X
 	srcH := b.Max.Y - b.Min.Y
@@ -62,4 +68,23 @@ func FromBGR565(px []byte) *image.NRGBA {
 		}
 	}
 	return img
+}
+
+// EncodeFrame writes one frame (FrameBytes: BGR565 little-endian, 1024-pixel
+// stride, padding left zero) from a 960x160 NRGBA image, reading Pix
+// directly. It allocates nothing, so a hack can encode every frame into the
+// same buffer -- ToBGR565's general path calls img.At per pixel, which is
+// 153,600 interface calls and allocations a frame. img must be exactly
+// VisW x VisH at the origin; dst must be FrameBytes long.
+func EncodeFrame(img *image.NRGBA, dst []byte) {
+	for y := 0; y < VisH; y++ {
+		src := img.Pix[y*img.Stride : y*img.Stride+VisW*4]
+		row := dst[y*Stride*2 : y*Stride*2+VisW*2]
+		for x := 0; x < VisW; x++ {
+			r, g, b := uint16(src[x*4]), uint16(src[x*4+1]), uint16(src[x*4+2])
+			v := (b>>3)<<11 | (g>>2)<<5 | r>>3
+			row[x*2] = byte(v)
+			row[x*2+1] = byte(v >> 8)
+		}
+	}
 }

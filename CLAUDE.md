@@ -139,6 +139,19 @@ server which is a normal, separate, restartable process. The interface is
 plain HTTP, called like any other client: `POST /api/display/mode` to
 enter/exit takeover, `POST /api/display/image` to push frames.
 
+**A hack that takes the whole surface (screen, buttons and pads) is an app
+of Push Hack Home** (push-manager's switcher, `src/surface.go`): it declares
+`"surface": {"label", "color"}` in `hack.json`, holds a session through
+`pmclient.RunSurface`, and draws only between focus and blur. It must not
+open itself with a button combination: every hack hears every press, and
+Riffs' Shift + Set collided with push-manager's own `browser_open` chord
+(two programs drawing on one screen, seen on device 2026-10-17). Shift +
+Help belongs to push-manager. While Home or an app owns the surface,
+push-manager refuses (409) `/api/display/mode`, `/api/midi/filter` and
+frames from anyone but the owning app (`X-Push-Hack-App` header). Design:
+`plans/2026-10-17-push-hack-switcher.md`; behaviour: push-manager's README,
+"Push Hack Home".
+
 This means **display-owning hacks have a hard runtime dependency on
 push-manager + push-display also being installed and running** — declare it
 explicitly:
@@ -149,6 +162,24 @@ explicitly:
   from "push-manager up but push-display's framebuffer not connected".
   Without this, a hack that silently no-ops every display call because a
   dependency isn't installed is very hard to diagnose from the logs.
+
+## Harmony between hacks
+
+A hack that plays chords or a key can tell other hacks about it with Push
+Hack Harmony (`core/harmony`, spec in
+[docs/harmony-sync.md](docs/harmony-sync.md)). Keep to its rules:
+
+- A sender opens a readable port named `<App> Harmony` and sends only the
+  SysEx messages there, never on its note port.
+- A follower opens its own writable port, connects it to every
+  `* Harmony` port except its own, and tries again every few seconds (the
+  kernel gives a restarted app the same client number, so subscribe again
+  and treat EBUSY as "still connected").
+- Announce a change `delta` clock pulses before it happens; both sides
+  count Live's clock from the same Start.
+- A hack that must keep playing while another app has the surface needs an
+  explicit, off-by-default setting for it (Riffs and Stacks: "plays when
+  closed"). Parked stays the default.
 
 ## Adding a New Hack
 
@@ -206,6 +237,7 @@ Framework and API (`docs/`):
 - `docs/architecture.md` — framework layer, hack structure convention, `core/` shared library, per-hack file layout, deployed directory layout, Push 3 hardware/OS facts
 - `docs/api-reference.md` — HTTP routes for push-manager and push-catalog, the RemotePanel contract, the push-display shared-memory protocol
 - `docs/vst3-on-push3.md` — load Linux VST3 plugins in Live on Push 3 (scan flag, preset generator `scripts/VST/make-vst3-preset.py`)
+- `docs/harmony-sync.md` — Push Hack Harmony: how one hack tells others what it plays over MIDI (ports, the SysEx message, timing), and how a follower such as Riffs uses it
 - `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`
 - `docs/adding-a-hack.md` — full walkthrough for a new hack: folder layout, `hack.json`/`Makefile` examples, port rules, `core/` shared library
 

@@ -11,15 +11,45 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/display"
 )
 
 // Client talks to a push-manager instance over HTTP.
 type Client struct {
 	Base string
 	HTTP *http.Client
+
+	// App is the hack's id when it is an app of Push Hack Home (its
+	// hack.json declares "surface"). Every call that writes to the screen
+	// or the intercept then says so (the X-Push-Hack-App header), and
+	// push-manager lets it through only while this app owns the surface.
+	App string
+
+	frame []byte // PushFrame's reusable buffer
+}
+
+// AppHeader is the header that names the app a call comes from.
+const AppHeader = "X-Push-Hack-App"
+
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	if c.App != "" {
+		req.Header.Set(AppHeader, c.App)
+	}
+	return c.HTTP.Do(req)
+}
+
+func (c *Client) post(url, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodPost, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	return c.do(req)
 }
 
 // New returns a Client with a 3s timeout HTTP client, matching every
@@ -37,7 +67,7 @@ func (c *Client) SetMode(mode int) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -74,7 +104,7 @@ func (c *Client) PushImage(img image.Image) error {
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -88,6 +118,10 @@ func (c *Client) PushImage(img image.Image) error {
 // Status is push-manager's GET /api/display/status response.
 type Status struct {
 	Connected bool `json:"connected"`
+	// Mode is the display mode push-display is in: 0 Live's own screen,
+	// 2 takeover. A hack that holds takeover can see a Push3 restart (the
+	// hook starts in 0) and take the display again.
+	Mode int `json:"mode"`
 }
 
 // DisplayStatus reports whether push-display's shared-memory framebuffer is
@@ -120,13 +154,177 @@ func (c *Client) SetMidiFilter(enabled bool) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("midi/filter: unexpected status %s", resp.Status)
+	}
+	return nil
+}
+
+// SetMidiFilterPass is SetMidiFilter with buttons that still reach Live
+// while intercept is on: passCC lists CC numbers (0-87) -- typically Play
+// (85, which also stops) and Record (86) -- so a hack that owns the
+// surface leaves the transport with Live. Turning the filter off clears the
+// list. Needs push-display and push-manager from the same release; an older
+// pair ignores the list and blocks every button, as before.
+func (c *Client) SetMidiFilterPass(enabled bool, passCC []int) error {
+	body, err := json.Marshal(map[string]any{"enabled": enabled, "pass_cc": passCC})
+	if err != nil {
+		return err
+	}
+	resp, err := c.post(c.Base+"/api/midi/filter", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("midi/filter: unexpected status %s", resp.Status)
+	}
+	return nil
+}
+
+// FilterStatus is push-manager's MIDI intercept state (GET
+// /api/midi/filter/status).
+type FilterStatus struct {
+	Enabled bool
+	PassCC  []int
+	// SurfaceOwning is true when push-manager knows pass_cc -- the release
+	// with pass-through buttons, LED hold-back and /api/display/frame. An
+	// older push-manager answers without the field: a hack that owns the
+	// surface would then lose Play to the filter and get a 404 per frame,
+	// so it should say "update Push Hack" instead of starting.
+	SurfaceOwning bool
+}
+
+// MidiFilterStatus reads the intercept state, and from it whether this
+// push-manager supports hacks that own the surface.
+func (c *Client) MidiFilterStatus() (FilterStatus, error) {
+	var raw struct {
+		Enabled bool   `json:"enabled"`
+		PassCC  *[]int `json:"pass_cc"`
+	}
+	resp, err := c.HTTP.Get(c.Base + "/api/midi/filter/status")
+	if err != nil {
+		return FilterStatus{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return FilterStatus{}, fmt.Errorf("midi/filter/status: unexpected status %s", resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return FilterStatus{}, err
+	}
+	st := FilterStatus{Enabled: raw.Enabled, SurfaceOwning: raw.PassCC != nil}
+	if raw.PassCC != nil {
+		st.PassCC = *raw.PassCC
+	}
+	return st, nil
+}
+
+// Scale is the Set's scale, the one Push's Scale button edits.
+type Scale struct {
+	Supported bool   // false on a Live without the scale API
+	Root      int    // 0-11, 0 = C
+	Name      string // Live's name: "Minor", "Dorian", ...
+	Intervals []int  // semitones from Root
+	Mode      bool   // Scale Mode (Push's "In Key")
+}
+
+// LiveScale reads the Set's scale (GET /api/live/scale). It needs the
+// Browser Bridge Remote Script (0.3 or later) active in Live; without it
+// the error says why.
+func (c *Client) LiveScale() (Scale, error) {
+	var body struct {
+		OK        bool   `json:"ok"`
+		Error     string `json:"error"`
+		Supported bool   `json:"supported"`
+		Root      int    `json:"root"`
+		Name      string `json:"name"`
+		Intervals []int  `json:"intervals"`
+		Mode      bool   `json:"mode"`
+	}
+	resp, err := c.HTTP.Get(c.Base + "/api/live/scale")
+	if err != nil {
+		return Scale{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Scale{}, fmt.Errorf("live/scale: unexpected status %s (update Push Hack)", resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return Scale{}, err
+	}
+	if !body.OK {
+		return Scale{}, fmt.Errorf("live/scale: %s", body.Error)
+	}
+	return Scale{Supported: body.Supported, Root: body.Root, Name: body.Name, Intervals: body.Intervals, Mode: body.Mode}, nil
+}
+
+// Listen is the listen track's state, as Browser Bridge reports it.
+type Listen struct {
+	OK         bool     `json:"ok"`
+	Error      string   `json:"error"`
+	On         bool     `json:"on"`
+	Track      bool     `json:"track"`      // the "Stacks Listen" track exists
+	Input      string   `json:"input"`      // what its input is, e.g. "1-Piano"
+	Channel    string   `json:"channel"`    // "Post FX"
+	Output     string   `json:"output"`     // the hack's port
+	Monitoring int      `json:"monitoring"` // 0 In, 1 Auto, 2 Off
+	Source     string   `json:"source"`     // the track it listens to
+	Outputs    []string `json:"outputs"`    // on failure: the MIDI outputs Live offers
+}
+
+// LiveListen turns the listen track on or off: a silent MIDI track in the
+// Set whose input follows the selected track and whose output is port, so
+// a hack receives the notes played on Push's pads (POST /api/live/listen).
+// Needs Browser Bridge 0.4 or later active in Live. A reply with OK false
+// carries the reason in Error.
+func (c *Client) LiveListen(on bool, port string) (Listen, error) {
+	body, err := json.Marshal(map[string]any{"on": on, "port": port})
+	if err != nil {
+		return Listen{}, err
+	}
+	resp, err := c.post(c.Base+"/api/live/listen", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return Listen{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Listen{}, fmt.Errorf("live/listen: unexpected status %s (update Push Hack)", resp.Status)
+	}
+	var st Listen
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		return Listen{}, err
+	}
+	return st, nil
+}
+
+// PushFrame sends one 960x160 frame as raw pixels to POST
+// /api/display/frame: encoded with display.EncodeFrame, no PNG on either
+// side. Measured on device, a PNG frame through PushImage costs ~11 ms;
+// this is the path for a hack that redraws many times a second. Not safe
+// for concurrent use: it reuses one buffer per Client. Set display mode 2
+// (SetMode) first, as with PushImage.
+func (c *Client) PushFrame(img *image.NRGBA) error {
+	if img.Rect != image.Rect(0, 0, display.VisW, display.VisH) {
+		return fmt.Errorf("PushFrame: want a %dx%d image at the origin, got %v",
+			display.VisW, display.VisH, img.Rect)
+	}
+	if c.frame == nil {
+		c.frame = make([]byte, display.FrameBytes)
+	}
+	display.EncodeFrame(img, c.frame)
+	resp, err := c.post(c.Base+"/api/display/frame", "application/octet-stream", bytes.NewReader(c.frame))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("display/frame: unexpected status %s", resp.Status)
 	}
 	return nil
 }

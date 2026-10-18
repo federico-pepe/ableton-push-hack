@@ -95,3 +95,42 @@ func TestFindByNameRequireCapsFiltersWritable(t *testing.T) {
 	}
 	t.Fatal("Ableton Live port not found in fixture")
 }
+
+// Captured off a real Push 3 (AbletonOS v3.23, Live 12.4.15b7, 2026-10-16)
+// with push-manager running. One kernel client 16 carries all three Push
+// ports; Live (130) created midi_out_4 for push-manager's output by itself.
+func TestParseClientsDeviceV323(t *testing.T) {
+	ports := parseFixture(t, "testdata/seq_clients_device_v323.txt")
+	want := map[string]struct {
+		addr Addr
+		caps uint32
+	}{
+		"Ableton Push 3 Live Port":     {Addr{16, 0}, CapRead | CapWrite},
+		"Ableton Push 3 User Port":     {Addr{16, 1}, CapRead | CapWrite},
+		"Ableton Push 3 External Port": {Addr{16, 2}, CapRead | CapWrite},
+		"Ableton Internal Input":       {Addr{128, 0}, CapWrite},
+		"midi_out_4":                   {Addr{130, 4}, CapWrite},
+		"Push Manager":                 {Addr{131, 0}, CapRead},
+		"Push Manager In":              {Addr{132, 0}, CapWrite},
+	}
+	seen := map[string]bool{}
+	for _, p := range ports {
+		w, ok := want[p.PortName]
+		if !ok {
+			continue
+		}
+		seen[p.PortName] = true
+		if p.Addr != w.addr || p.Caps != w.caps {
+			t.Errorf("%s = %+v caps %#x, want %+v caps %#x", p.PortName, p.Addr, p.Caps, w.addr, w.caps)
+		}
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("%s not parsed", name)
+		}
+	}
+	// Pool lines ("Pool size : 500") must not become ports.
+	if len(ports) != 14 {
+		t.Errorf("parsed %d ports, want 14", len(ports))
+	}
+}
