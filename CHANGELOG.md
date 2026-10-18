@@ -45,6 +45,8 @@ between minor versions).
 
 - `core/alsaseq`: raw MIDI support for ported tools. `EncodeMIDI` and `DecodeMIDI` turn raw MIDI bytes (notes, CC, program change, pressure, pitch bend, clock, start, continue, stop, song position) into sequencer events and back. `SendMIDI` sends raw bytes. `Subscribers` is the address for every port connected to yours. `SetName` names the client. New tests check the event layouts, the ioctl numbers, and the parser against a real capture from a Push 3 (`testdata/seq_clients_device_v323.txt`).
 - `docs/push3-internals.md`: how a hack sends MIDI into Live and gets clock out of Live, tested on a Push 3. Live picks up a new port by itself, and a Sync switch in Push's MIDI settings sends clock to a hack's port.
+- Catalog: Riffs, a riff generator and performance sequencer: six engines with 32 flavors write riffs over chord loops into six lanes, played from a block grid on Push's screen, pads and buttons. It opens from Push Hack Home (Shift + Help), so it needs push-manager and push-display with Push Hack Home.
+
 - Catalog: Stacks, a chord-progression tool ported from Ableton Move. It uses Push's screen, pads and buttons, and plays into Live. It needs push-manager and push-display with pass-through buttons and raw frames.
 - `catalog/PUBLISHING.md`: how to build a hack that has C code (cgo) as a static binary.
 
