@@ -864,7 +864,9 @@ The safe way to restart today is the Push's own power button.
 `power.sh` touches `/data/settings/.shutdown` before it asks Live to quit.
 That file is a command, not a log: when Live exits and the file exists, the
 launcher powers the device off and deletes it. Never create it to test
-something. push-manager watches it for a change: from the press on, it
+something. push-manager watches it for a change (a file that appears or is
+touched; the one deleted at start is the last shutdown's, not a press):
+from the press on, it
 gives the display and the MIDI intercept back to Push3 and refuses a hack
 that asks for them, because Live may ask a question first ("save
 changes?") on Push's own screen, answered with Push's own buttons.

@@ -29,3 +29,25 @@ func TestShutdownStampIgnoresAnOldMarker(t *testing.T) {
 		t.Error("a touched marker was not noticed")
 	}
 }
+
+// The boot cleaning up the last shutdown's marker is no press; a marker
+// touched or made afresh is.
+func TestMarkerPress(t *testing.T) {
+	last := time.Date(2026, 10, 17, 23, 27, 56, 0, time.UTC)
+	now := last.Add(8 * time.Hour)
+	for _, c := range []struct {
+		name       string
+		start, cur time.Time
+		want       bool
+	}{
+		{"the last shutdown's marker, untouched", last, last, false},
+		{"the last shutdown's marker, removed at boot", last, time.Time{}, false},
+		{"no marker, still none", time.Time{}, time.Time{}, false},
+		{"no marker, then power.sh makes one", time.Time{}, now, true},
+		{"the old marker touched by power.sh", last, now, true},
+	} {
+		if got := markerPress(c.start, c.cur); got != c.want {
+			t.Errorf("%s: press %v, want %v", c.name, got, c.want)
+		}
+	}
+}

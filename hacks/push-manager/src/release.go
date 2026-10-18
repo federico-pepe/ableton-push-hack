@@ -71,6 +71,13 @@ func shutdownStamp() time.Time {
 	return fi.ModTime()
 }
 
+// markerPress reports whether the marker's stamp, start then cur, means
+// the power button: a marker that appears or is touched. One that goes
+// away is the last shutdown's, cleaned up at boot -- read as a press
+// (seen 2026-10-18, seconds after a morning start), it latched "shutting
+// down" and Push Hack Home refused every app until push-manager restarted.
+func markerPress(start, cur time.Time) bool { return !cur.IsZero() && !cur.Equal(start) }
+
 // watchShutdown gives the surface back the moment the power button is
 // pressed, and keeps it given back until the device is off.
 func watchShutdown() {
@@ -78,7 +85,9 @@ func watchShutdown() {
 	for {
 		time.Sleep(250 * time.Millisecond)
 		if !shuttingDown.Load() {
-			if shutdownStamp().Equal(start) {
+			cur := shutdownStamp()
+			if !markerPress(start, cur) {
+				start = cur // a marker that went away is the new start
 				continue
 			}
 			shuttingDown.Store(true)
