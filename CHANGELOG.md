@@ -15,6 +15,7 @@ between minor versions).
 ### Fixed
 
 - Leaving an app for Live from its listening mode (the app has only the screen) left all of Live's LEDs dark until the next press. push-manager now repaints them on that path too.
+- Opening Push Hack Home from Live showed Live's screen for a moment, then a black frame, before Home. Home's frame now goes up first.
 
 ## [0.1.14-alpha] - 2026-10-19
 
