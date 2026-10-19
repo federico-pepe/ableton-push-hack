@@ -178,13 +178,13 @@ func (s *Surface) Gesture(taps int) {
 }
 
 // HelpAlone is Help pressed and let go without Shift: from Home or an app,
-// back to Live. Elsewhere it is Live's own Help, and nothing here. So is
-// it while an app has only the screen: Live has the buttons then, Help
-// included, and toggles its own Help on the same press.
+// back to Live. Elsewhere it is Live's own Help, and nothing here. An app
+// with only the screen (Stacks' listening mode) goes back too: Live has
+// the buttons then and sees the same press.
 func (s *Surface) HelpAlone() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.down || (s.own != ownHome && s.own != ownApp) || (s.own == ownApp && !s.input) {
+	if s.down || (s.own != ownHome && s.own != ownApp) {
 		return
 	}
 	s.toLive()

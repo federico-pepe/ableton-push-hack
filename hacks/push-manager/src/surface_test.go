@@ -349,9 +349,9 @@ func TestSurfaceRandom(t *testing.T) {
 				b.Gesture(2)
 			case k < 20:
 				what = "help alone"
-				was, input := b.own, b.input
+				was := b.own
 				b.HelpAlone()
-				if (was == ownHome || was == ownApp && input) && b.own != ownOutside {
+				if (was == ownHome || was == ownApp) && b.own != ownOutside {
 					t.Fatalf("run %d step %d: Help alone from %s left the owner %s", run, step, was, b.own)
 				}
 			case k < 32:
@@ -505,13 +505,13 @@ func TestHelpAloneToLive(t *testing.T) {
 	}
 	b.rules(t, "help from stacks")
 
-	// screen only: Live has the buttons, Help is Live's
+	// screen only (Live has the buttons): back to Live as well
 	b.Open("stacks")         //nolint:errcheck
 	b.Input("stacks", false) //nolint:errcheck
 	feed(CCHelp, 127)
 	feed(CCHelp, 0)
-	if b.own != ownApp {
-		t.Fatalf("Help with the screen only: owner %s, want app", b.own)
+	if b.own != ownOutside {
+		t.Fatalf("Help with the screen only: owner %s, want outside", b.own)
 	}
 	b.rules(t, "help, screen only")
 }

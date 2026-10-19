@@ -486,7 +486,7 @@ buttons) and `src/surface_io.go` (the gesture, the device side and the API).
 |---|---|---|---|---|
 | **Shift + Help** | Home | Live | Home | Home |
 | **Shift + Help, Help** | the superstar | the superstar | the superstar | the superstar; from the superstar itself: Live |
-| **Help** | Live's own Help | Live | nothing | Live (while the app has the buttons) |
+| **Help** | Live's own Help | Live | nothing | Live |
 
 Shift + Help, Help means: hold Shift, tap Help twice, let go of Shift.
 Both gestures act when you let go of Shift. That is the safe moment: Live
@@ -497,10 +497,10 @@ fire: that combination is the other button's own shortcut.
 Help on its own is the quick way back to Live from Home or from any app. It
 acts when you let go of Help, so Live never sees half a press. If you
 press Shift or another button while Help is held, it does not fire. In
-Live, Help stays Live's own Help: push-manager does not take it. The same
-is true while an app has only the screen and gives the buttons to Live
-(Stacks' listening mode): Live has Help then. A tool (the Shadow UI) has
-its own way out. Help is the button that stays lit while Home or an app has the
+Live, Help stays Live's own Help: push-manager does not take it. An app
+that has only the screen and gives the buttons to Live (Stacks' listening
+mode) goes back to Live too; Live sees that Help press as well, because
+it has the buttons. A tool (the Shadow UI) has its own way out. Help is the button that stays lit while Home or an app has the
 surface, so the lit button is the way out.
 
 When Home takes the buttons from Live, push-manager first tells Push3
