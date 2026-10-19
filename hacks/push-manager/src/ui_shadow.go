@@ -281,15 +281,20 @@ func (s *ShadowUI) buildTabs() {
 			prev[key(t)] = s.panels[i]
 		}
 	}
-	s.tabs = activeShadowTabs()
-	s.panels = make([]Panel, len(s.tabs))
-	for i, t := range s.tabs {
+	tabs := activeShadowTabs()
+	// Build the whole list, then swap it in. renderFrame copies s.panels
+	// under the lock, but a half-filled s.panels (nil entries) must never be
+	// visible: a nil Panel's Label() panics, and that crashed push-manager
+	// with the intercept on and the screen taken (catalog install, 2026-10-19).
+	panels := make([]Panel, len(tabs))
+	for i, t := range tabs {
 		if p, ok := prev[key(t)]; ok {
-			s.panels[i] = p
+			panels[i] = p
 		} else {
-			s.panels[i] = t.newPanel()
+			panels[i] = t.newPanel()
 		}
 	}
+	s.tabs, s.panels = tabs, panels
 	if s.panelIdx >= len(s.panels) {
 		s.panelIdx = 0
 	}
@@ -483,13 +488,16 @@ func (s *ShadowUI) renderFrame() {
 	}
 	panel := s.panels[s.panelIdx]
 	panelIdx := s.panelIdx
+	// A copy: the tab strip below is drawn after the lock is released, and
+	// buildTabs may replace s.panels meanwhile.
+	panels := append([]Panel(nil), s.panels...)
 	s.mu.Unlock()
 
 	img := image.NewNRGBA(image.Rect(0, 0, suiW, suiH))
 	fillRect(img, 0, 0, suiW, suiH, suiBlack)
 
 	// Strips
-	drawPanelTabs(img, shadowUI.panels, panelIdx)
+	drawPanelTabs(img, panels, panelIdx)
 	buttons, hint := panel.SoftBotStrip()
 	widgets.DrawBotStrip(img, widgets.Default, suiContentBot, suiW, suiColW, suiBotH, buttons, hint)
 
