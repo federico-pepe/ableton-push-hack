@@ -257,7 +257,18 @@ func (d *deviceIO) take(pass []int) {
 
 func (d *deviceIO) setPass(pass []int) { d.intercept(true, pass) }
 
-func (d *deviceIO) screenOnly() { d.intercept(false, nil) }
+// screenOnly gives the pads and buttons to Live, the screen stays the
+// app's. Every LED goes dark first, as release does: Push3's repaint (a
+// Shift and a pad-mode toggle, led_restore.go) sends only what changed in
+// its own view, so a pad dark in both Session and Note kept the app's
+// colour. Seen on device in Stacks' listening mode with a chromatic pad
+// layout: "multi-colored pads". The clear marks them cleared, so the
+// repaint runs when the intercept goes off.
+func (d *deviceIO) screenOnly() {
+	d.forget()
+	clearAllLEDs(0)
+	d.intercept(false, nil)
+}
 
 // release gives the surface back to Live. Every LED goes dark first, as
 // the Shadow UI's exit does: Push3 repaints only the LEDs it holds on (a
