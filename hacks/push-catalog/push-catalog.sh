@@ -128,6 +128,7 @@ PY
 # the daemon's GET /api/progress serves it to push-manager's progress bar.
 PROGRESS_FILE=/tmp/push-catalog-progress # main.go progressFile
 fetch() {
+  rm -f "$PROGRESS_FILE" # a finished download's numbers must not show as the next one's
   python3 - "$1" "$2" "$PROGRESS_FILE" <<'PY' || die "download failed: $1"
 import os,sys,urllib.request
 prog = sys.argv[3]
