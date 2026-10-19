@@ -19,9 +19,10 @@
 // Shift + Help, Help (two taps of Help while Shift is held) opens the
 // superstar entry, and from inside it goes back to Live. Both fire when
 // Shift is let go (surface_io.go). Help alone, from Home or an app, goes
-// back to Live, on Help's release; in Live it is Live's Help. An app's session ending while it owns the
-// surface lands the user on Home, which says so. The power button
-// (release.go) gives everything to Live.
+// back to Live, on Help's release; in Live it is Live's Help. Help held
+// helpHold is Shift + Help: Home, from anywhere but Home. An app's session
+// ending while it owns the surface lands the user on Home, which says so.
+// The power button (release.go) gives everything to Live.
 //
 // All side effects go through surfaceIO, so the state machine is tested
 // against a fake (surface_test.go) with random event sequences. The design
@@ -53,16 +54,16 @@ const startTimeout = 15 * time.Second
 
 // surfaceIO is everything the state machine does to the device.
 type surfaceIO interface {
-	take(pass []int)     // intercept on with these pass-through CCs, display taken, LEDs cleared
-	setPass(pass []int)  // intercept on, a new pass-through list
-	screenOnly()         // intercept off, display still taken (an app's listen mode)
-	release()            // intercept off, display back to Push3: Live
-	closeLiveHelp()      // tap Help into Live: it saw the user's Help and opened its help
-	homeShow(v homeView) // draw Home and its LEDs
-	homeHide()           // stop drawing Home
-	openTool(id string)  // the Shadow UI, on this panel
-	closeTool()          // stop the Shadow UI, if it runs
-	startApp(id string)  // ask push-catalog to start a stopped app
+	take(pass []int)         // intercept on with these pass-through CCs, display taken, LEDs cleared
+	setPass(pass []int)      // intercept on, a new pass-through list
+	screenOnly()             // intercept off, display still taken (an app's listen mode)
+	release()                // intercept off, display back to Push3: Live
+	closeLiveHelp(held bool) // tap Help into Live: it saw the user's Help and opened its help
+	homeShow(v homeView)     // draw Home and its LEDs
+	homeHide()               // stop drawing Home
+	openTool(id string)      // the Shadow UI, on this panel
+	closeTool()              // stop the Shadow UI, if it runs
+	startApp(id string)      // ask push-catalog to start a stopped app
 	now() time.Time
 }
 
@@ -191,9 +192,27 @@ func (s *Surface) HelpAlone() {
 		return
 	}
 	if s.own == ownApp && !s.input {
-		s.io.closeLiveHelp()
+		s.io.closeLiveHelp(false)
 	}
 	s.toLive()
+}
+
+// LongHelp is Help held without Shift: Shift + Help's Home, from Live, a
+// tool or an app. From Home it is nothing: the short press goes to Live,
+// and going there now would hand Live a release it never saw pressed.
+// liveSaw: Live had the buttons (Live itself, or an app's screen-only)
+// and opened its help screen on the press; close it before Home takes
+// the buttons, while the tap still gets through.
+func (s *Surface) LongHelp(liveSaw bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.down || s.own == ownHome {
+		return
+	}
+	if liveSaw {
+		s.io.closeLiveHelp(true)
+	}
+	s.toHome("")
 }
 
 // SessionOpen registers an app's session; a newer one for the same app

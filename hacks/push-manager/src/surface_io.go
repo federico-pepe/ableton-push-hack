@@ -30,19 +30,45 @@ var surface = newSurface(&deviceIO{}, homeEntries, setStarPref)
 //
 // Help alone (no Shift) is the third gesture: helpAlone, on Help's release.
 // Home and apps take it as "back to Live"; in Live it stays Live's Help.
-// Shift going down, or another button pressed while Help is held, spoils it.
+// Held helpHold, it is Shift + Help instead (Home), at once, and its
+// release is nothing. Shift going down, or another button pressed while
+// Help is held, spoils both.
+//
+// The MIDI reader feeds cc; hold comes from a timer: mu keeps them apart.
 type helpGesture struct {
+	mu             sync.Mutex
 	shift, spoiled bool
 	taps           int
 	alone          bool // Help is down and was pressed without Shift
+	gen            int  // counts those presses, so a timer knows its own
 }
 
-// helpAlone is what cc returns for Help pressed and let go without Shift.
-const helpAlone = -1
+const (
+	helpAlone = -1 // cc: Help pressed and let go without Shift
+	helpDown  = -2 // cc: Help pressed without Shift; time it (hold)
+)
+
+// helpHold is how long Help is held to open Home.
+const helpHold = 500 * time.Millisecond
+
+// hold is the timer of the press counted gen: true, once, if Help is still
+// down from that press and nothing spoiled it. Its release then fires nothing.
+func (g *helpGesture) hold(gen int) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.alone || g.gen != gen {
+		return false
+	}
+	g.alone = false
+	return true
+}
 
 // cc feeds one CC message and returns the taps when the gesture fires,
-// helpAlone for Help alone, 0 when nothing fires.
+// helpAlone for Help alone, helpDown when Help goes down alone, 0 when
+// nothing fires.
 func (g *helpGesture) cc(cc, val uint8) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	switch {
 	case cc == CCShift && val > 0:
 		g.shift, g.taps, g.spoiled, g.alone = true, 0, false, false
@@ -55,6 +81,8 @@ func (g *helpGesture) cc(cc, val uint8) int {
 		return fire
 	case !g.shift && cc == CCHelp && val > 0:
 		g.alone = true
+		g.gen++
+		return helpDown
 	case !g.shift && cc == CCHelp:
 		fire := 0
 		if g.alone {
@@ -99,6 +127,18 @@ func surfaceInputCC(cc, val uint8) bool {
 			queueSurface(surface.HelpAlone)
 			return true
 		}
+	case taps == helpDown:
+		// Intercept off: Live has the buttons and saw this press too.
+		data := ensureMidiFilt()
+		liveSaw := data != nil && data[4] == 0
+		gesture.mu.Lock()
+		gen := gesture.gen
+		gesture.mu.Unlock()
+		time.AfterFunc(helpHold, func() {
+			if gesture.hold(gen) {
+				queueSurface(func() { surface.LongHelp(liveSaw) })
+			}
+		})
 	}
 	if o, _ := surface.Owner(); o == ownHome {
 		queueSurface(func() { surface.HomeCC(cc, val) })
@@ -244,18 +284,29 @@ func (d *deviceIO) release() {
 }
 
 // closeLiveHelp taps Help into Live's own input, after Live has read the
-// user's release. Runs before release, so its tap never meets the repaint's
-// Shift (Shift + Help is another thing in Live).
-func (d *deviceIO) closeLiveHelp() {
+// user's release. Runs before release and take, while Live still has the
+// buttons, so its tap gets through and never meets the repaint's Shift
+// (Shift + Help is another thing in Live). held: the user still holds Help
+// (a long press), so Live is told it is up first, or the tap is a second
+// press of a button Live thinks is down.
+func (d *deviceIO) closeLiveHelp(held bool) {
 	p, ok := alsaseq.FindByName(appInputPortName, alsaseq.CapWrite)
 	if !ok {
 		log.Printf("surface: %q not found, Live's help stays open", appInputPortName)
 		return
 	}
-	time.Sleep(liveSettle)
 	liveTaps.Lock()
+	defer liveTaps.Unlock()
+	if held {
+		midiOutMu.Lock()
+		c := midiOut
+		midiOutMu.Unlock()
+		if c != nil {
+			c.SendCC(p.Addr, 0, CCHelp, 0) //nolint:errcheck
+		}
+	}
+	time.Sleep(liveSettle)
 	tapAppButton(p.Addr, CCHelp)
-	liveTaps.Unlock()
 	log.Printf("surface: closed Live's help (Live had the buttons and saw Help too)")
 }
 

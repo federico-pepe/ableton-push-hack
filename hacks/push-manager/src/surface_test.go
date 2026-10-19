@@ -19,7 +19,7 @@ type fakeIO struct {
 	started                  []string
 	t                        time.Time
 	view                     homeView
-	helpTaps                 int
+	helpTaps, heldTaps       int
 }
 
 func (f *fakeIO) take(pass []int)    { f.intercept, f.display, f.pass = true, true, pass }
@@ -28,7 +28,13 @@ func (f *fakeIO) screenOnly()        { f.intercept, f.pass = false, nil }
 func (f *fakeIO) release() {
 	f.intercept, f.display, f.home, f.tool, f.pass = false, false, false, "", nil
 }
-func (f *fakeIO) closeLiveHelp()      { f.helpTaps++ }
+func (f *fakeIO) closeLiveHelp(held bool) {
+	if held {
+		f.heldTaps++
+	} else {
+		f.helpTaps++
+	}
+}
 func (f *fakeIO) homeShow(v homeView) { f.home, f.display, f.view = true, true, v }
 func (f *fakeIO) homeHide()           { f.home = false }
 func (f *fakeIO) openTool(id string)  { f.intercept, f.display, f.tool = true, true, id }
@@ -349,12 +355,19 @@ func TestSurfaceRandom(t *testing.T) {
 			case k < 17:
 				what = "gesture 2"
 				b.Gesture(2)
-			case k < 20:
+			case k < 19:
 				what = "help alone"
 				was := b.own
 				b.HelpAlone()
 				if (was == ownHome || was == ownApp) && b.own != ownOutside {
 					t.Fatalf("run %d step %d: Help alone from %s left the owner %s", run, step, was, b.own)
+				}
+			case k < 20:
+				what = "help held"
+				was := b.own
+				b.LongHelp(rng.IntN(2) == 0)
+				if !b.down && b.own != ownHome {
+					t.Fatalf("run %d step %d: Help held from %s left the owner %s", run, step, was, b.own)
 				}
 			case k < 32:
 				what = "session open " + app
@@ -455,7 +468,7 @@ func TestHelpGesture(t *testing.T) {
 		var g helpGesture
 		var got []int
 		for _, m := range c.seq {
-			if n := g.cc(m[0], m[1]); n != 0 {
+			if n := g.cc(m[0], m[1]); n > 0 || n == helpAlone {
 				got = append(got, n)
 			}
 		}
@@ -465,6 +478,72 @@ func TestHelpGesture(t *testing.T) {
 	}
 }
 
+// Help held: the timer of its own press fires once, and the release is then
+// nothing; a release, Shift or another button first and it never fires.
+func TestHelpHold(t *testing.T) {
+	var g helpGesture
+	if g.cc(CCHelp, 127) != helpDown || !g.hold(g.gen) || g.hold(g.gen) || g.cc(CCHelp, 0) != 0 {
+		t.Error("held: want one hold, then a silent release")
+	}
+	g.cc(CCHelp, 127)
+	gen := g.gen
+	if g.cc(CCHelp, 0) != helpAlone || g.hold(gen) {
+		t.Error("let go first: want Help alone and no hold")
+	}
+	g.cc(CCHelp, 127)
+	gen = g.gen
+	g.cc(CCHelp, 0)
+	g.cc(CCHelp, 127) // a new press: the old timer is not its
+	if g.hold(gen) || !g.hold(g.gen) {
+		t.Error("an old press's timer fired on a new press")
+	}
+	g.cc(CCHelp, 0)
+	g.cc(CCHelp, 127)
+	g.cc(CCUndo, 127)
+	if g.hold(g.gen) {
+		t.Error("Help + another button: no hold")
+	}
+	g.cc(CCUndo, 0)
+	g.cc(CCHelp, 0)
+	g.cc(CCHelp, 127)
+	g.cc(CCShift, 127)
+	if g.hold(g.gen) {
+		t.Error("Shift pressed while Help is held: no hold")
+	}
+}
+
+// Help held is Shift + Help: Home from Live and from an app, nothing from
+// Home. Where Live had the buttons, its help is closed first.
+func TestLongHelp(t *testing.T) {
+	b := newBench()
+	b.SessionOpen("stacks", nil)
+	b.LongHelp(true) // from Live
+	if b.own != ownHome || b.io.heldTaps != 1 {
+		t.Fatalf("held in Live: owner %s, taps %d", b.own, b.io.heldTaps)
+	}
+	b.LongHelp(false) // from Home: nothing
+	if b.own != ownHome {
+		t.Fatalf("held in Home: owner %s", b.own)
+	}
+	b.Open("stacks") //nolint:errcheck
+	b.events("stacks")
+	b.LongHelp(false)
+	if b.own != ownHome || b.io.heldTaps != 1 {
+		t.Fatalf("held in an app: owner %s, taps %d", b.own, b.io.heldTaps)
+	}
+	if ev := b.events("stacks"); !slices.Equal(ev, []string{"blur"}) {
+		t.Fatalf("stacks got %v, want blur", ev)
+	}
+	b.rules(t, "held in an app")
+	b.Open("stacks")         //nolint:errcheck
+	b.Input("stacks", false) //nolint:errcheck
+	b.LongHelp(true)
+	if b.own != ownHome || b.io.heldTaps != 2 {
+		t.Fatalf("held, screen only: owner %s, taps %d", b.own, b.io.heldTaps)
+	}
+	b.rules(t, "held, screen only")
+}
+
 // Help alone goes back to Live from Home and from an app, on its release;
 // in Live it is Live's own Help and push-manager does not take it.
 func TestHelpAloneToLive(t *testing.T) {
@@ -472,7 +551,7 @@ func TestHelpAloneToLive(t *testing.T) {
 	saved := surface
 	surface = b.Surface
 	defer func() { surface = saved }()
-	gesture = helpGesture{}
+	gesture.reset()
 	feed := func(cc, val uint8) bool {
 		took := surfaceInputCC(cc, val)
 		for len(surfaceQ) > 0 {
@@ -629,7 +708,7 @@ func TestShiftAfterGesture(t *testing.T) {
 	saved := surface
 	surface = b.Surface
 	defer func() { surface = saved }()
-	gesture = helpGesture{}
+	gesture.reset()
 	feed := func(cc, val uint8) {
 		surfaceInputCC(cc, val)
 		for len(surfaceQ) > 0 {
@@ -657,4 +736,13 @@ func TestShiftAfterGesture(t *testing.T) {
 	if b.superstar() == "stacks" || !b.entries[1].Star {
 		t.Fatalf("STAR after Shift + Help: superstar %q, stacks starred %v", b.superstar(), b.entries[1].Star)
 	}
+}
+
+// reset clears the shared gesture between tests, under its lock: a timer
+// from an earlier test may still be running.
+func (g *helpGesture) reset() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.shift, g.spoiled, g.taps, g.alone = false, false, 0, false
+	g.gen++
 }
