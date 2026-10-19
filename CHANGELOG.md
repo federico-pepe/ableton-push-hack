@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.13-alpha] - 2026-10-19
+
 ### Added
 
 - push-manager can drive the Push screen over USB while Push3 is stopped. `POST /api/display/direct {"enabled": true}` claims the screen. From then on every frame push-manager writes (`/api/display/image`, Shadow UI, OSD) goes straight to the screen. `{"enabled": false}` releases it. Turn it off before you start Push3 again. It fails with 409 while Push3 is running. `GET /api/display/status` now also returns `direct`. This is the first part of a Mixxx mode (see `plans/2026-10-12-mixxx-mode.md`). Tested on device.
