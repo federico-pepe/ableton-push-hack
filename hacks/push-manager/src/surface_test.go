@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // fakeIO is the device as the state machine sees it.
@@ -163,7 +165,11 @@ func TestSurfaceTransitions(t *testing.T) {
 	}
 	b.rules(t, "home again")
 
-	b.HomePad(36+1, 100) // a pad in column 2: STACKS
+	b.HomePad(36+8, 100) // a dark pad (row 2, column 1): nothing
+	if b.own != ownHome {
+		t.Fatalf("a dark pad opened something: owner %s", b.own)
+	}
+	b.HomePad(36+7*8+1, 100) // column 2's top pad: STACKS
 	if b.own != ownApp || b.app != "stacks" {
 		t.Fatalf("pad column 2: owner %s %s", b.own, b.app)
 	}
@@ -459,7 +465,23 @@ func TestRenderHome(t *testing.T) {
 		}
 		pads, ccs := homeLEDs(homeView{Entries: es, Cursor: cur})
 		if len(pads) != 64 {
-			t.Fatalf("Home lights %d pads, want 64", len(pads))
+			t.Fatalf("Home sets %d pads, want all 64 (the dark ones too)", len(pads))
+		}
+		lit := 0
+		for n, c := range pads {
+			col, row := push3.PadCoord(n)
+			if c != 0 {
+				lit++
+				if row != homePadRow {
+					t.Fatalf("pad %d (row %d) is lit: only the top row is", n, row)
+				}
+			}
+			if row == homePadRow && col < 8 && cur/8*8+col < len(es) && c == 0 {
+				t.Fatalf("entry %d's top pad is dark", cur/8*8+col)
+			}
+		}
+		if page := min(8, len(es)-cur/8*8); lit != page {
+			t.Fatalf("%d pads lit, want %d (one per entry on the page)", lit, page)
 		}
 		for n, c := range pads {
 			if c == 1 { // "dim" is a button brightness; on a pad index 1 is red

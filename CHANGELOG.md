@@ -12,6 +12,14 @@ between minor versions).
 - `core/pmclient`: `Client.Push` sends a frame the fastest way push-manager allows. It uses `PushFrame` for a 960x160 NRGBA image and `PushImage` for any other image. If push-manager answers 404 on `/api/display/frame` (an older release), it uses `PushImage` from then on. `PushFrame` now returns `ErrNoFrameRoute` in that case. A hack that redraws often calls `Push` and needs no version check.
 - **Push Hack Harmony**, `core/harmony`: one app tells others what it plays (the key, the scale, the chord of the moment) over MIDI, so another app can follow it. A sender opens a port named `<App> Harmony`; a follower connects to every such port by itself. A chord change can be sent before it happens, counted in MIDI clock pulses, so the follower switches on the same clock. The package also names chords from plain notes and guesses the key. The format is open: [docs/harmony-sync.md](docs/harmony-sync.md). Stacks sends it. Needs a `core/v*` tag before consumers get it.
 
+### Changed
+
+- Push Hack Home lights only the top pad row: one pad per entry, in its colour (white for the chosen one). Only those pads open an entry; the other pads stay dark. Before, every pad was lit, which read as something to play.
+
+### Fixed
+
+- Leaving Push Hack Home (or an app) for Live often left LEDs lit: the buttons and pads Home had lit, that Live holds off. push-manager now switches every LED off before it gives the surface back, as the Shadow UI does, and then Push3 repaints its own.
+
 ### Removed
 
 - Catalog: Riffs, for now. Its repository is private, so the entry could not be installed.

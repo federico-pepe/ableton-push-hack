@@ -1503,7 +1503,8 @@ var allButtonCCs = []uint8{
 }
 
 // clearAllLEDs sends CC value=0 to every known button LED except exceptCC,
-// and Note velocity=0 to all 64 pad notes (36–99).
+// and Note velocity=0 to all 64 pad notes (36–99). exceptCC 0: no anchor,
+// every LED dark.
 // Also resets ledToggleState, preserving exceptCC if it was active.
 // Intended to be called in a goroutine.
 func clearAllLEDs(exceptCC uint8) {
@@ -1524,12 +1525,17 @@ func clearAllLEDs(exceptCC uint8) {
 		}
 	}
 	// Explicitly light up the anchor button
-	if err := sendSeqCC(0, exceptCC, 127); err != nil {
-		log.Printf("clearAllLEDs anchor cc=%d: %v", exceptCC, err)
+	if exceptCC != 0 {
+		if err := sendSeqCC(0, exceptCC, 127); err != nil {
+			log.Printf("clearAllLEDs anchor cc=%d: %v", exceptCC, err)
+		}
 	}
 	// Sync toggle state map
 	ledToggleMu.Lock()
-	ledToggleState = map[uint8]uint8{exceptCC: 127}
+	ledToggleState = map[uint8]uint8{}
+	if exceptCC != 0 {
+		ledToggleState[exceptCC] = 127
+	}
 	ledToggleMu.Unlock()
 }
 
