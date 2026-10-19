@@ -209,8 +209,18 @@ static uint16_t __attribute__((unused)) rgb_to_bgr565(uint8_t r, uint8_t g, uint
 #define LOG_PATH     "/data/push-hack/logs/push-hook.log"
 #define LOG_FALLBACK "/tmp/push-hook.log"
 
+#define LOG_MAX_BYTES (1024 * 1024)
+
+/* Log over 1 MiB: move to <log>.1 (one old copy) and start fresh. */
+static void log_rotate(void) {
+    struct stat st;
+    if (stat(LOG_PATH, &st) == 0 && st.st_size > LOG_MAX_BYTES)
+        rename(LOG_PATH, LOG_PATH ".1");
+}
+
 static void log_open(void) {
     if (log_fp) return;
+    log_rotate();
     log_fp = fopen(LOG_PATH, "a");
     if (!log_fp) log_fp = fopen(LOG_FALLBACK, "a");
     if (log_fp) setbuf(log_fp, NULL);
@@ -403,9 +413,12 @@ static void hook_init(void) {
         shm_init();
         midi_filt_init();
     }
-    hook_logf("=== push_hook loaded: pid=%d uid=%d comm=%s active=%d bulk=%p submit=%p shm=%p seq_input=%p ===\n",
-         (int)getpid(), (int)getuid(), comm, hook_active,
-         (void *)real_bulk, (void *)real_submit, (void *)shm, (void *)real_seq_input);
+    /* Only Push3 logs its load. Every amidi/sh child inherits LD_PRELOAD and
+     * used to add a line: 90k lines in one boot-day. */
+    if (hook_active)
+        hook_logf("=== push_hook loaded: pid=%d uid=%d comm=%s bulk=%p submit=%p shm=%p seq_input=%p ===\n",
+             (int)getpid(), (int)getuid(), comm,
+             (void *)real_bulk, (void *)real_submit, (void *)shm, (void *)real_seq_input);
 }
 
 /* ── Hook: write() on Push3's sequencer fds (Push3's LED output) ─────────
@@ -605,8 +618,8 @@ static void process_display_out(unsigned char *data, int length) {
     n = display_frames++;
     pthread_mutex_unlock(&display_mutex);
 
-    /* Logging: first 10 frames + every 300 */
-    if (n > 10 && n % 300 != 0) return;
+    /* Log first 3 frames only. Every 300th one grew the log 50 B/s forever. */
+    if (n >= 3) return;
 
     char hdr[64] = {0};
     int hlen = length < 16 ? length : 16;
