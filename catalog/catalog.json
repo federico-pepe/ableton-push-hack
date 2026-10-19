@@ -86,6 +86,16 @@
       "github_repo": "itsrave/push-mixxx-mode",
       "default_branch": "main",
       "asset_name": "mixxx.tar.gz"
+    },
+    {
+      "id": "stacks",
+      "name": "Stacks",
+      "description": "Chord-progression tool: write, voice and play chord progressions into Live from Push's screen, pads and buttons.",
+      "author": "rgeissen",
+      "homepage": "https://github.com/rgeissen/push-hack-stacks",
+      "github_repo": "rgeissen/push-hack-stacks",
+      "default_branch": "main",
+      "asset_name": "stacks.tar.gz"
     }
   ]
 }
