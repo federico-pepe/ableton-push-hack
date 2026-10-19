@@ -59,6 +59,7 @@ type surfaceIO interface {
 	screenOnly()             // intercept off, display still taken (an app's listen mode)
 	release()                // intercept off, display back to Push3: Live
 	closeLiveHelp(held bool) // tap Help into Live: it saw the user's Help and opened its help
+	homeCover(v homeView)    // Home's frame on the screen at once, before the buttons are taken
 	homeShow(v homeView)     // draw Home and its LEDs
 	homeHide()               // stop drawing Home
 	openTool(id string)      // the Shadow UI, on this panel
@@ -209,6 +210,13 @@ func (s *Surface) LongHelp(liveSaw bool) {
 	if s.down || s.own == ownHome {
 		return
 	}
+	if liveSaw && s.own == ownOutside {
+		// Home over Live before the tap: else Live's screen shows between
+		// its help closing and Home (seen on device: help, Live, Home).
+		s.homeCursor()
+		s.notice = ""
+		s.io.homeCover(s.view())
+	}
 	if liveSaw {
 		s.io.closeLiveHelp(true)
 	}
@@ -357,16 +365,27 @@ func (s *Surface) toHome(notice string) {
 		s.io.setPass(nil)
 	case ownOutside:
 		s.io.closeTool()
+		// Home's frame first: take lets Live settle (120 ms) before the
+		// intercept, and Live's screen showed through that, then black.
+		s.homeCursor()
+		s.notice = notice
+		s.io.homeCover(s.view())
 		s.io.take(nil)
 	}
+	s.homeCursor()
+	s.own, s.app, s.notice = ownHome, "", notice
+	s.redraw()
+}
+
+// homeCursor puts Home's cursor on the app you came from, unless Home is
+// open already.
+func (s *Surface) homeCursor() {
 	if s.own != ownHome {
 		s.cursor = 0
 		if i := s.find(s.last); i >= 0 {
 			s.cursor = i
 		}
 	}
-	s.own, s.app, s.notice = ownHome, "", notice
-	s.redraw()
 }
 
 func (s *Surface) toLive() {

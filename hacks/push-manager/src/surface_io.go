@@ -310,6 +310,18 @@ func (d *deviceIO) closeLiveHelp(held bool) {
 	log.Printf("surface: closed Live's help (Live had the buttons and saw Help too)")
 }
 
+// homeCover draws Home's frame and takes the screen, nothing else: the
+// buttons and LEDs come with take and homeShow. takeDisplay then sees the
+// screen taken already and does not clear it to black.
+func (d *deviceIO) homeCover(v homeView) {
+	if err := shmWritePixels(imageToBGR565(renderHome(v))); err != nil {
+		log.Printf("surface: draw Home: %v", err)
+	}
+	if err := shmSetMode(ModeTakeover); err != nil {
+		log.Printf("surface: take the screen: %v", err)
+	}
+}
+
 func (d *deviceIO) homeShow(v homeView) {
 	if err := shmWritePixels(imageToBGR565(renderHome(v))); err != nil {
 		log.Printf("surface: draw Home: %v", err)

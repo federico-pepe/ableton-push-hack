@@ -20,6 +20,7 @@ type fakeIO struct {
 	t                        time.Time
 	view                     homeView
 	helpTaps, heldTaps       int
+	covers                   int
 }
 
 func (f *fakeIO) take(pass []int)    { f.intercept, f.display, f.pass = true, true, pass }
@@ -35,11 +36,12 @@ func (f *fakeIO) closeLiveHelp(held bool) {
 		f.helpTaps++
 	}
 }
-func (f *fakeIO) homeShow(v homeView) { f.home, f.display, f.view = true, true, v }
-func (f *fakeIO) homeHide()           { f.home = false }
-func (f *fakeIO) openTool(id string)  { f.intercept, f.display, f.tool = true, true, id }
-func (f *fakeIO) startApp(id string)  { f.started = append(f.started, id) }
-func (f *fakeIO) now() time.Time      { return f.t }
+func (f *fakeIO) homeCover(v homeView) { f.display, f.covers = true, f.covers+1 }
+func (f *fakeIO) homeShow(v homeView)  { f.home, f.display, f.view = true, true, v }
+func (f *fakeIO) homeHide()            { f.home = false }
+func (f *fakeIO) openTool(id string)   { f.intercept, f.display, f.tool = true, true, id }
+func (f *fakeIO) startApp(id string)   { f.started = append(f.started, id) }
+func (f *fakeIO) now() time.Time       { return f.t }
 func (f *fakeIO) closeTool() {
 	if f.tool != "" {
 		f.tool, f.display = "", false // the Shadow UI gives the screen back when it stops
@@ -518,8 +520,8 @@ func TestLongHelp(t *testing.T) {
 	b := newBench()
 	b.SessionOpen("stacks", nil)
 	b.LongHelp(true) // from Live
-	if b.own != ownHome || b.io.heldTaps != 1 {
-		t.Fatalf("held in Live: owner %s, taps %d", b.own, b.io.heldTaps)
+	if b.own != ownHome || b.io.heldTaps != 1 || b.io.covers < 1 {
+		t.Fatalf("held in Live: owner %s, taps %d, Home drawn first %d", b.own, b.io.heldTaps, b.io.covers)
 	}
 	b.LongHelp(false) // from Home: nothing
 	if b.own != ownHome {
