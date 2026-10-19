@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.14-alpha] - 2026-10-19
+
 ### Added
 
 - `core/pmclient`: `Client.Push` sends a frame the fastest way push-manager allows. It uses `PushFrame` for a 960x160 NRGBA image and `PushImage` for any other image. If push-manager answers 404 on `/api/display/frame` (an older release), it uses `PushImage` from then on. `PushFrame` now returns `ErrNoFrameRoute` in that case. A hack that redraws often calls `Push` and needs no version check.
