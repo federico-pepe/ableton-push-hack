@@ -42,6 +42,8 @@ the shell.
    service (plain `nice`-backgrounded, same pattern as the framework's own
    `install.sh` — not `start-stop-daemon`, which was found on real hardware
    to silently drop the log redirection when detaching), enable + start it.
+   Its `stop` waits for the hack to exit (up to 5 s, then `SIGKILL`), so a
+   restart never starts the new process while the old one holds its port.
 
 No sha256 pin, no signing — the trust boundary is "this repo is on GitHub,
 served over HTTPS, and its catalog entry was PR-reviewed once." See
