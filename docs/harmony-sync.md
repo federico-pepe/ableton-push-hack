@@ -2,9 +2,9 @@
 
 Push Hack Harmony is a small MIDI format. With it, one app tells others
 what it plays: the key, the scale and the chord of the moment. An app
-that follows can then play in that harmony. Riffs follows Stacks this
-way, but the format is open: any app, a Live track or a keyboard can
-drive a follower, and any app can follow.
+that follows can then play in that harmony. Stacks sends it, and the
+format is open: any app, a Live track or a keyboard can drive a follower,
+and any app can follow.
 
 The code is in [`core/harmony`](../core/harmony): the message format, chord
 names from notes, a key finder.
@@ -14,7 +14,7 @@ names from notes, a key finder.
 - An app that **sends** harmony opens a readable MIDI port named
   `<App> Harmony`, for example `Stacks Harmony`. It sends only harmony
   messages on that port, so its normal output stays notes only.
-- An app that **follows** opens a writable port (Riffs: `Riffs Sync`). It
+- An app that **follows** opens a writable port (for example `<App> Sync`). It
   connects that port to every port whose name ends in ` Harmony`, not its
   own. It looks again every few seconds, so apps can start in any order,
   and an app that restarts is found again.
@@ -81,13 +81,14 @@ each later clock adds one.
 - When the transport stops, a sender sends the chord the next Start will
   play, marked armed.
 
-Measured on a Push: Riffs and Stacks start each new chord within 3 ms of
-each other, and every Riffs note followed the chord Stacks played.
+Measured on a Push with Stacks sending: a follower started each new chord
+within 3 ms of Stacks, and every note it played followed the chord Stacks
+played.
 
 ## Notes instead of messages
 
-A follower can also take plain notes as chords. Riffs groups notes that
-start within 30 ms into one chord and names it. The chord holds after the
+A follower can also take plain notes as chords: `harmony.Grouper` groups
+notes that start within 30 ms into one chord and names it. The chord holds after the
 keys are released, until the next chord. A key finder guesses the key from
 the chords played. A sender that has sent any harmony message is followed
 by its messages only, and its notes are not read as chords.
@@ -95,7 +96,7 @@ by its messages only, and its notes are not read as chords.
 ## Many apps
 
 - Each sender is a source, known by its MIDI address. A follower follows
-  one source at a time. Riffs offers Auto (the first one heard, kept while
+  one source at a time: for example Auto (the first one heard, kept while
   it plays) or a source chosen by name.
 - A sender that is silent (flags 0) is not followed. A sender that sends
   nothing for 3 seconds, or sends BYE, is gone.
@@ -107,6 +108,6 @@ by its messages only, and its notes are not read as chords.
 ## Apps that are not on screen
 
 With Push Hack Home only the app on screen normally plays. For sync, both
-apps must play. Riffs and Stacks each have a "plays when closed" setting
-(off by default) that keeps them playing while another app has the
-screen.
+apps must play. Stacks has a "plays when closed" setting (off by default)
+that keeps it playing while another app has the screen; a follower needs
+the same.

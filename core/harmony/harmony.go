@@ -2,7 +2,7 @@
 // plays -- the key, the scale, the chord of the moment -- over MIDI, and how
 // a follower names a chord from plain notes. The wire format is an open
 // spec (docs/harmony-sync.md); anything that sends it, or just plays notes,
-// can drive a follower such as Riffs.
+// can drive a follower.
 //
 // Pitch classes are 0-11 from C. A set of them is a 12-bit mask, bit n = n
 // semitones; a scale's mask is relative to its key, a chord's to its root.
