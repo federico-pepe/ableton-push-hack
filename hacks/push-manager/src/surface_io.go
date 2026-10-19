@@ -27,17 +27,25 @@ var surface = newSurface(&deviceIO{}, homeEntries, setStarPref)
 // up again and is never left thinking Shift is held. Any other button
 // pressed with Shift spoils it: Shift + something else is that something's
 // own shortcut (Live's, or Home's Shift + STAR).
+//
+// Help alone (no Shift) is the third gesture: helpAlone, on Help's release.
+// Home and apps take it as "back to Live"; in Live it stays Live's Help.
+// Shift going down, or another button pressed while Help is held, spoils it.
 type helpGesture struct {
 	shift, spoiled bool
 	taps           int
+	alone          bool // Help is down and was pressed without Shift
 }
 
-// cc feeds one CC message and returns the taps when the gesture fires, 0
-// when it does not.
+// helpAlone is what cc returns for Help pressed and let go without Shift.
+const helpAlone = -1
+
+// cc feeds one CC message and returns the taps when the gesture fires,
+// helpAlone for Help alone, 0 when nothing fires.
 func (g *helpGesture) cc(cc, val uint8) int {
 	switch {
 	case cc == CCShift && val > 0:
-		g.shift, g.taps, g.spoiled = true, 0, false
+		g.shift, g.taps, g.spoiled, g.alone = true, 0, false, false
 	case cc == CCShift:
 		fire := 0
 		if g.shift && g.taps > 0 && !g.spoiled {
@@ -45,6 +53,17 @@ func (g *helpGesture) cc(cc, val uint8) int {
 		}
 		g.shift, g.taps = false, 0
 		return fire
+	case !g.shift && cc == CCHelp && val > 0:
+		g.alone = true
+	case !g.shift && cc == CCHelp:
+		fire := 0
+		if g.alone {
+			fire = helpAlone
+		}
+		g.alone = false
+		return fire
+	case !g.shift && val > 0 && isTogglableCC(cc): // Help + something: not ours
+		g.alone = false
 	case !g.shift || val == 0:
 	case cc == CCHelp:
 		g.taps++
@@ -71,9 +90,15 @@ func surfaceInputCC(cc, val uint8) bool {
 		down := val > 0
 		queueSurface(func() { surface.SetShift(down) })
 	}
-	if taps := gesture.cc(cc, val); taps > 0 {
+	switch taps := gesture.cc(cc, val); {
+	case taps > 0:
 		queueSurface(func() { surface.Gesture(taps) })
 		return true
+	case taps == helpAlone:
+		if o, _ := surface.Owner(); o == ownHome || o == ownApp {
+			queueSurface(surface.HelpAlone)
+			return true
+		}
 	}
 	if o, _ := surface.Owner(); o == ownHome {
 		queueSurface(func() { surface.HomeCC(cc, val) })

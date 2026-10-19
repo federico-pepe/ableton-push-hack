@@ -18,7 +18,8 @@
 // Shift + Help opens Home from anywhere and goes back to Live from Home.
 // Shift + Help, Help (two taps of Help while Shift is held) opens the
 // superstar entry, and from inside it goes back to Live. Both fire when
-// Shift is let go (gesture.go). An app's session ending while it owns the
+// Shift is let go (surface_io.go). Help alone, from Home or an app, goes
+// back to Live, on Help's release; in Live it is Live's Help. An app's session ending while it owns the
 // surface lands the user on Home, which says so. The power button
 // (release.go) gives everything to Live.
 //
@@ -174,6 +175,19 @@ func (s *Surface) Gesture(taps int) {
 	default:
 		s.open(sup)
 	}
+}
+
+// HelpAlone is Help pressed and let go without Shift: from Home or an app,
+// back to Live. Elsewhere it is Live's own Help, and nothing here. So is
+// it while an app has only the screen: Live has the buttons then, Help
+// included, and toggles its own Help on the same press.
+func (s *Surface) HelpAlone() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.down || (s.own != ownHome && s.own != ownApp) || (s.own == ownApp && !s.input) {
+		return
+	}
+	s.toLive()
 }
 
 // SessionOpen registers an app's session; a newer one for the same app

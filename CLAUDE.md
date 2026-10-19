@@ -146,7 +146,8 @@ of Push Hack Home** (push-manager's switcher, `src/surface.go`): it declares
 open itself with a button combination: every hack hears every press, and
 Riffs' Shift + Set collided with push-manager's own `browser_open` chord
 (two programs drawing on one screen, seen on device 2026-10-17). Shift +
-Help belongs to push-manager. While Home or an app owns the surface,
+Help belongs to push-manager, and so does Help alone while Home or an
+app owns the surface (back to Live). While Home or an app owns the surface,
 push-manager refuses (409) `/api/display/mode`, `/api/midi/filter` and
 frames from anyone but the owning app (`X-Push-Hack-App` header). Design:
 `plans/2026-10-17-push-hack-switcher.md`; behaviour: push-manager's README,

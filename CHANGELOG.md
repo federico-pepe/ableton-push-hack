@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- Help on its own goes back to Live from Push Hack Home or from any app. It acts when you let go of Help. In Live, and while an app gives the buttons to Live (Stacks' listening mode), Help is still Live's own Help. Apps must not use Help themselves.
+
 ## [0.1.14-alpha] - 2026-10-19
 
 ### Added

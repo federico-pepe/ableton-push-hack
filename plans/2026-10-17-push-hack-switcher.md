@@ -66,12 +66,19 @@ changing Shift + Settings (the Shadow UI toggle stays as it is upstream).
 |---|---|---|---|---|
 | Shift + Help | Home | Live | Home | Home |
 | Shift + Help, Help | the superstar | the superstar | the superstar | the superstar; from the superstar itself: Live |
+| Help | Live's own Help | Live | nothing | Live (while the app has the buttons) |
 
 "Shift + Help, Help" means: hold Shift, tap Help twice, let go of Shift.
 Both gestures fire when Shift is let go. That is the safe moment: Live has
 seen Shift go down and up again, so it does not think Shift is still held
 (Stacks found that taking the surface mid-press left Live with a stuck
 Shift).
+
+Help alone (added 2026-10-19, asked for on device: "always use the help
+button to return to Live") goes back to Live from Home or an app, on
+Help's release. Shift, or another button pressed while Help is held,
+spoils it. In Live, in a tool, and while an app has only the screen,
+push-manager does not take Help.
 
 While an app or Home owns the surface, the intercept is on, so Live does
 not see Shift + Help at all. From Live, Live sees Shift + Help, as it does
@@ -212,8 +219,8 @@ so the two cannot both draw. Stacks 0.3.0 uses the session.
 4. An owning app's session ending gives the surface to Home within a
    second.
 5. After the power button, nothing but Live owns the surface.
-6. Inside an app, only Shift + Help (and Shift + Help, Help) do anything
-   in push-manager.
+6. Inside an app, only Shift + Help (and Shift + Help, Help) and Help do
+   anything in push-manager.
 
 Tests:
 

@@ -344,9 +344,16 @@ func TestSurfaceRandom(t *testing.T) {
 			case k < 14:
 				what = "gesture 1"
 				b.Gesture(1)
-			case k < 20:
+			case k < 17:
 				what = "gesture 2"
 				b.Gesture(2)
+			case k < 20:
+				what = "help alone"
+				was, input := b.own, b.input
+				b.HelpAlone()
+				if (was == ownHome || was == ownApp && input) && b.own != ownOutside {
+					t.Fatalf("run %d step %d: Help alone from %s left the owner %s", run, step, was, b.own)
+				}
 			case k < 32:
 				what = "session open " + app
 				old = append(old, b.SessionOpen(app, []int{rng.IntN(88)}))
@@ -432,7 +439,12 @@ func TestHelpGesture(t *testing.T) {
 		{"Shift + Help, Help", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCHelp, 0}, {CCHelp, 127}, {CCHelp, 0}, {CCShift, 0}}, []int{2}},
 		{"fires on Shift's release only", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCHelp, 0}}, nil},
 		{"Shift alone", [][2]uint8{{CCShift, 127}, {CCShift, 0}}, nil},
-		{"Help alone", [][2]uint8{{CCHelp, 127}, {CCHelp, 0}}, nil},
+		{"Help alone", [][2]uint8{{CCHelp, 127}, {CCHelp, 0}}, []int{helpAlone}},
+		{"Help alone fires on Help's release only", [][2]uint8{{CCHelp, 127}}, nil},
+		{"Help + another button is not ours", [][2]uint8{{CCHelp, 127}, {CCUndo, 127}, {CCUndo, 0}, {CCHelp, 0}}, nil},
+		{"an encoder turned with Help held does not spoil it", [][2]uint8{{CCHelp, 127}, {71, 1}, {CCHelp, 0}}, []int{helpAlone}},
+		{"Shift pressed while Help is held", [][2]uint8{{CCHelp, 127}, {CCShift, 127}, {CCShift, 0}, {CCHelp, 0}}, nil},
+		{"Shift let go before Help: Shift + Help only", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCShift, 0}, {CCHelp, 0}}, []int{1}},
 		{"Shift + Help + another button is not ours", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCUndo, 127}, {CCShift, 0}}, nil},
 		{"an encoder turned with Shift does not spoil it", [][2]uint8{{CCShift, 127}, {71, 1}, {CCHelp, 127}, {CCShift, 0}}, []int{1}},
 		{"two gestures", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCShift, 0}, {CCShift, 127}, {CCHelp, 127}, {CCShift, 0}}, []int{1, 1}},
@@ -441,7 +453,7 @@ func TestHelpGesture(t *testing.T) {
 		var g helpGesture
 		var got []int
 		for _, m := range c.seq {
-			if n := g.cc(m[0], m[1]); n > 0 {
+			if n := g.cc(m[0], m[1]); n != 0 {
 				got = append(got, n)
 			}
 		}
@@ -449,6 +461,59 @@ func TestHelpGesture(t *testing.T) {
 			t.Errorf("%s: fired %v, want %v", c.name, got, c.want)
 		}
 	}
+}
+
+// Help alone goes back to Live from Home and from an app, on its release;
+// in Live it is Live's own Help and push-manager does not take it.
+func TestHelpAloneToLive(t *testing.T) {
+	b := newBench()
+	saved := surface
+	surface = b.Surface
+	defer func() { surface = saved }()
+	gesture = helpGesture{}
+	feed := func(cc, val uint8) bool {
+		took := surfaceInputCC(cc, val)
+		for len(surfaceQ) > 0 {
+			(<-surfaceQ)()
+		}
+		return took
+	}
+	b.SessionOpen("stacks", nil)
+	if feed(CCHelp, 127) || feed(CCHelp, 0) || b.own != ownOutside {
+		t.Fatalf("Help in Live: owner %s, or push-manager took it", b.own)
+	}
+	b.Gesture(1) // Home
+	feed(CCHelp, 127)
+	if b.own != ownHome {
+		t.Fatalf("Help's press left Home: owner %s", b.own)
+	}
+	if !feed(CCHelp, 0) || b.own != ownOutside {
+		t.Fatalf("Help alone from Home: owner %s", b.own)
+	}
+	b.rules(t, "help from home")
+	b.Open("stacks") //nolint:errcheck
+	if b.own != ownApp {
+		t.Fatalf("open stacks: owner %s", b.own)
+	}
+	b.events("stacks")
+	feed(CCHelp, 127)
+	if !feed(CCHelp, 0) || b.own != ownOutside {
+		t.Fatalf("Help alone from an app: owner %s", b.own)
+	}
+	if ev := b.events("stacks"); !slices.Equal(ev, []string{"blur"}) {
+		t.Fatalf("stacks got %v, want blur", ev)
+	}
+	b.rules(t, "help from stacks")
+
+	// screen only: Live has the buttons, Help is Live's
+	b.Open("stacks")         //nolint:errcheck
+	b.Input("stacks", false) //nolint:errcheck
+	feed(CCHelp, 127)
+	feed(CCHelp, 0)
+	if b.own != ownApp {
+		t.Fatalf("Help with the screen only: owner %s, want app", b.own)
+	}
+	b.rules(t, "help, screen only")
 }
 
 // Home's screen: every page draws, and nothing but ASCII is ever typed.

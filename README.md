@@ -47,7 +47,7 @@ This hack can't interact directly with what's happening inside Live on Push (unl
 * Create virtual audio soundcard to send and receive audio from and to Live on Push. This is required, for example, if you want to run a standalone sound module. Users then need to activate the virtual sound card in Push's audio preferences and then route the audio on Push's audio tracks/mixer.
 * Use remote scripts to interact with Live on Push for example to load presets on the selected track. The limit is what is available on the Remote Script (Python) Live API.
 * From an UI perspective there are two options: run a WebUI and access everything from another device via push.local or implement a custom made ShadowUI if you want all the controls to be accessible on Push's directly. `push-manager` and `push-catalog` for example, use both options.
-* A module that takes over Push's whole screen, buttons and pads is an app of **Push Hack Home**, push-manager's switcher. Press **Shift + Help** on Push to open Home and pick an app or a tool; star the ones you use most, and make one the superstar to open it straight away with **Shift + Help, Help**. See [Push Hack Home](hacks/push-manager/README.md#push-hack-home-the-switcher).
+* A module that takes over Push's whole screen, buttons and pads is an app of **Push Hack Home**, push-manager's switcher. Press **Shift + Help** on Push to open Home and pick an app or a tool; star the ones you use most, and make one the superstar to open it straight away with **Shift + Help, Help**. Press **Help** to go back to Live. See [Push Hack Home](hacks/push-manager/README.md#push-hack-home-the-switcher).
 
 ### Main components
 
