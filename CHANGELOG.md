@@ -18,6 +18,7 @@ between minor versions).
 
 ### Fixed
 
+- push-manager no longer crashes when you install or remove a hack from the CATALOG tab while the Shadow UI is open. The Shadow UI drew the tab strip from a list that the catalog reload was still filling, found an empty entry and panicked. The crash left the MIDI intercept on and the screen taken, so Push froze until push-manager was restarted. The tab list is now built in full before it replaces the old one, and the drawing code works on a copy.
 - Leaving Push Hack Home (or an app) for Live often left LEDs lit: the buttons and pads Home had lit, that Live holds off. push-manager now switches every LED off before it gives the surface back, as the Shadow UI does, and then Push3 repaints its own.
 
 ### Removed
