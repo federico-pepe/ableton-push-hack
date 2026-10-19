@@ -64,6 +64,9 @@ var (
 // surfaceInputCC is every CC from Push's hardware, from the MIDI reader.
 // It reports whether Home took the message, so nothing else acts on it.
 func surfaceInputCC(cc, val uint8) bool {
+	if directDisplayOn() { // another app owns screen and buttons (display.go)
+		return false
+	}
 	if cc == CCShift { // Home's Shift + STAR needs Shift's real state, whoever had the press
 		down := val > 0
 		queueSurface(func() { surface.SetShift(down) })
@@ -81,6 +84,9 @@ func surfaceInputCC(cc, val uint8) bool {
 
 // surfaceInputPad is a pad from Push's hardware.
 func surfaceInputPad(note, vel uint8) bool {
+	if directDisplayOn() {
+		return false
+	}
 	if o, _ := surface.Owner(); o != ownHome {
 		return false
 	}

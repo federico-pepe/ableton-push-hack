@@ -94,6 +94,21 @@ func shmWritePixels(pixels []byte) error {
 	return err
 }
 
+// shmWriteFrame is shmWritePixels for ONE frame (FrameBytes), the raw-frame
+// route. In direct mode both halves also go to the screen over USB.
+func shmWriteFrame(frame []byte) error {
+	err := shm.WriteFrame(frame)
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	if usbDisp != nil {
+		both := make([]byte, 0, coredisplay.TotalBytes)
+		both = append(append(both, frame...), frame...)
+		usbDisp.Set(both)
+		return nil
+	}
+	return err
+}
+
 // setDirectDisplay claims (on) or releases (off) the screen's USB interface.
 // On fails while Push3 is running. Off returns only after release, so the
 // caller can start Push3 right after.
@@ -316,7 +331,7 @@ func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
 		return
 	}
-	if err := shm.WriteFrame(frame); err != nil {
+	if err := shmWriteFrame(frame); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
