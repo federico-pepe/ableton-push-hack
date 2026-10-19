@@ -77,6 +77,29 @@ func (c *Client) Subscribe(src Addr) error {
 	return nil
 }
 
+// SetName sets the client name shown in /proc/asound/seq/clients and
+// aconnect (default "Client-<id>"). Live's port list on Push shows the PORT
+// name, so this is for diagnosis, not for the user. Longer names are cut
+// at 63 bytes.
+func (c *Client) SetName(name string) error {
+	info := make([]byte, ClientInfoSize)
+	binary.LittleEndian.PutUint32(info[0:], uint32(c.id))
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(c.fd),
+		IoctlGetClientInfo, uintptr(unsafe.Pointer(&info[0]))); errno != 0 {
+		return fmt.Errorf("GET_CLIENT_INFO ioctl: %w", errno)
+	}
+	field := info[ClientInfoOffName : ClientInfoOffName+ClientInfoNameLen]
+	for i := range field {
+		field[i] = 0
+	}
+	copy(field[:ClientInfoNameLen-1], name)
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(c.fd),
+		IoctlSetClientInfo, uintptr(unsafe.Pointer(&info[0]))); errno != 0 {
+		return fmt.Errorf("SET_CLIENT_INFO ioctl: %w", errno)
+	}
+	return nil
+}
+
 // Addr returns this client's own client:port address.
 func (c *Client) Addr() Addr { return Addr{Client: c.id, Port: c.port} }
 

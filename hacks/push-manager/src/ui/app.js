@@ -2000,7 +2000,8 @@ async function loadUITabs() {
 }
 
 async function saveUITabs() {
-  const body = UITABS.entries.map(e => ({id: e.id, shadow: !!e.shadow, web: !!e.web}));
+  const body = UITABS.entries.map(e => ({id: e.id, shadow: !!e.shadow, web: !!e.web,
+    star: !!e.star, super: !!e.super}));
   $('tabs-msg').textContent = 'Saving…';
   try {
     UITABS = await api('POST', '/api/ui/tabs', body);
@@ -2047,8 +2048,10 @@ function renderUITabs() {
     const clash = (e.port_conflict || []).length
       ? `port ${e.port} also claimed by ${e.port_conflict.map(esc).join(', ')}`
       : '';
+    // In Push Hack Home: an app (hack.json "surface"), or a Shadow tab.
+    const inHome = e.has_app || (e.has_shadow && e.shadow && e.shadow_available);
     const sub = [
-      e.source === 'builtin' ? 'built in' : 'hack',
+      e.source === 'builtin' ? 'built in' : (e.has_app ? 'app' : 'hack'),
       e.requires && !e.shadow_available ? `needs ${esc(e.requires)}` : '',
       over ? `over the ${max}-tab limit` : '',
       clash ? `<span class="tabs-clash">${clash}</span>` : '',
@@ -2063,11 +2066,29 @@ function renderUITabs() {
       <span class="tabs-name">${esc(e.label || e.id)}<br><span class="tabs-sub">${sub}</span></span>
       ${sw('shadow', e.has_shadow, e.shadow)}
       ${sw('web', e.has_web, e.web)}
+      ${sw('star', inHome, e.star)}
+      ${inHome
+        ? `<label class="tabs-sw"><input type="radio" name="tabs-super" data-i="${i}" data-k="super"` +
+          `${e.super ? ' checked' : ''}>superstar</label>`
+        : '<label class="tabs-sw na">superstar —</label>'}
     </div>`;
   }).join('');
   $('tabs-list').querySelectorAll('input[type=checkbox]').forEach(cb => {
     cb.onchange = () => {
-      UITABS.entries[+cb.dataset.i][cb.dataset.k] = cb.checked;
+      const e = UITABS.entries[+cb.dataset.i];
+      e[cb.dataset.k] = cb.checked;
+      if (cb.dataset.k === 'star' && !cb.checked) e.super = false; // a superstar is starred
+      uiTabsDirty = true;
+      renderUITabs();
+    };
+  });
+  // One superstar: choosing one clears the others, and stars it. Clicking
+  // the chosen one again clears it.
+  $('tabs-list').querySelectorAll('input[type=radio]').forEach(rb => {
+    rb.onclick = () => {
+      const i = +rb.dataset.i, was = UITABS.entries[i].super;
+      UITABS.entries.forEach((e, k) => { e.super = k === i && !was; });
+      if (!was) UITABS.entries[i].star = true;
       uiTabsDirty = true;
       renderUITabs();
     };

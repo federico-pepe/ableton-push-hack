@@ -76,6 +76,36 @@
       "github_repo": "itsrave/push-hack-screensaver",
       "default_branch": "main",
       "asset_name": "screensaver.tar.gz"
+    },
+    {
+      "id": "mixxx",
+      "name": "Mixxx Mode",
+      "description": "DJ with Mixxx on Push 3: two decks on the pads, buttons and encoders, waveforms on the Push screen, Rekordbox USB sticks. Switching to Mixxx mode stops Push3 and Live; hold SETTINGS to go back. Requires push-manager (it drives the screen while Push3 is stopped). Large download (about 170 MB, Mixxx is bundled).",
+      "author": "itsrave",
+      "homepage": "https://github.com/itsrave/push-mixxx-mode",
+      "github_repo": "itsrave/push-mixxx-mode",
+      "default_branch": "main",
+      "asset_name": "mixxx.tar.gz"
+    },
+    {
+      "id": "stacks",
+      "name": "Stacks",
+      "description": "Chord-progression tool: write, voice and play chord progressions into Live from Push's screen, pads and buttons.",
+      "author": "rgeissen",
+      "homepage": "https://github.com/rgeissen/push-hack-stacks",
+      "github_repo": "rgeissen/push-hack-stacks",
+      "default_branch": "main",
+      "asset_name": "stacks.tar.gz"
+    },
+    {
+      "id": "riffs",
+      "name": "Riffs",
+      "description": "Riff generator and performance sequencer: six engines with 32 flavors write riffs over chord loops into six lanes, played from a block grid on Push's screen, pads and buttons. Opens from Push Hack Home (Shift + Help).",
+      "author": "rgeissen",
+      "homepage": "https://github.com/rgeissen/push-hack-riffs",
+      "github_repo": "rgeissen/push-hack-riffs",
+      "default_branch": "main",
+      "asset_name": "riffs.tar.gz"
     }
   ]
 }

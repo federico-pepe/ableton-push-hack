@@ -7,20 +7,52 @@ between minor versions).
 
 ## [Unreleased]
 
-### Fixed
-
-- `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
-
-### Changed
-
-- The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
-
 ### Added
 
+- push-manager can drive the Push screen over USB while Push3 is stopped. `POST /api/display/direct {"enabled": true}` claims the screen. From then on every frame push-manager writes (`/api/display/image`, Shadow UI, OSD) goes straight to the screen. `{"enabled": false}` releases it. Turn it off before you start Push3 again. It fails with 409 while Push3 is running. `GET /api/display/status` now also returns `direct`. This is the first part of a Mixxx mode (see `plans/2026-10-12-mixxx-mode.md`). Tested on device.
+- After an install, update or remove from push-manager's CATALOG tab, the Shadow UI tabs update right away. A new hack's tab shows up, and a removed hack's tab goes away, without closing and opening the Shadow UI.
+- push-manager's CATALOG tab shows a download bar with MB done and total while it installs a hack. push-catalog serves the numbers at `GET /api/progress`.
+- Catalog: Mixxx Mode (`itsrave/push-mixxx-mode`). DJ with Mixxx on the Push, with the screen driven through push-manager's direct mode above.
+- `core/display`: `USB` (`OpenUSB`/`Set`/`Close`) sends frames to the screen's USB interface, and `ToWire` applies the screen's XOR pattern. Needs a `core/v*` tag before consumers outside this repo get it.
+- **Push Hack Home**, one switcher for every hack that uses Push's screen, buttons and pads, and for the Shadow UI's tools. **Shift + Help** opens it from anywhere; **Shift + Help, Help** (hold Shift, tap Help twice) opens the superstar entry directly, and goes back to Live from inside it. Home shows eight entries a page under the top buttons, the starred ones first; the pad columns open them too. STAR stars an entry, Shift + STAR makes it the superstar; both are also on the web UI's Display → Tabs page. push-manager now owns the surface and lends it to one app at a time: while Home or an app owns it, `/api/display/mode`, `/api/midi/filter` and frames from anyone but the owning app get 409, and push-manager's own chords do nothing. An app that stops while it owns the surface gives it back to Home, which says so; pressing a stopped app starts it through push-catalog, and it opens when it connects. A hack becomes an app by declaring `"surface": {"label", "color"}` in `hack.json` and holding a session (`GET /api/surface/session`, server-sent events). `core/pmclient`: `Client.App`, `RunSurface`, `SurfaceStatus`, `SurfaceInput`, `SurfaceLeave`, `SurfaceOpen`, `HasSwitcher`. Needs a `core/v*` tag before consumers get it. Design: `plans/2026-10-17-push-hack-switcher.md`.
+- `push-catalog`: a hack that declares only `surface` gets a port, like one with `web_ui` or `shadow_ui`. push-manager lists only hacks with a port.
+- `push-manager`: `/api/live/listen` turns a listen track on and off: a silent MIDI track whose input follows the selected track and whose output is a hack's port, so a hack gets the notes played on Push's pads, which no MIDI input carries. `core/pmclient`: `LiveListen`. Needs Browser Bridge 0.4 or later.
+- `push-manager`: `GET /api/live/scale`, the Set's scale (the one Push's Scale button edits): root, name, intervals and Scale Mode. `core/pmclient`: `LiveScale`. Needs Browser Bridge 0.3 or later (`get_scale`).
+- Support for hacks that own the whole Push surface:
+  - `push-display`: buttons listed in the new `pass_cc` bitmap still reach Live while MIDI intercept is on (Play 85 and Record 86, for example). Push3's own LED writes are held back while intercept is on, so a hack keeps its pad colours.
+  - `push-manager`: `/api/midi/filter` takes `pass_cc`. Enabling intercept through the API makes push-manager repaint Live's LEDs when it goes off. New `/api/display/frame` takes one raw frame: about 1 ms a frame on device, against about 11 ms for a PNG.
+  - `core/display`: `EncodeFrame` (no allocation, 13 times faster than the general path) and `Shm.WriteFrame`. `ToBGR565` uses the fast path for 960x160 NRGBA images.
+  - `core/pmclient`: `PushFrame`, `SetMidiFilterPass`, and `Status.Mode`. `MidiFilterStatus` tells whether push-manager has these features, so a hack can ask the user to update Push Hack instead of failing silently.
+  - `core/push3`: `LEDButtons`, every button with an LED (push-manager's list plus the 8 scene buttons), and `IsRGBButton`, so a hack can set all of them.
+  - `docs/push3-internals.md`: how Push3 writes LEDs, taking the surface on a button release, and restarting Push3 safely.
+- `core/alsaseq`: raw MIDI support for ported tools. `EncodeMIDI` and `DecodeMIDI` turn raw MIDI bytes (notes, CC, program change, pressure, pitch bend, clock, start, continue, stop, song position) into sequencer events and back. `SendMIDI` sends raw bytes. `Subscribers` is the address for every port connected to yours. `SetName` names the client. New tests check the event layouts, the ioctl numbers, and the parser against a real capture from a Push 3 (`testdata/seq_clients_device_v323.txt`).
+- `docs/push3-internals.md`: how a hack sends MIDI into Live and gets clock out of Live, tested on a Push 3. Live picks up a new port by itself, and a Sync switch in Push's MIDI settings sends clock to a hack's port.
+- Catalog: Riffs, a riff generator and performance sequencer: six engines with 32 flavors write riffs over chord loops into six lanes, played from a block grid on Push's screen, pads and buttons. It opens from Push Hack Home (Shift + Help), so it needs push-manager and push-display with Push Hack Home.
+- Catalog: Stacks, a chord-progression tool ported from Ableton Move. It uses Push's screen, pads and buttons, and plays into Live. It needs push-manager and push-display with pass-through buttons and raw frames.
+- `catalog/PUBLISHING.md`: how to build a hack that has C code (cgo) as a static binary.
 - `docs/push3-led-colors.md`: addendum on pad versus screen colors. It covers the incomplete named palette, the measured screen RGB for the 26 primary colors and the dim pad shades.
 - `scripts/VST/je8086-syx-to-vstpreset.py` and `scripts/VST/dexed-syx-to-vstpreset.py` turn JE8086 performance dumps and Dexed cartridges into `.vstpreset` files, one per performance or voice. Both rebuild a preset the plugin saved byte for byte. The JE8086 converter also writes the 128 single patches with `--patch-template`. Tested on device: three JE8086 performances, three JE8086 patches and four Dexed voices sound like the originals.
 - `scripts/VST/surge-fxp-to-vstpreset.py` converts Surge XT `.fxp` patches into `.vstpreset` files for the Push User Library, so the factory patches load from the PLUGINS tab. Tested on device with four factory patches; all 637 convert.
 - `docs/vst3-on-push3.md` now covers plugins that need data files, with JE8086 (JP-8000 emulation) as the tested example: where the firmware goes on Push, and that the folder name is case-sensitive.
+
+### Fixed
+
+- `push-catalog`: an install or update could leave a hack stopped. The service's `stop` sent the signal and returned at once, so a hack that takes more than a second to exit still held its port when the new one started, and the new one quit with "address already in use". `stop` now waits for the hack to exit (up to 5 seconds, then `SIGKILL`). Found on a Push 3 with Stacks, which saves its state on exit. `--self-test` checks it. Hacks installed before this keep the old service script until they are reinstalled or updated.
+- A hack's Shadow UI tab works again after the hack is removed and installed again through the catalog. The catalog gives it a new port, and the Shadow UI kept asking the old one until push-manager restarted.
+- An install from push-manager's CATALOG tab no longer fails after 3 minutes. Large hacks (Mixxx Mode is about 170 MB) take longer over Wi-Fi. The limit is now 30 minutes.
+- push-manager no longer interferes with another app that owns the screen in direct mode. While direct mode is on, the Shift+Set and Shift+Settings chords do nothing, and the Shadow UI does not open. Before, a chord in Mixxx mode cleared every LED, drew an OSD over Mixxx and opened the Shadow UI. Turning direct mode on also closes an open Shadow UI and turns MIDI intercept off, so Push3 gets its MIDI again after you switch back. This lets a hack's Shadow UI tab start an app that takes over the screen.
+- Two hacks could react to one button combination: Riffs opened with Shift + Set, which is also push-manager's `browser_open` chord, so one press started the Shadow UI and Riffs at once, both drawing on the screen (device log, 2026-10-17). Push Hack Home (below) gives every app one way in, and push-manager's chords no longer fire while an app owns the surface.
+- A hack that owned the surface could leave Push unusable. With its screen showing and the MIDI intercept on, Live's questions on the power button ("save changes?") could be neither seen nor answered, so only holding the power button turned Push off. The intercept flag then survived into the next start, and Live's "recover your work?" could not be answered either. push-manager now clears the intercept and the display at its start, gives both back to Push3 as soon as the power button is pressed (it watches `/data/settings/.shutdown`, which `power.sh` writes), and refuses a hack's takeover until the device is off. Only a marker that appears or changes counts as a press. At start the launcher deletes the last shutdown's marker, and that deletion is not a press: if it were, every app would be refused until push-manager restarted.
+- MIDI intercept could do nothing at all. push-manager runs as root, and when it created `midiflt` before Push3 did, the file was `root`, mode 0644, and the hook (running as `ableton`) could not open it. push-manager now keeps the file at mode 0666, owned like its folder, and the hook retries the open every 2 seconds.
+- `push-manager`: the comment on `/api/display/image` said it sets takeover mode; it does not.
+- `core/alsaseq`: `EvStop` and `EvContinue` were swapped. The kernel uses 31 for Continue and 32 for Stop, so a hack that follows Live's MIDI clock read Stop as Continue. Checked against the kernel header and on a Push 3, where Live's Stop arrives as type 32. A new test keeps all event type numbers equal to the kernel's. Needs a `core/v*` tag before consumers get it.
+- `push-display`: the hook log (`/data/push-hack/logs/push-hook.log`) no longer grows without bound. Only Push3 logs that the hook loaded (each `amidi` or `sh` child used to add a line), only the first 3 display frames are logged, and the log moves to `push-hook.log.1` once it passes 1 MiB. Needs a rebuilt `push_hook.so`.
+- `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
+- push-manager: `POST /api/display/frame` also reaches the screen in direct mode (it only wrote shm and answered 503 before). Shift+Help and Home's pad columns do nothing while direct mode is on, so Push Hack Home cannot open over Mixxx mode.
+
+### Changed
+
+- The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
 
 ## [0.1.12-alpha] - 2026-10-04
 

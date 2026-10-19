@@ -24,16 +24,21 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/copy` | Copy file or directory tree. JSON body: `{"src": "/abs/path", "dst": "/abs/path"}`. Both paths must be within allowed roots. Destination must not already exist. Chowns result to match destination directory owner. |
 | `POST` | `/api/unmount?path=<path>` | Unmount a removable drive. Path must be directly under `/run/media/`. Calls `syscall.Unmount` then removes the udev lock file (`/tmp/.automount-<name>`) so the drive can be re-mounted on next plug. |
 | `GET` | `/api/stats` | System stats: CPU %, memory, disk, IP addresses, battery, uptime, hotspot password |
-| `GET` | `/api/display/status` | Display hook status: `{connected, mode, frame_seq, width, height}` |
+| `GET` | `/api/display/status` | Display hook status: `{connected, direct, mode, frame_seq, width, height}`. `connected` is also true while `direct` is on. |
+| `POST` | `/api/display/direct` | JSON body `{"enabled": true\|false}`. `true` claims the screen over USB, so push-manager drives it without Push3. Every frame push-manager writes then goes to the screen, whatever `mode` is. Only works while Push3 is stopped (409 otherwise). Set `false` before you start Push3 again: the call returns after the screen is released. |
 | `POST` | `/api/display/mode` | Set display mode. JSON body: `{"mode": 0\|1\|2}` (0=passthrough, 1=bar overlay, 2=custom). Entering mode 2 clears framebuf to black — no stale pixels from a previous session. |
 | `POST` | `/api/display/image` | Upload image to display. Multipart form field `image` (PNG or JPEG). Scales to 960×160. Does **not** auto-set mode — caller must set mode=2 explicitly before sending frames. |
+| `GET` | `/api/display/status` | Display hook status: `{connected, mode, frame_seq, width, height}` |
+| `POST` | `/api/display/mode` | Set display mode. JSON body: `{"mode": 0\|1\|2}` (0=passthrough, 1=bar overlay, 2=custom). Entering mode 2 clears framebuf to black — no stale pixels from a previous session. 409 while Push Hack Home or an app owns the surface, unless the call comes from the owning app (header `X-Push-Hack-App`). |
+| `POST` | `/api/display/image` | Upload image to display. Multipart form field `image` (PNG or JPEG). Scales to 960×160. Does **not** auto-set mode — caller must set mode=2 explicitly before sending frames. 409 unless the caller may draw: without `X-Push-Hack-App` only while nothing of Push Hack Home owns the surface, with it only while that app owns it. |
+| `POST` | `/api/display/frame` | Send one raw frame, `application/octet-stream`: exactly 327680 bytes of BGR565 little-endian at the framebuffer's 1024-pixel stride (`core/display.EncodeFrame`, `pmclient.PushFrame`). No decoding: about 1 ms a frame on device, against about 11 ms for a PNG through `/image`. Does not change the mode. The same 409 rule as `/image`: only the owner's frames reach the screen. |
 | `GET` | `/api/display/screenshot` | PNG of the current framebuf (960×160). Reads shm back (`shmReadFrame`) and encodes via `bgr565ToImage`+`png.Encode`. Only reflects **push-manager-owned** frames (Shadow UI, OSD, image upload) — the native Ableton UI is never copied into shm in passthrough, so it can't be captured. `X-Display-Mode` response header (`0`/`1`/`2`) lets the client warn when not in takeover (frame is stale). `Content-Disposition: attachment; filename="push-screenshot.png"`. Returns 503 if the hook isn't connected. |
 | `GET` | `/api/assets/<path>` | Proxy Push's own PNG assets from `/opt/push3/products/push3/assets/Images/`. Cached 24h. |
 | `GET` | `/api/status` | Health check + config summary |
 | `GET` | `/api/midi/events?n=<N>` | Return last N MIDI events from ring buffer (default 50). JSON: `{connected, total, write_idx, events[]}` |
 | `GET` | `/api/midi/stream` | SSE stream of live MIDI events. Sends `event: connected` on open, then `data: {json}` per event. |
-| `POST` | `/api/midi/filter` | Set MIDI intercept. JSON body: `{"enabled": true\|false}`. Writes to `midiflt` shm file read by push_hook.so. When enabled, the `snd_seq_event_input` hook inside Push3's process neutralizes Note On/Off, CC, Poly Pressure, Program Change, Channel Pressure, and Pitch Bend events (types 6–13) before RtMidi reads them — Live sees no input. SysEx and Active Sensing always pass through. When intercept goes off after the LEDs were cleared (Shadow UI, chord), push-manager repaints Push's button and pad LEDs by sending Shift and a pad-mode change to Push3's own MIDI input (see `docs/push3-internals.md`, "LED state after intercept OFF"). |
-| `GET` | `/api/midi/filter/status` | Returns `{"enabled": true\|false}` — current MIDI intercept state. |
+| `POST` | `/api/midi/filter` | Set MIDI intercept (409 while Push Hack Home or an app owns the surface, unless from the owning app). JSON body: `{"enabled": true\|false, "pass_cc": [85, 86]}`. `pass_cc` (CC 0-87) lists buttons that still reach Live while intercept is on; it is replaced on every enable and cleared on disable. Enabling through this API also means a hack paints the LEDs, so push-manager repaints Live's LEDs when the filter goes off. Writes to `midiflt` shm file read by push_hook.so. When enabled, the `snd_seq_event_input` hook inside Push3's process neutralizes Note On/Off, CC, Poly Pressure, Program Change, Channel Pressure, and Pitch Bend events (types 6–13) before RtMidi reads them — Live sees no input. SysEx and Active Sensing always pass through. When intercept goes off after the LEDs were cleared (Shadow UI, chord), push-manager repaints Push's button and pad LEDs by sending Shift and a pad-mode change to Push3's own MIDI input (see `docs/push3-internals.md`, "LED state after intercept OFF"). |
+| `GET` | `/api/midi/filter/status` | Returns `{"enabled": true\|false, "available": bool, "pass_cc": [...]}` — current MIDI intercept state. |
 | `GET` | `/api/midi/ports` | Returns array of ALSA sequencer ports: `[{client, port, name, active, writable}]`. Parses `/proc/asound/seq/clients`. Default lists **readable** ports (for input subscription); `?writable=1` lists **writable** ports (for remap output destinations). |
 | `POST` | `/api/midi/subscribe` | Switch subscription target. Body: `{"client": 16, "port": 0}`. Closes current seq fd to interrupt blocked read; goroutine restarts with new target. |
 | `GET` | `/api/midi/chords` | List registered hardware chord bindings: `[{name, ccs, description}]`. |
@@ -50,10 +55,19 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/live/load` | Load a preset onto Live's selected track. Body `{"name":"…","category":"Instruments"}`. Sends `load:<root>:<name>` to the PushHackBrowser Remote Script over `127.0.0.1:7704`. Returns `{ok}` or `{ok:false, error}`. Requires the Browser Bridge hack installed + activated in Live. With `"type":"plugin"` it loads a VST3 plugin: `name` is the plugin and the optional `preset` is one of its presets (sends `load_plugin:<plugin>[:<preset>]`). `{ok:true}` only means the script got the command. |
 | `GET` | `/api/live/plugins` | Plugins Live has scanned: `{ok, plugins:[{vendor,name,presets:[…]}]}`. Sends `list_plugins`. Needs a Browser Bridge version with plugin support. |
 | `GET` | `/api/live/tempo` | Returns the current Live song tempo. Sends `get_tempo` to the PushHackBrowser Remote Script and returns `{ok:true, bpm:124.0}`. Requires Browser Bridge activated in Live. Returns `{ok:false, error}` if the Remote Script is unreachable. |
+| `GET` | `/api/live/scale` | The Set's scale, the one Push's Scale button edits: `{ok:true, supported:true, root:9, name:"Minor", intervals:[0,2,3,5,7,8,10], mode:true}` (`root` 0-11 with 0 = C). Sends `get_scale` to PushHackBrowser (0.3 or later). `supported` is false on a Live without the scale API. |
+| `GET`/`POST` | `/api/live/listen` | The listen track: a silent MIDI track whose input follows the selected track and whose output is a hack's MIDI port, so the hack gets the notes played on Push's pads. `POST {on:true, port:"Stacks Listen"}` makes or finds it (`listen_on`), `{on:false}` stops it (`listen_off`), `GET` reports it. Replies with Browser Bridge's JSON; on failure `ok:false`, `error` and the outputs Live offers. Needs Browser Bridge 0.4 or later. |
 | `GET` | `/api/live/playing` | Returns `{ok:true, playing:true\|false}` — whether Live's transport is currently running. Sends `get_playing` to PushHackBrowser. |
 | `POST` | `/api/live/play` | Starts Live's transport. Sends `play` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `POST` | `/api/live/stop` | Stops Live's transport. Sends `stop` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
 | `GET` | `/api/presets/facets` | Distinct facet values for the Browser filter UI: `{categories, devices, sources, tags}`. |
+| `GET` | `/api/surface` | Push Hack Home: who owns the surface (`owner`: `outside`, `home` or `app`), the app that owns it, the last app, and Home's `entries` in order (`ID`, `Label`, `App`, `Color`, `Star`, `Super`, `Running`, `Status`...). A 404 here means a push-manager without Home. See [Push Hack Home](#push-hack-home-the-switcher). |
+| `GET` | `/api/surface/session?app=<id>&pass_cc=<cc,...>` | An app's session: server-sent events kept open while the app runs. Events: `ready`, `focus` (`{"input": true}`: the app owns the surface), `blur` (it does not), and a `: ping` comment every second. `pass_cc` are the buttons that still reach Live while the app owns the surface. 404 for an id that is not an installed, enabled hack with `surface` in its `hack.json`. A new session for the same app replaces the old one. |
+| `POST` | `/api/surface/status` | `{"app", "lines": ["...", "..."]}`: the two lines on the app's card in Home (ASCII, about 14 characters show). 409 without a session. |
+| `POST` | `/api/surface/input` | `{"app", "input": false}`: the owning app keeps the screen and gives the pads and buttons to Live (Stacks' listen mode); `true` takes them back. 409 if the app does not own the surface. |
+| `POST` | `/api/surface/leave` | `{"app", "to": "live"\|"home"}`: the owning app gives the surface up (its own LIVE button). |
+| `POST` | `/api/surface/open` | `{"id"}`: open an entry as if chosen in Home (a hack's web panel). 409 while another app owns the surface, or after the power button. |
+| `POST` | `/api/surface/star` | `{"id", "star": bool, "super": bool}`: star an entry, or make it the superstar (only one; a superstar is always starred). Saved in `ui_tabs.json`. |
 | `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?, enabled}]` sorted by `id`. `enabled` is computed, not read from `hack.json` — it mirrors Push Hack Catalog's own boot-autostart check (see below), not "currently running". The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
 | `GET` | `/api/ui/tabs` | The one ordered list behind both navigations: `{max: 8, entries: [{id, label, source, has_shadow, shadow, shadow_available, requires, has_web, web, web_label, web_path, port}]}`. Built-in Shadow panels plus every installed hack declaring `web_ui` or `shadow_ui`, with the user's saved order and switches applied. |
 | `POST` | `/api/ui/tabs` | Save that list. Body is the new order: `[{id, shadow, web}]`. Persisted to `<hackdir>/ui_tabs.json` and applied to a running Shadow UI immediately (panels for tabs that survive the change keep their state). Returns the same shape as `GET`. |
@@ -219,6 +233,15 @@ gets used on a phone, next to the hardware.
   no dead menu-bar link, no Shadow tab that never answers. Re-enabling it
   brings the entry back on the next poll with its saved order/switches
   untouched; it doesn't reset to "just installed".
+- Every entry that shows in [Push Hack Home](#push-hack-home-the-switcher)
+  (an app, or a switched-on Shadow tab) also has a **star** switch and a
+  **superstar** choice. Starred entries come first in Home; the superstar
+  opens from anywhere with Shift + Help, Help. There is one superstar:
+  choosing one clears the others, and choosing it again clears it. Home's
+  STAR button sets the same switches. Both are saved in `ui_tabs.json` as
+  `star` and `super`.
+- A hack that declares `surface` (an app of Push Hack Home) is listed here
+  too, marked "app", even with no `web_ui` or `shadow_ui`.
 
 ### Shadow UI tabs from other hacks
 
@@ -445,6 +468,138 @@ ALSA port is created**.
 
 ---
 
+## Push Hack Home (the switcher)
+
+Push Hack Home is one place to open every hack that uses Push's screen,
+buttons and pads (an **app**, such as Stacks or Riffs), and every Shadow
+UI panel (a **tool**: Files, Stats, MIDI, Browser, Plugins, Catalog, and
+any hack's Shadow UI tab). No hack needs a button combination of its own,
+so two hacks can never react to the same press.
+
+The design is `plans/2026-10-17-push-hack-switcher.md`. The code is
+`src/surface.go` (who owns the surface), `src/home.go` (the screen, pads and
+buttons) and `src/surface_io.go` (the gesture, the device side and the API).
+
+### Gestures
+
+| Gesture | From Live | From Home | From a tool | From an app |
+|---|---|---|---|---|
+| **Shift + Help** | Home | Live | Home | Home |
+| **Shift + Help, Help** | the superstar | the superstar | the superstar | the superstar; from the superstar itself: Live |
+
+Shift + Help, Help means: hold Shift, tap Help twice, let go of Shift.
+Both gestures act when you let go of Shift. That is the safe moment: Live
+has seen Shift go down and up, so it does not think Shift is still held.
+If you press another button while holding Shift, the gesture does not
+fire: that combination is the other button's own shortcut.
+
+When Home takes the buttons from Live, push-manager first tells Push3
+that Shift and Help are up (through Push3's own MIDI input) and waits
+120 ms before it switches the intercept on. Without this, the intercept
+could swallow your Shift release before Push3 read it: Live then thought
+Shift was still held, and Play inside an app arrived as Shift + Play,
+which does nothing.
+
+### Home
+
+Home shows eight entries a page, one in each screen column under its top
+button. Each card has a colour stripe, the name, APP or TOOL, two status
+lines (an app sends its own, for example the flavor and chords in Riffs),
+and an app's state: RUNNING, PRESS TO START or STARTING. A ringed star
+marks the superstar, a star the other favorites, LAST the app you came
+from.
+
+The order is: the superstar, the starred entries, then the rest in your
+own order (the same order as the Shadow UI tabs, set on the web UI's
+Display → Tabs page). So page 1 is always full, and your favorites are
+the first presses.
+
+| Control | In Home |
+|---|---|
+| Top button 1-8 | Open the entry in that column. |
+| Pad column 1-8 | Open the entry in that column. Each column is lit in its entry's colour (dim while the app is stopped); the chosen entry's top pad is white. |
+| Jog | Turn to choose, press to open. |
+| Page < > | The next or previous page. Lit when there is one. |
+| Bottom 1, `< LAST` | Back to the app you came from. |
+| Bottom 2, `STAR` | Star or unstar the chosen entry. Lit amber while it is starred. |
+| Shift + `STAR` | Make the chosen entry the superstar. Again: no superstar. There is only one. |
+| Bottom 8, `LIVE` | Back to Live. |
+
+Opening a **tool** opens the Shadow UI on that panel. Opening an **app**
+lends it the surface: push-manager switches the display and the MIDI
+intercept (with the buttons the app lets through to Live, such as Play and
+Record), and the app draws until you leave it.
+
+### When an app stops or does not start
+
+- An app that stops while it owns the surface (a crash, a restart) gives
+  it back at once: Home opens, the card says STOPPED, and the bottom line
+  says "STACKS STOPPED -- PRESS IT TO START AGAIN".
+- Pressing a stopped app asks Push Hack Catalog to start it
+  (`/api/enable`, which restarts its service). The card says STARTING...,
+  and the app opens by itself when it connects. After 15 seconds without
+  it, Home says the app did not start.
+- The power button gives the surface to Live, as it always did
+  (`release.go`). After it, Home does not open again.
+- push-manager gives the surface to Live when it starts. Apps connect
+  again by themselves.
+
+### Who owns the surface
+
+At any moment exactly one of these owns the screen, buttons and pads:
+
+| Owner | Screen | MIDI intercept | Draws | Gets the presses |
+|---|---|---|---|---|
+| Live (outside) | Push3 | off | Push3 | Live |
+| a tool (outside) | taken | on | push-manager's Shadow UI | push-manager |
+| Home | taken | on | push-manager | push-manager |
+| an app | taken | on, with its pass-through buttons | the app | the app; Live gets the pass-through buttons |
+| an app, screen only | taken | off | the app | Live |
+
+"Outside" is everything as it was before Home: Live, the Shadow UI, or an
+older hack that takes the surface itself through `/api/display/mode` and
+`/api/midi/filter`. Those calls, and frames without `X-Push-Hack-App`, work
+only while the surface is outside. While Home or an app owns it they get
+409, so nothing else can draw over it. From Home to an app and back, the
+intercept stays on: Live never sees a press in between.
+
+The tests in `src/surface_test.go` hold these rules after every event of
+10,000 random sequences (gestures, sessions opening and closing, button
+presses, legacy calls, the power button): exactly one owner; the intercept
+and the screen as the table says; only the owner's frames reach the
+screen; an owning app's session ending opens Home; after the power button
+only Live; inside an app only Shift + Help does anything in push-manager.
+
+### Making a hack an app
+
+1. Declare it in the hack's `hack.json`:
+
+   ```json
+   "surface": { "label": "RIFFS", "color": "sky" }
+   ```
+
+   `label` is ASCII, at most 7 letters for the large type. `color` is a
+   name from Push's palette (`core/push3` `NamedColors`). See
+   [catalog/schema.md](../../catalog/schema.md).
+2. Hold a session and draw only between focus and blur, with
+   `core/pmclient`:
+
+   ```go
+   pm := pmclient.New("http://127.0.0.1:7701")
+   pm.App = "riffs" // frames and calls now carry X-Push-Hack-App
+   go pm.RunSurface(ctx, passToLive, pmclient.SurfaceHandler{
+       OnFocus: func() { active.Store(true) },  // draw, act on presses
+       OnBlur:  func() { active.Store(false) }, // stop both
+   })
+   pm.SurfaceStatus("FUNK", "EMIN G")  // the card's two lines
+   pm.SurfaceLeave("live")             // the app's own LIVE button
+   ```
+
+   An app does not open itself with a button combination, and does not
+   call `/api/display/mode` or `/api/midi/filter`: push-manager does both.
+   `RunSurface` returns `pmclient.ErrNoSwitcher` on an older push-manager,
+   so a hack can fall back to taking the surface itself (Stacks does).
+
 ## OSD (On-Screen Display)
 
 Push Manager includes an OSD subsystem that briefly displays text on the Push 3 screen in response to hardware chord actions, then restores the previous display mode.
@@ -466,6 +621,11 @@ Uses `golang.org/x/image/font/basicfont.Face7x13` (7×13 px, pure Go, no CGo). E
 | Chord | OSD text |
 |-------|----------|
 | CC 49 + CC 30 (held simultaneously) | `MIDI Intercept ON` / `MIDI Intercept OFF` |
+
+These chords work only while Live or the Shadow UI has the surface. While
+Push Hack Home or an app owns it they do nothing, so they cannot open the
+Shadow UI over an app. Shift + Help is not a chord: see
+[Push Hack Home](#push-hack-home-the-switcher).
 
 ### Adding OSD to new chord actions
 

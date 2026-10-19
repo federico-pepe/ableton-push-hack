@@ -19,6 +19,15 @@ const (
 	IoctlClientID      = uintptr(0x80045301) // _IOR('S',0x01, int32=4)
 	IoctlCreatePort    = uintptr(0xC0A85320) // _IOWR('S',0x20, portInfo=168)
 	IoctlSubscribePort = uintptr(0x40505330) // _IOW('S', 0x30, subscribe=80)
+	IoctlGetClientInfo = uintptr(0xC0BC5310) // _IOWR('S',0x10, clientInfo=188)
+	IoctlSetClientInfo = uintptr(0x40BC5311) // _IOW('S', 0x11, clientInfo=188)
+
+	// snd_seq_client_info (188 bytes): 0: client (int32), 4: type (int32),
+	// 8: name[64], then filters/counters/reserved. Only name is written;
+	// the rest round-trips from GET_CLIENT_INFO. Size checked on device.
+	ClientInfoOffName = 8
+	ClientInfoNameLen = 64
+	ClientInfoSize    = 188
 
 	// snd_seq_port_info byte offsets (168 bytes total, x86-64):
 	//   0:  addr.client (1B), addr.port (1B)
@@ -46,6 +55,11 @@ const (
 
 	// Direct-delivery queue: bypass sequencer queue, deliver immediately.
 	QueueDirect = byte(253) // SNDRV_SEQ_QUEUE_DIRECT
+
+	// Destination "every port subscribed to us". Live connects itself to a
+	// new readable port within ~20s, so a hack sends here, not to an address.
+	AddrSubscribers = byte(254) // SNDRV_SEQ_ADDRESS_SUBSCRIBERS
+	AddrUnknown     = byte(253) // SNDRV_SEQ_ADDRESS_UNKNOWN
 
 	// Port type bits
 	PortTypeMidi = uint32(1 << 1)  // MIDI generic
@@ -81,14 +95,15 @@ const (
 	// ALSA sequencer event types — union of all three hacks' subsets.
 	EvNoteOn     = uint8(6)
 	EvNoteOff    = uint8(7)
-	EvKeyPress   = uint8(8)   // poly aftertouch
-	EvController = uint8(10)  // CC, pitch bend (all control events)
+	EvKeyPress   = uint8(8)  // poly aftertouch
+	EvController = uint8(10) // CC, pitch bend (all control events)
 	EvPgmChange  = uint8(11)
-	EvChanPress  = uint8(12)  // channel aftertouch
+	EvChanPress  = uint8(12) // channel aftertouch
 	EvPitchBend  = uint8(13)
 	EvStart      = uint8(30)
-	EvStop       = uint8(31)
-	EvContinue   = uint8(32)
+	EvContinue   = uint8(31)
+	EvStop       = uint8(32) // was 31 until 2026-10-16; Live's Stop arrives as 32 on device
+	EvSongPos    = uint8(33) // song position pointer
 	EvClock      = uint8(36)
 	EvSensing    = uint8(40)  // active sensing
 	EvSysEx      = uint8(130) // variable length
@@ -96,5 +111,5 @@ const (
 	// Push 3 ALSA seq address defaults (kernel client 16 = first sound card).
 	// Shift if external MIDI devices are connected at boot — use port selector.
 	Push3ClientDefault = byte(16)
-	Push3PortDefault    = byte(0) // "Ableton Push 3 Live Port"
+	Push3PortDefault   = byte(0) // "Ableton Push 3 Live Port"
 )

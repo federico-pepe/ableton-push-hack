@@ -139,6 +139,19 @@ server which is a normal, separate, restartable process. The interface is
 plain HTTP, called like any other client: `POST /api/display/mode` to
 enter/exit takeover, `POST /api/display/image` to push frames.
 
+**A hack that takes the whole surface (screen, buttons and pads) is an app
+of Push Hack Home** (push-manager's switcher, `src/surface.go`): it declares
+`"surface": {"label", "color"}` in `hack.json`, holds a session through
+`pmclient.RunSurface`, and draws only between focus and blur. It must not
+open itself with a button combination: every hack hears every press, and
+Riffs' Shift + Set collided with push-manager's own `browser_open` chord
+(two programs drawing on one screen, seen on device 2026-10-17). Shift +
+Help belongs to push-manager. While Home or an app owns the surface,
+push-manager refuses (409) `/api/display/mode`, `/api/midi/filter` and
+frames from anyone but the owning app (`X-Push-Hack-App` header). Design:
+`plans/2026-10-17-push-hack-switcher.md`; behaviour: push-manager's README,
+"Push Hack Home".
+
 This means **display-owning hacks have a hard runtime dependency on
 push-manager + push-display also being installed and running** — declare it
 explicitly:

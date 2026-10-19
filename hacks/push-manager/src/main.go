@@ -459,6 +459,12 @@ func main() {
 	// Connect to push-display shared memory (non-fatal if hook not running)
 	initDisplayShm()
 
+	// Nobody holds the surface at start, and the power button takes it back
+	// (release.go).
+	clearStaleSurface()
+	go watchShutdown()
+	go runSurface() // Push Hack Home: Shift + Help (surface.go)
+
 	// Mark Live's own Log.txt once Live is up so support can confirm push-hack is
 	// installed straight from the standard Live log. See live_log.go.
 	go startLiveLogMarker()
@@ -509,6 +515,13 @@ func main() {
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/hacks/installed", handleHacksInstalled)
 	mux.HandleFunc("/api/ui/tabs", handleUITabs)
+	mux.HandleFunc("/api/surface", handleSurface)
+	mux.HandleFunc("/api/surface/session", handleSurfaceSession)
+	mux.HandleFunc("/api/surface/status", handleSurfaceStatus)
+	mux.HandleFunc("/api/surface/input", handleSurfaceInput)
+	mux.HandleFunc("/api/surface/leave", handleSurfaceLeave)
+	mux.HandleFunc("/api/surface/open", handleSurfaceOpen)
+	mux.HandleFunc("/api/surface/star", handleSurfaceStar)
 	mux.HandleFunc("/api/rename", handleRename)
 	mux.HandleFunc("/api/copy", handleCopy)
 	mux.HandleFunc("/api/unmount", handleUnmount)
@@ -517,6 +530,8 @@ func main() {
 	mux.HandleFunc("/api/display/status", handleDisplayStatus)
 	mux.HandleFunc("/api/display/mode", handleDisplayMode)
 	mux.HandleFunc("/api/display/image", handleDisplayImage)
+	mux.HandleFunc("/api/display/direct", handleDisplayDirect)
+	mux.HandleFunc("/api/display/frame", handleDisplayFrame)
 	mux.HandleFunc("/api/display/screenshot", handleDisplayScreenshot)
 	mux.HandleFunc("/api/midi/events", handleMidiEvents)
 	mux.HandleFunc("/api/midi/stream", handleMidiStream)
@@ -539,6 +554,8 @@ func main() {
 	mux.HandleFunc("/api/live/load", handleLiveLoad)
 	mux.HandleFunc("/api/live/plugins", handleLivePlugins)
 	mux.HandleFunc("/api/live/tempo", handleLiveTempo)
+	mux.HandleFunc("/api/live/scale", handleLiveScale)
+	mux.HandleFunc("/api/live/listen", handleLiveListen)
 	mux.HandleFunc("/api/live/playing", handleLivePlaying)
 	mux.HandleFunc("/api/live/play", handleLivePlay)
 	mux.HandleFunc("/api/live/stop", handleLiveStop)

@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"image"
 	"image/color"
 	"image/draw"
@@ -52,6 +53,11 @@ const (
 var (
 	shm = &coredisplay.Shm{}
 
+	// usbDisp drives the screen directly while Push3 is stopped (Mixxx mode).
+	// nil = normal hook path. Set only via setDirectDisplay.
+	usbDisp   *coredisplay.USB
+	usbDispMu sync.Mutex
+
 	startupSplashOnce sync.Once
 )
 
@@ -74,7 +80,64 @@ func shmReadFrame() (px []byte, mode uint32, ok bool) { return shm.ReadFrame() }
 
 func shmSetMode(mode uint32) error { return shm.SetMode(mode) }
 
-func shmWritePixels(pixels []byte) error { return shm.WritePixels(pixels) }
+// shmWritePixels writes a frame to the hook's shm and, in direct mode,
+// straight to the screen too. With no hook (Push3 stopped) the shm error
+// does not count while direct mode is on.
+func shmWritePixels(pixels []byte) error {
+	err := shm.WritePixels(pixels)
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	if usbDisp != nil {
+		usbDisp.Set(pixels)
+		return nil
+	}
+	return err
+}
+
+// shmWriteFrame is shmWritePixels for ONE frame (FrameBytes), the raw-frame
+// route. In direct mode both halves also go to the screen over USB.
+func shmWriteFrame(frame []byte) error {
+	err := shm.WriteFrame(frame)
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	if usbDisp != nil {
+		both := make([]byte, 0, coredisplay.TotalBytes)
+		both = append(append(both, frame...), frame...)
+		usbDisp.Set(both)
+		return nil
+	}
+	return err
+}
+
+// setDirectDisplay claims (on) or releases (off) the screen's USB interface.
+// On fails while Push3 is running. Off returns only after release, so the
+// caller can start Push3 right after.
+func setDirectDisplay(on bool) error {
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	if on == (usbDisp != nil) {
+		return nil
+	}
+	if !on {
+		usbDisp.Close()
+		usbDisp = nil
+		log.Printf("display: direct USB off")
+		return nil
+	}
+	u, err := coredisplay.OpenUSB()
+	if err != nil {
+		return err
+	}
+	usbDisp = u
+	log.Printf("display: direct USB on")
+	return nil
+}
+
+func directDisplayOn() bool {
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	return usbDisp != nil
+}
 
 // imageToBGR565 scales img to 960×160 (Push 2/3 visible area), writes into
 // a 1024-pixel-stride framebuffer (64 padding pixels per row), and duplicates
@@ -101,8 +164,10 @@ func handleDisplayStatus(w http.ResponseWriter, r *http.Request) {
 	mode := shm.Mode()
 	frameSeq := shm.FrameSeq()
 
+	direct := directDisplayOn()
 	jsonResponse(w, map[string]interface{}{
-		"connected": connected,
+		"connected": connected || direct,
+		"direct":    direct,
 		"mode":      mode,
 		"frame_seq": frameSeq,
 		"width":     dispVisW,
@@ -147,6 +212,14 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "mode must be 0 (off), 1 (bar) or 2 (custom)", http.StatusBadRequest)
 		return
 	}
+	if body.Mode != ModePassthrough && shuttingDown.Load() { // release.go: Push3 needs its screen
+		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go
+		http.Error(w, why, http.StatusConflict)
+		return
+	}
 	// When entering takeover mode (2) with no content yet, clear framebuf to
 	// black so stale pixels from a previous session don't show.
 	if body.Mode == ModeTakeover && shmGetMode() != ModeTakeover {
@@ -162,9 +235,40 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{"mode": body.Mode})
 }
 
+// POST /api/display/direct  body: {"enabled": true|false}
+// enabled: push-manager claims the screen over USB and shows every frame
+// it writes. Only works while Push3 is stopped. Turn it off before
+// starting Push3 again.
+func handleDisplayDirect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if err := setDirectDisplay(body.Enabled); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	// another app takes the screen (e.g. started from a shadow UI tab):
+	// close the shadow UI, and intercept off so push3 gets midi when back.
+	if body.Enabled {
+		if filt := ensureMidiFilt(); filt != nil {
+			filt[4] = 0
+		}
+		shadowUIStop()
+	}
+	jsonResponse(w, map[string]interface{}{"direct": directDisplayOn()})
+}
+
 // POST /api/display/image  multipart field "image" = PNG or JPEG
-// Scales image to 960×160, converts to BGR565, writes to shm.
-// Also auto-sets mode to 2 (takeover) if currently in passthrough/bar.
+// Scales image to 960×160, converts to BGR565, writes to shm. The caller
+// sets mode 2 (takeover) first; this handler never changes the mode.
 func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
@@ -178,6 +282,10 @@ func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
+	if !surface.FrameAllowed(r.Header.Get(appHeader)) { // surface.go: one writer
+		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
+		return
+	}
 	img, format, err := image.Decode(f)
 	if err != nil {
 		http.Error(w, "decode image: "+err.Error(), http.StatusBadRequest)
@@ -199,6 +307,35 @@ func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 		"size":   fmt.Sprintf("%dx%d", dispVisW, dispH),
 		"mode":   shmGetMode(),
 	})
+}
+
+// POST /api/display/frame  body = one raw frame, application/octet-stream:
+// FrameBytes (327680) of BGR565 little-endian at the framebuffer's
+// 1024-pixel stride, as core/display.EncodeFrame (or pmclient.PushFrame)
+// makes it. No decoding and no scaling: the bytes are copied into both
+// halves of shm. For hacks that redraw many times a second, where a PNG
+// through /api/display/image costs ~11 ms a frame. Like /image, it never
+// changes the mode.
+func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	frame, err := io.ReadAll(http.MaxBytesReader(w, r.Body, coredisplay.FrameBytes+1))
+	if err != nil || len(frame) != coredisplay.FrameBytes {
+		http.Error(w, fmt.Sprintf("want exactly %d bytes of BGR565 at stride %d",
+			coredisplay.FrameBytes, coredisplay.Stride), http.StatusBadRequest)
+		return
+	}
+	if !surface.FrameAllowed(r.Header.Get(appHeader)) { // surface.go: one writer
+		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
+		return
+	}
+	if err := shmWriteFrame(frame); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // ── Startup splash ────────────────────────────────────────────────────────

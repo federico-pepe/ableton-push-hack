@@ -29,6 +29,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -47,12 +48,12 @@ import (
 const (
 	suiW          = push3.VisW
 	suiH          = push3.VisH
-	suiTopH       = 18  // top strip height
-	suiBotH       = 18  // bottom strip height
-	suiContentY   = suiTopH                  // content starts at y=18
-	suiContentBot = suiH - suiBotH           // content ends at y=142
-	suiContentH   = suiContentBot - suiTopH  // 124px
-	suiColW       = 120                      // 960/8 per column
+	suiTopH       = 18                      // top strip height
+	suiBotH       = 18                      // bottom strip height
+	suiContentY   = suiTopH                 // content starts at y=18
+	suiContentBot = suiH - suiBotH          // content ends at y=142
+	suiContentH   = suiContentBot - suiTopH // 124px
+	suiColW       = 120                     // 960/8 per column
 )
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -191,7 +192,7 @@ type ShadowUI struct {
 	mu       sync.Mutex
 	active   bool
 	tabs     []uiEntry // resolved at start: user order, switched on, available
-	panels   []Panel     // one per tab, same index
+	panels   []Panel   // one per tab, same index
 	panelIdx int
 	stopCh   chan struct{}
 }
@@ -213,9 +214,10 @@ const (
 // (already declared above — kept here for reference)
 
 // shadowRegisterLEDs registers shadow UI LED configs and lights initial state.
-// - CCScreenTop1/2/3: exclusive group "shadow-tabs" (tabs switch panels)
-// - CCSettings (CC30): exclusive solo group "settings-anchor" — single press
-//   re-sends same value, keeping the anchor LED lit while shadow UI is active
+//   - CCScreenTop1/2/3: exclusive group "shadow-tabs" (tabs switch panels)
+//   - CCSettings (CC30): exclusive solo group "settings-anchor" — single press
+//     re-sends same value, keeping the anchor LED lit while shadow UI is active
+//
 // Must be called without ledConfigMu held.
 func shadowRegisterLEDs(nTabs, activePanelIdx int) {
 	ledConfigMu.Lock()
@@ -269,18 +271,20 @@ func updateBotLEDs(panel Panel) {
 // buildTabs resolves the user's tab config into live panels. Caller holds
 // shadowUI.mu. An existing panel is kept when its tab survives the change, so
 // reordering the list from the web UI does not throw away a browser's cursor
-// or a catalog's fetched listing.
+// or a catalog's fetched listing. keyed by id + port: a hack reinstalled
+// through the catalog gets a new port, and a kept panel would poll the old one.
 func (s *ShadowUI) buildTabs() {
+	key := func(t uiEntry) string { return t.ID + ":" + strconv.Itoa(t.Port) }
 	prev := make(map[string]Panel, len(s.tabs))
 	for i, t := range s.tabs {
 		if i < len(s.panels) {
-			prev[t.ID] = s.panels[i]
+			prev[key(t)] = s.panels[i]
 		}
 	}
 	s.tabs = activeShadowTabs()
 	s.panels = make([]Panel, len(s.tabs))
 	for i, t := range s.tabs {
-		if p, ok := prev[t.ID]; ok {
+		if p, ok := prev[key(t)]; ok {
 			s.panels[i] = p
 		} else {
 			s.panels[i] = t.newPanel()
@@ -316,8 +320,8 @@ func shadowUIReload() {
 func shadowUIStart() {
 	shadowUI.mu.Lock()
 	defer shadowUI.mu.Unlock()
-	if shadowUI.active {
-		return
+	if shadowUI.active || directDisplayOn() {
+		return // direct mode: the screen belongs to another app
 	}
 	shadowUI.buildTabs()
 	shadowUI.panelIdx = 0
@@ -352,18 +356,23 @@ func shadowUIStop() {
 
 // shadowUISwitchToBrowse switches the active shadow UI to the Browse panel and
 // lights its tab. No-op if the shadow UI is not running.
-func shadowUISwitchToBrowse() {
+func shadowUISwitchToBrowse() { shadowUISwitchTo("browser") }
+
+// shadowUISwitchTo switches the running Shadow UI to the tab with this id
+// and lights it: Push Hack Home opening a tool. No-op if the Shadow UI is
+// not running or the tab is not shown.
+func shadowUISwitchTo(id string) {
 	shadowUI.mu.Lock()
 	idx := -1
 	for i, t := range shadowUI.tabs {
-		if t.ID == "browser" {
+		if t.ID == id {
 			idx = i
 			break
 		}
 	}
 	if !shadowUI.active || idx < 0 {
 		shadowUI.mu.Unlock()
-		return // Browse tab switched off, or browser-bridge not installed
+		return // the tab is switched off, or its hack is not installed
 	}
 	shadowUI.panelIdx = idx
 	panel := shadowUI.panels[idx]
@@ -528,7 +537,6 @@ func drawPanelTabs(img *image.NRGBA, panels []Panel, activeIdx int) {
 	}
 }
 
-
 // truncate truncates s to at most maxRunes runes, appending "…" if cut.
 func truncate(s string, maxRunes int) string {
 	return gtext.Truncate(s, maxRunes)
@@ -537,7 +545,7 @@ func truncate(s string, maxRunes int) string {
 // ── FilePanel ─────────────────────────────────────────────────────────────────
 
 const (
-	fileRowH = 16 // px per row
+	fileRowH = 16                     // px per row
 	fileRows = suiContentH / fileRowH // = 7 rows
 )
 
@@ -975,8 +983,8 @@ type StatsPanel struct {
 	lastFetch time.Time
 }
 
-func newStatsPanel() *StatsPanel { return &StatsPanel{} }
-func (sp *StatsPanel) Label() string { return "STATS" }
+func newStatsPanel() *StatsPanel              { return &StatsPanel{} }
+func (sp *StatsPanel) Label() string          { return "STATS" }
 func (sp *StatsPanel) HandleCC(cc, val uint8) {} // no navigation
 func (sp *StatsPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	return [8]widgets.SoftButton{}, ""
