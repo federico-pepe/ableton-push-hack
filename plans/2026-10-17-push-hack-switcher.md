@@ -66,12 +66,29 @@ changing Shift + Settings (the Shadow UI toggle stays as it is upstream).
 |---|---|---|---|---|
 | Shift + Help | Home | Live | Home | Home |
 | Shift + Help, Help | the superstar | the superstar | the superstar | the superstar; from the superstar itself: Live |
+| Help | Live's own Help | Live | nothing | Live |
+| Help held (0.5 s) | Home | nothing | Home | Home |
 
 "Shift + Help, Help" means: hold Shift, tap Help twice, let go of Shift.
 Both gestures fire when Shift is let go. That is the safe moment: Live has
 seen Shift go down and up again, so it does not think Shift is still held
 (Stacks found that taking the surface mid-press left Live with a stuck
 Shift).
+
+Help alone (added 2026-10-19, asked for on device: "always use the help
+button to return to Live") goes back to Live from Home or an app, on
+Help's release. Shift, or another button pressed while Help is held,
+spoils it. In Live and in a tool, push-manager does not take Help. An app
+with only the screen (Stacks' listening mode) goes back to Live too; Live
+sees that press as well and opens its help screen, which push-manager
+closes with one more Help tap into Live's input.
+
+Help held for 0.5 s (asked for on device the same day, "in Live and in
+module") is Shift + Help: Home, at once, while Help is still down; its
+release is nothing. From Home it is nothing, since going to Live would
+hand Live a release it never saw pressed. Where Live had the buttons, its
+help screen is closed first (Help up, then a tap), before Home takes the
+buttons and the tap could no longer get through.
 
 While an app or Home owns the surface, the intercept is on, so Live does
 not see Shift + Help at all. From Live, Live sees Shift + Help, as it does
@@ -212,8 +229,8 @@ so the two cannot both draw. Stacks 0.3.0 uses the session.
 4. An owning app's session ending gives the surface to Home within a
    second.
 5. After the power button, nothing but Live owns the surface.
-6. Inside an app, only Shift + Help (and Shift + Help, Help) do anything
-   in push-manager.
+6. Inside an app, only Shift + Help (and Shift + Help, Help) and Help do
+   anything in push-manager.
 
 Tests:
 

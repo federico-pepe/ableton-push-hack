@@ -486,12 +486,34 @@ buttons) and `src/surface_io.go` (the gesture, the device side and the API).
 |---|---|---|---|---|
 | **Shift + Help** | Home | Live | Home | Home |
 | **Shift + Help, Help** | the superstar | the superstar | the superstar | the superstar; from the superstar itself: Live |
+| **Help** | Live's own Help | Live | nothing | Live |
+| **Help held** (0.5 s) | Home | nothing | Home | Home |
 
 Shift + Help, Help means: hold Shift, tap Help twice, let go of Shift.
 Both gestures act when you let go of Shift. That is the safe moment: Live
 has seen Shift go down and up, so it does not think Shift is still held.
 If you press another button while holding Shift, the gesture does not
 fire: that combination is the other button's own shortcut.
+
+Help on its own is the quick way back to Live from Home or from any app. It
+acts when you let go of Help, so Live never sees half a press. If you
+press Shift or another button while Help is held, it does not fire. In
+Live, Help stays Live's own Help: push-manager does not take it. An app
+that has only the screen and gives the buttons to Live (Stacks' listening
+mode) goes back to Live too. Live has the buttons then, so it sees the
+same press and opens its help screen. push-manager closes it again with
+one more Help tap into Live's input, before Live's screen shows. A tool
+(the Shadow UI) has its own way out.
+
+Holding Help for half a second (no Shift) does what Shift + Help does: it
+opens Home, from Live, a tool or an app. It acts while you still hold
+Help, and letting go then does nothing. From Home it does nothing: a
+short press goes to Live. In Live (and in an app's listening mode) Live
+sees the press too and opens its help screen while you hold. push-manager
+tells Live that Help is up, taps Help once more to close the help screen,
+and only then takes the buttons. You may see Live's help screen for that
+half second. Help is the button that stays lit while Home or an app has the
+surface, so the lit button is the way out.
 
 When Home takes the buttons from Live, push-manager first tells Push3
 that Shift and Help are up (through Push3's own MIDI input) and waits
@@ -524,6 +546,7 @@ the first presses.
 | Bottom 2, `STAR` | Star or unstar the chosen entry. Lit amber while it is starred. |
 | Shift + `STAR` | Make the chosen entry the superstar. Again: no superstar. There is only one. |
 | Bottom 8, `LIVE` | Back to Live. |
+| Help | Back to Live, as from an app. |
 
 Opening a **tool** opens the Shadow UI on that panel. Opening an **app**
 lends it the surface: push-manager switches the display and the MIDI
@@ -568,7 +591,8 @@ The tests in `src/surface_test.go` hold these rules after every event of
 presses, legacy calls, the power button): exactly one owner; the intercept
 and the screen as the table says; only the owner's frames reach the
 screen; an owning app's session ending opens Home; after the power button
-only Live; inside an app only Shift + Help does anything in push-manager.
+only Live; inside an app only Shift + Help and Help do anything in
+push-manager.
 
 ### Making a hack an app
 

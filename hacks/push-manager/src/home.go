@@ -14,6 +14,7 @@
 //	bottom 2  STAR            star or unstar the chosen entry
 //	Shift + STAR              make it the superstar (again: none)
 //	bottom 8  LIVE            back to Live
+//	Help (no Shift)           back to Live (surface_io.go, as from an app)
 package main
 
 import (

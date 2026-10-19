@@ -12,6 +12,7 @@ package main
 
 import (
 	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -61,7 +62,14 @@ func tapAppButton(dst alsaseq.Addr, cc byte) {
 
 // restorePushLEDs repaints Push3's LEDs by toggling the pad mode away and
 // back. Does nothing unless the LEDs were cleared.
+// liveTaps keeps push-manager's taps into Live's input apart: the
+// repaint's Shift and closeLiveHelp's Help (surface_io.go) must never
+// overlap, or Live reads Shift + Help.
+var liveTaps sync.Mutex
+
 func restorePushLEDs() {
+	liveTaps.Lock()
+	defer liveTaps.Unlock()
 	if !ledsCleared.Swap(false) {
 		return
 	}

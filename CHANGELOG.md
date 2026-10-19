@@ -7,6 +7,16 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- Help on its own goes back to Live from Push Hack Home or from any app. It acts when you let go of Help. This works in Stacks' listening mode too: Live sees that press as well and opens its help screen, so push-manager closes it with one more Help tap. In Live, Help is still Live's own Help. Apps must not use Help themselves.
+- Holding Help for half a second opens Push Hack Home, as Shift + Help does, from Live, a tool or an app. It acts while you still hold Help. In Live you may see Live's help screen for that half second; push-manager closes it before Home opens.
+
+### Fixed
+
+- Leaving an app for Live from its listening mode (the app has only the screen) left all of Live's LEDs dark until the next press. push-manager now repaints them on that path too.
+- Opening Push Hack Home from Live showed Live's screen for a moment, then a black frame, before Home. Home's frame now goes up first.
+
 ## [0.1.14-alpha] - 2026-10-19
 
 ### Added

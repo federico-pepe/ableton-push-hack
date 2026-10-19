@@ -59,9 +59,11 @@ range 7701-7710 is reserved for the framework: 7701 is push-manager, and
 
 If your hack takes over Push's whole surface (as Stacks does), make
 it an app of Push Hack Home, push-manager's switcher. Users open Home with
-Shift + Help and pick your hack there. Do not give your hack a button
-combination of its own: every hack sees every press, so two combinations
-can collide.
+Shift + Help (or by holding Help) and pick your hack there, and press
+Help to go back to Live.
+Do not give your hack a button combination of its own: every hack sees
+every press, so two combinations can collide. Do not use Help in your
+hack either: push-manager takes it while your hack owns the surface.
 
 1. Add a `surface` hook to `hack.json`:
 
