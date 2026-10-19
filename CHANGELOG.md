@@ -9,6 +9,8 @@ between minor versions).
 
 ### Fixed
 
+- `push-display`: the hook log (`/data/push-hack/logs/push-hook.log`) no longer grows without bound. Only Push3 logs that the hook loaded (each `amidi` or `sh` child used to add a line), only the first 3 display frames are logged, and the log moves to `push-hook.log.1` once it passes 1 MiB. Needs a rebuilt `push_hook.so`.
+
 - `core/push3`: `ColorForIndex` returns the exact hardware color for all 128 indices. It used to return the nearest named entry below an unnamed index, which was wrong for 38 values (for example 67 gave the color of 66). A new test keeps the table equal to `docs/push3-led-colors.md`. Needs a `core/v*` tag before consumers get it.
 
 ### Changed
