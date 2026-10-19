@@ -90,7 +90,7 @@ const (
 	EvContinue   = uint8(31)
 	EvStop       = uint8(32) // was 31 until 2026-10-16; Live's Stop arrives as 32 on device
 	EvClock      = uint8(36)
-	EvSensing    = uint8(40)  // active sensing
+	EvSensing    = uint8(42)  // active sensing (40 is TUNE_REQUEST)
 	EvSysEx      = uint8(130) // variable length
 
 	// Push 3 ALSA seq address defaults (kernel client 16 = first sound card).
