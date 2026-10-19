@@ -2,6 +2,7 @@ package pmclient
 
 import (
 	"encoding/json"
+	"image"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -56,3 +57,43 @@ func TestLiveListen(t *testing.T) {
 		t.Errorf("got %+v", st)
 	}
 }
+
+// Push takes the raw route when push-manager has it, and falls back to PNG
+// for good (one probe only) when it answers 404.
+func TestPushFallsBackWithoutFrameRoute(t *testing.T) {
+	for _, hasFrame := range []bool{true, false} {
+		var frame, png int
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/display/frame":
+				frame++
+				if !hasFrame {
+					http.NotFound(w, r)
+				}
+			case "/api/display/image":
+				png++
+			}
+		}))
+		c := New(srv.URL)
+		img := imageNRGBA(960, 160)
+		for i := 0; i < 3; i++ {
+			if err := c.Push(img); err != nil {
+				t.Fatalf("hasFrame=%v: %v", hasFrame, err)
+			}
+		}
+		if err := c.Push(imageNRGBA(100, 40)); err != nil { // wrong size: PNG route
+			t.Fatal(err)
+		}
+		srv.Close()
+		wantFrame, wantPNG := 3, 1
+		if !hasFrame {
+			wantFrame, wantPNG = 1, 4 // one probe, then PNG for good
+		}
+		if frame != wantFrame || png != wantPNG {
+			t.Errorf("hasFrame=%v: frame calls %d image calls %d, want %d and %d",
+				hasFrame, frame, png, wantFrame, wantPNG)
+		}
+	}
+}
+
+func imageNRGBA(w, h int) *image.NRGBA { return image.NewNRGBA(image.Rect(0, 0, w, h)) }
