@@ -100,14 +100,16 @@ user's order (the same order as the Shadow UI tabs and the web menu,
 `ui_tabs.json`). So page 1 is always full, and the favorites are the
 first presses.
 
-The pads repeat the columns: each pad column is lit in its entry's colour
-(dim when the app is stopped), and any pad in a column opens that entry.
-The selected entry's top pad is white.
+The top pad row is a quiet hint of the columns: one pad per entry, lit in
+its colour (dim when the app is stopped), opens that entry; the selected
+entry's pad is white, and every other pad stays dark. (Until 2026-10-19
+every pad was lit and any pad in a column opened it: a whole lit grid read
+as something to play.)
 
 | Control | In Home |
 |---|---|
 | Top button 1-8 | open the entry in that column |
-| Pad column 1-8 | open the entry in that column |
+| Top pad row 1-8 | open the entry in that column |
 | Jog turn / press | choose / open |
 | Page < > | the next or previous page |
 | Bottom 1 `< LAST` | back to the app you came from |

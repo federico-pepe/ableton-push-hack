@@ -194,8 +194,15 @@ func (d *deviceIO) setPass(pass []int) { d.intercept(true, pass) }
 
 func (d *deviceIO) screenOnly() { d.intercept(false, nil) }
 
+// release gives the surface back to Live. Every LED goes dark first, as
+// the Shadow UI's exit does: Push3 repaints only the LEDs it holds on (a
+// Shift and a pad-mode toggle, led_restore.go), so whatever Home or an app
+// lit that Live holds off stayed lit -- top and bottom buttons, arrows,
+// pads (reported: "when exiting the Home, most of the time all the LEDs
+// are still lit"). The clear also marks them cleared, so the repaint runs.
 func (d *deviceIO) release() {
 	d.forget()
+	clearAllLEDs(0)
 	releaseSurface() // release.go; watchInterceptOff repaints Live's LEDs
 }
 
