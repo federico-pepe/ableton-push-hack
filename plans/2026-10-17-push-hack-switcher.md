@@ -79,7 +79,8 @@ button to return to Live") goes back to Live from Home or an app, on
 Help's release. Shift, or another button pressed while Help is held,
 spoils it. In Live and in a tool, push-manager does not take Help. An app
 with only the screen (Stacks' listening mode) goes back to Live too; Live
-sees that press as well.
+sees that press as well and opens its help screen, which push-manager
+closes with one more Help tap into Live's input.
 
 While an app or Home owns the surface, the intercept is on, so Live does
 not see Shift + Help at all. From Live, Live sees Shift + Help, as it does

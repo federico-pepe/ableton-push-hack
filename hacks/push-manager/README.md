@@ -499,8 +499,10 @@ acts when you let go of Help, so Live never sees half a press. If you
 press Shift or another button while Help is held, it does not fire. In
 Live, Help stays Live's own Help: push-manager does not take it. An app
 that has only the screen and gives the buttons to Live (Stacks' listening
-mode) goes back to Live too; Live sees that Help press as well, because
-it has the buttons. A tool (the Shadow UI) has its own way out. Help is the button that stays lit while Home or an app has the
+mode) goes back to Live too. Live has the buttons then, so it sees the
+same press and opens its help screen. push-manager closes it again with
+one more Help tap into Live's input, before Live's screen shows. A tool
+(the Shadow UI) has its own way out. Help is the button that stays lit while Home or an app has the
 surface, so the lit button is the way out.
 
 When Home takes the buttons from Live, push-manager first tells Push3
