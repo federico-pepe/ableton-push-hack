@@ -52,6 +52,7 @@ between minor versions).
 
 ### Changed
 
+- `core/v0.3.0` is tagged. It holds the raw MIDI helpers in `alsaseq` (with the corrected Stop, Continue, Sensing and Song Position numbers), `display.USB`, `ToWire` and `EncodeFrame`, the `pmclient` surface and frame calls, and `push3.LEDButtons`. The consumer repos (automation, keyboard-visualizer, arrangement, audio-loopback, braids, push-tethered-app, pta-module-arrangement) pin it.
 - The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
 
 ## [0.1.12-alpha] - 2026-10-04

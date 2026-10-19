@@ -109,7 +109,7 @@ Pin `core` to the newest `core/vX.Y.Z` tag in `src/go.mod`. Do not use a
 `replace` line:
 
 ```
-require github.com/federico-pepe/ableton-push-hack/core v0.2.0
+require github.com/federico-pepe/ableton-push-hack/core v0.3.0
 ```
 
 To get a newer `core` version later, run this command in `src/`:

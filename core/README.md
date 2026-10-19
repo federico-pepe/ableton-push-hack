@@ -18,7 +18,7 @@ Two kinds of consumers use it:
 
 **Using this from a new hack in its own repo** — add to `src/go.mod`:
 ```
-require github.com/federico-pepe/ableton-push-hack/core v0.2.0
+require github.com/federico-pepe/ableton-push-hack/core v0.3.0
 ```
 Use the newest `core/vX.Y.Z` tag. `go get` resolves it from GitHub. That is
 why `core/go.mod`'s module path is domain-qualified
