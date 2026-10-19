@@ -96,16 +96,6 @@
       "github_repo": "rgeissen/push-hack-stacks",
       "default_branch": "main",
       "asset_name": "stacks.tar.gz"
-    },
-    {
-      "id": "riffs",
-      "name": "Riffs",
-      "description": "Riff generator and performance sequencer: six engines with 32 flavors write riffs over chord loops into six lanes, played from a block grid on Push's screen, pads and buttons. Opens from Push Hack Home (Shift + Help).",
-      "author": "rgeissen",
-      "homepage": "https://github.com/rgeissen/push-hack-riffs",
-      "github_repo": "rgeissen/push-hack-riffs",
-      "default_branch": "main",
-      "asset_name": "riffs.tar.gz"
     }
   ]
 }

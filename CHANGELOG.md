@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Removed
+
+- Catalog: Riffs, for now. Its repository is private, so the entry could not be installed.
+
 ## [0.1.13-alpha] - 2026-10-19
 
 ### Added

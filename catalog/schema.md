@@ -178,7 +178,7 @@ navigation or in the settings list for it.
 ### `surface` — an app of Push Hack Home
 
 ```json
-"surface": { "label": "RIFFS", "color": "sky" }
+"surface": { "label": "STACKS", "color": "amber" }
 ```
 
 A hack that takes Push's whole screen, buttons and pads declares
