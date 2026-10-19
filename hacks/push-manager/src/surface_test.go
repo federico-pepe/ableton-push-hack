@@ -19,6 +19,7 @@ type fakeIO struct {
 	started                  []string
 	t                        time.Time
 	view                     homeView
+	helpTaps                 int
 }
 
 func (f *fakeIO) take(pass []int)    { f.intercept, f.display, f.pass = true, true, pass }
@@ -27,6 +28,7 @@ func (f *fakeIO) screenOnly()        { f.intercept, f.pass = false, nil }
 func (f *fakeIO) release() {
 	f.intercept, f.display, f.home, f.tool, f.pass = false, false, false, "", nil
 }
+func (f *fakeIO) closeLiveHelp()      { f.helpTaps++ }
 func (f *fakeIO) homeShow(v homeView) { f.home, f.display, f.view = true, true, v }
 func (f *fakeIO) homeHide()           { f.home = false }
 func (f *fakeIO) openTool(id string)  { f.intercept, f.display, f.tool = true, true, id }
@@ -500,6 +502,9 @@ func TestHelpAloneToLive(t *testing.T) {
 	if !feed(CCHelp, 0) || b.own != ownOutside {
 		t.Fatalf("Help alone from an app: owner %s", b.own)
 	}
+	if b.io.helpTaps != 0 {
+		t.Fatalf("Live had no buttons, yet push-manager tapped its Help %d times", b.io.helpTaps)
+	}
 	if ev := b.events("stacks"); !slices.Equal(ev, []string{"blur"}) {
 		t.Fatalf("stacks got %v, want blur", ev)
 	}
@@ -512,6 +517,9 @@ func TestHelpAloneToLive(t *testing.T) {
 	feed(CCHelp, 0)
 	if b.own != ownOutside {
 		t.Fatalf("Help with the screen only: owner %s, want outside", b.own)
+	}
+	if b.io.helpTaps != 1 {
+		t.Fatalf("Live saw Help and opened its help: %d taps to close it, want 1", b.io.helpTaps)
 	}
 	b.rules(t, "help, screen only")
 }

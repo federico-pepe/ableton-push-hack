@@ -225,10 +225,38 @@ func (d *deviceIO) screenOnly() { d.intercept(false, nil) }
 // lit that Live holds off stayed lit -- top and bottom buttons, arrows,
 // pads (reported: "when exiting the Home, most of the time all the LEDs
 // are still lit"). The clear also marks them cleared, so the repaint runs.
+//
+// From screen-only the intercept is off already, so watchInterceptOff sees
+// no change and would not repaint: Live's LEDs stayed dark. Repaint here
+// then, the same way and after the same delay.
 func (d *deviceIO) release() {
 	d.forget()
+	data := ensureMidiFilt()
+	wasOn := data != nil && data[4] != 0
 	clearAllLEDs(0)
 	releaseSurface() // release.go; watchInterceptOff repaints Live's LEDs
+	if !wasOn {
+		go func() {
+			time.Sleep(ledRestoreDelay)
+			restorePushLEDs()
+		}()
+	}
+}
+
+// closeLiveHelp taps Help into Live's own input, after Live has read the
+// user's release. Runs before release, so its tap never meets the repaint's
+// Shift (Shift + Help is another thing in Live).
+func (d *deviceIO) closeLiveHelp() {
+	p, ok := alsaseq.FindByName(appInputPortName, alsaseq.CapWrite)
+	if !ok {
+		log.Printf("surface: %q not found, Live's help stays open", appInputPortName)
+		return
+	}
+	time.Sleep(liveSettle)
+	liveTaps.Lock()
+	tapAppButton(p.Addr, CCHelp)
+	liveTaps.Unlock()
+	log.Printf("surface: closed Live's help (Live had the buttons and saw Help too)")
 }
 
 func (d *deviceIO) homeShow(v homeView) {

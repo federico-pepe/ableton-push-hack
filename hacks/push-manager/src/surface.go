@@ -57,6 +57,7 @@ type surfaceIO interface {
 	setPass(pass []int)  // intercept on, a new pass-through list
 	screenOnly()         // intercept off, display still taken (an app's listen mode)
 	release()            // intercept off, display back to Push3: Live
+	closeLiveHelp()      // tap Help into Live: it saw the user's Help and opened its help
 	homeShow(v homeView) // draw Home and its LEDs
 	homeHide()           // stop drawing Home
 	openTool(id string)  // the Shadow UI, on this panel
@@ -179,13 +180,18 @@ func (s *Surface) Gesture(taps int) {
 
 // HelpAlone is Help pressed and let go without Shift: from Home or an app,
 // back to Live. Elsewhere it is Live's own Help, and nothing here. An app
-// with only the screen (Stacks' listening mode) goes back too: Live has
-// the buttons then and sees the same press.
+// with only the screen (Stacks' listening mode) goes back too, but Live has
+// the buttons then: it saw the same press and opened its help screen
+// (seen on device). Help toggles it, so one more tap closes it, while the
+// app's screen still hides Live's.
 func (s *Surface) HelpAlone() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.down || (s.own != ownHome && s.own != ownApp) {
 		return
+	}
+	if s.own == ownApp && !s.input {
+		s.io.closeLiveHelp()
 	}
 	s.toLive()
 }
