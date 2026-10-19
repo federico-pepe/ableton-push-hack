@@ -103,7 +103,7 @@ const (
 	EvStart      = uint8(30)
 	EvContinue   = uint8(31)
 	EvStop       = uint8(32) // was 31 until 2026-10-16; Live's Stop arrives as 32 on device
-	EvSongPos    = uint8(33) // song position pointer
+	EvSongPos    = uint8(20) // song position pointer (33 is SETPOS_TICK)
 	EvClock      = uint8(36)
 	EvSensing    = uint8(42)  // active sensing (40 is TUNE_REQUEST)
 	EvSysEx      = uint8(130) // variable length
