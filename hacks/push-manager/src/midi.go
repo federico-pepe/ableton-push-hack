@@ -1336,10 +1336,11 @@ func chordCCPressed(cc uint8) {
 	}
 	midiChordMu.Unlock()
 
-	// push-manager's chords open the Shadow UI over whatever owns the
-	// surface; inside Push Hack Home or an app they do nothing, or they
-	// would draw over it (Shift + Set over Riffs did, 2026-10-17).
-	if !surface.Outside() {
+	// direct mode: another app (mixxx) owns the screen + buttons. chords
+	// would clear its LEDs, draw OSD over it, open the shadow UI.
+	// Push Hack Home or an app owning the surface: same, or they would draw
+	// over it (Shift + Set over Riffs did, 2026-10-17).
+	if directDisplayOn() || !surface.Outside() {
 		return
 	}
 	for _, chord := range toFire {

@@ -78,6 +78,16 @@
       "asset_name": "screensaver.tar.gz"
     },
     {
+      "id": "mixxx",
+      "name": "Mixxx Mode",
+      "description": "DJ with Mixxx on Push 3: two decks on the pads, buttons and encoders, waveforms on the Push screen, Rekordbox USB sticks. Switching to Mixxx mode stops Push3 and Live; hold SETTINGS to go back. Requires push-manager (it drives the screen while Push3 is stopped). Large download (about 170 MB, Mixxx is bundled).",
+      "author": "itsrave",
+      "homepage": "https://github.com/itsrave/push-mixxx-mode",
+      "github_repo": "itsrave/push-mixxx-mode",
+      "default_branch": "main",
+      "asset_name": "mixxx.tar.gz"
+    },
+    {
       "id": "stacks",
       "name": "Stacks",
       "description": "Chord-progression tool: write, voice and play chord progressions into Live from Push's screen, pads and buttons.",

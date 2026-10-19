@@ -22,9 +22,9 @@ func TestEventTypesMatchKernel(t *testing.T) {
 		{"START", EvStart, 30},
 		{"CONTINUE", EvContinue, 31},
 		{"STOP", EvStop, 32},
-		{"SONGPOS", EvSongPos, 33},
+		{"SONGPOS", EvSongPos, 20},
 		{"CLOCK", EvClock, 36},
-		{"SENSING", EvSensing, 40},
+		{"SENSING", EvSensing, 42},
 		{"SYSEX", EvSysEx, 130},
 	}
 	for _, c := range cases {

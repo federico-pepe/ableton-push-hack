@@ -530,6 +530,7 @@ func main() {
 	mux.HandleFunc("/api/display/status", handleDisplayStatus)
 	mux.HandleFunc("/api/display/mode", handleDisplayMode)
 	mux.HandleFunc("/api/display/image", handleDisplayImage)
+	mux.HandleFunc("/api/display/direct", handleDisplayDirect)
 	mux.HandleFunc("/api/display/frame", handleDisplayFrame)
 	mux.HandleFunc("/api/display/screenshot", handleDisplayScreenshot)
 	mux.HandleFunc("/api/midi/events", handleMidiEvents)

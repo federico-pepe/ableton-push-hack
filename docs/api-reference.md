@@ -10,6 +10,7 @@ own README has full request/response detail for every route below.
 
 `/api/list`, `/api/download`, `/api/upload`, `/api/delete`, `/api/rename`,
 `/api/copy`, `/api/unmount`, `/api/stats`, `/api/assets/<path>`,
+`/api/display/{status,mode,image,screenshot,direct}` (`screenshot` is a GET
 `/api/display/{status,mode,image,frame,screenshot}` (`frame` takes one raw
 BGR565 frame, see push-manager's README) (`screenshot` is a GET
 request; it returns a PNG of the current framebuffer with an
@@ -99,4 +100,9 @@ Home owns the surface.
 
 `GET /`, `GET /api/catalog`, `GET /api/installed`, `POST /api/install?id=<id>`,
 `POST /api/remove?id=<id>`, `POST /api/disable?id=<id>`,
-`POST /api/enable?id=<id>`.
+`POST /api/enable?id=<id>`, `GET /api/progress`.
+
+`GET /api/progress` returns `{"done": <bytes>, "total": <bytes>}` for the
+newest download. `total` is 0 when the server did not send a size. The
+values stay after a download ends, so read them only while an install runs.
+push-manager's CATALOG tab polls it to draw its download bar.

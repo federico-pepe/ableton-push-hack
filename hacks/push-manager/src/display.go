@@ -53,6 +53,11 @@ const (
 var (
 	shm = &coredisplay.Shm{}
 
+	// usbDisp drives the screen directly while Push3 is stopped (Mixxx mode).
+	// nil = normal hook path. Set only via setDirectDisplay.
+	usbDisp   *coredisplay.USB
+	usbDispMu sync.Mutex
+
 	startupSplashOnce sync.Once
 )
 
@@ -75,7 +80,64 @@ func shmReadFrame() (px []byte, mode uint32, ok bool) { return shm.ReadFrame() }
 
 func shmSetMode(mode uint32) error { return shm.SetMode(mode) }
 
-func shmWritePixels(pixels []byte) error { return shm.WritePixels(pixels) }
+// shmWritePixels writes a frame to the hook's shm and, in direct mode,
+// straight to the screen too. With no hook (Push3 stopped) the shm error
+// does not count while direct mode is on.
+func shmWritePixels(pixels []byte) error {
+	err := shm.WritePixels(pixels)
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	if usbDisp != nil {
+		usbDisp.Set(pixels)
+		return nil
+	}
+	return err
+}
+
+// shmWriteFrame is shmWritePixels for ONE frame (FrameBytes), the raw-frame
+// route. In direct mode both halves also go to the screen over USB.
+func shmWriteFrame(frame []byte) error {
+	err := shm.WriteFrame(frame)
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	if usbDisp != nil {
+		both := make([]byte, 0, coredisplay.TotalBytes)
+		both = append(append(both, frame...), frame...)
+		usbDisp.Set(both)
+		return nil
+	}
+	return err
+}
+
+// setDirectDisplay claims (on) or releases (off) the screen's USB interface.
+// On fails while Push3 is running. Off returns only after release, so the
+// caller can start Push3 right after.
+func setDirectDisplay(on bool) error {
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	if on == (usbDisp != nil) {
+		return nil
+	}
+	if !on {
+		usbDisp.Close()
+		usbDisp = nil
+		log.Printf("display: direct USB off")
+		return nil
+	}
+	u, err := coredisplay.OpenUSB()
+	if err != nil {
+		return err
+	}
+	usbDisp = u
+	log.Printf("display: direct USB on")
+	return nil
+}
+
+func directDisplayOn() bool {
+	usbDispMu.Lock()
+	defer usbDispMu.Unlock()
+	return usbDisp != nil
+}
 
 // imageToBGR565 scales img to 960×160 (Push 2/3 visible area), writes into
 // a 1024-pixel-stride framebuffer (64 padding pixels per row), and duplicates
@@ -102,8 +164,10 @@ func handleDisplayStatus(w http.ResponseWriter, r *http.Request) {
 	mode := shm.Mode()
 	frameSeq := shm.FrameSeq()
 
+	direct := directDisplayOn()
 	jsonResponse(w, map[string]interface{}{
-		"connected": connected,
+		"connected": connected || direct,
+		"direct":    direct,
 		"mode":      mode,
 		"frame_seq": frameSeq,
 		"width":     dispVisW,
@@ -171,6 +235,37 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{"mode": body.Mode})
 }
 
+// POST /api/display/direct  body: {"enabled": true|false}
+// enabled: push-manager claims the screen over USB and shows every frame
+// it writes. Only works while Push3 is stopped. Turn it off before
+// starting Push3 again.
+func handleDisplayDirect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if err := setDirectDisplay(body.Enabled); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	// another app takes the screen (e.g. started from a shadow UI tab):
+	// close the shadow UI, and intercept off so push3 gets midi when back.
+	if body.Enabled {
+		if filt := ensureMidiFilt(); filt != nil {
+			filt[4] = 0
+		}
+		shadowUIStop()
+	}
+	jsonResponse(w, map[string]interface{}{"direct": directDisplayOn()})
+}
+
 // POST /api/display/image  multipart field "image" = PNG or JPEG
 // Scales image to 960×160, converts to BGR565, writes to shm. The caller
 // sets mode 2 (takeover) first; this handler never changes the mode.
@@ -236,7 +331,7 @@ func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
 		return
 	}
-	if err := shm.WriteFrame(frame); err != nil {
+	if err := shmWriteFrame(frame); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}

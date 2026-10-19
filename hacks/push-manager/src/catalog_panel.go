@@ -47,15 +47,19 @@ type catalogHack struct {
 }
 
 type CatalogPanel struct {
-	mu        sync.Mutex
-	hacks     []catalogHack
-	installed map[string]bool
-	enabled   map[string]bool
-	cursor    int
-	scroll    int
+	mu          sync.Mutex
+	hacks       []catalogHack
+	installed   map[string]bool
+	enabled     map[string]bool
+	cursor      int
+	scroll      int
 	status      string    // transient line shown in the breadcrumb (errors, progress)
 	busy        bool      // an install/remove is in flight — block re-entry
 	lastRefresh time.Time // for render-triggered auto-refresh while the tab is visible
+
+	acting            string    // "installing <id>" while busy, for the progress line
+	progDone, progTot int64     // bytes of the running download, /api/progress
+	lastProg          time.Time // progress poll throttle
 }
 
 func newCatalogPanel() *CatalogPanel {
@@ -69,7 +73,9 @@ func (p *CatalogPanel) Label() string { return "CATALOG" }
 // ── data ──────────────────────────────────────────────────────────────────────
 
 var catalogGetClient = &http.Client{Timeout: 5 * time.Second}
-var catalogActClient = &http.Client{Timeout: 3 * time.Minute} // installs download binaries
+
+// installs download whole releases: Mixxx Mode is ~170 MB over Wi-Fi.
+var catalogActClient = &http.Client{Timeout: 30 * time.Minute}
 
 func (p *CatalogPanel) refresh() {
 	var cat []catalogHack
@@ -130,7 +136,9 @@ func (p *CatalogPanel) act(verb, id string) {
 		return
 	}
 	p.busy = true
-	p.status = verb + "ing " + id + "..."
+	p.acting = verb + "ing " + id
+	p.status = p.acting + "..."
+	p.progDone, p.progTot = 0, 0
 	p.mu.Unlock()
 
 	go func() {
@@ -144,7 +152,25 @@ func (p *CatalogPanel) act(verb, id string) {
 		}
 		p.mu.Unlock()
 		p.refresh() // reload installed set (keeps status unless it was a load msg)
+		if ok {
+			shadowUIReload() // the hack's own tab appears / goes, no reopen needed
+		}
 	}()
+}
+
+// pollProgress reads the running download's size from the daemon.
+func (p *CatalogPanel) pollProgress() {
+	var v struct{ Done, Total int64 }
+	if catalogGetJSON("/api/progress", &v) != nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.busy || v.Total <= 0 {
+		return
+	}
+	p.progDone, p.progTot = v.Done, v.Total
+	p.status = fmt.Sprintf("%s: %d / %d MB", p.acting, v.Done>>20, v.Total>>20)
 }
 
 func catalogAct(verb, id string) bool {
@@ -267,6 +293,10 @@ func (p *CatalogPanel) Render(img *image.NRGBA) {
 		p.lastRefresh = time.Now()
 		go p.refresh()
 	}
+	if p.busy && time.Since(p.lastProg) > 500*time.Millisecond {
+		p.lastProg = time.Now()
+		go p.pollProgress()
+	}
 
 	rows := make([]widgets.ListRow, len(p.hacks))
 	for i, h := range p.hacks {
@@ -303,6 +333,11 @@ func (p *CatalogPanel) Render(img *image.NRGBA) {
 		Status:     p.status, // when non-empty, overrides breadcrumb
 		EmptyText:  "No hacks - is the push-catalog daemon running?",
 	}, suiContentY, suiW, catalogRowH, suiContentBot)
+	// download bar on the right half of the status line
+	if p.busy && p.progTot > 0 {
+		widgets.DrawMeter(img, suiW/2, suiContentY+3, suiW/2-8, 7,
+			float64(p.progDone)/float64(p.progTot), widgets.Default.OnColor, widgets.Default.CrumbBg)
+	}
 }
 
 // catalogOrigin is the "who made this / where does it come from" line.
