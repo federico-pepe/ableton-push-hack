@@ -6,7 +6,7 @@ DOCKER      = docker run --rm --platform linux/amd64 \
                 -v "$(CURDIR)":/work -w /work \
                 gcc:12-bullseye
 
-.PHONY: all splash clean
+.PHONY: all splash clean test
 
 all: $(HOOK_OUT)
 
@@ -26,6 +26,10 @@ $(SPLASH_H): $(GEN_SPLASH)
 # Build the gen_splash tool (runs on the build machine, not cross-compiled)
 $(GEN_SPLASH): gen_splash/main.go gen_splash/go.mod gen_splash/go.sum
 	cd gen_splash && go build -o gen_splash .
+
+# Unit test of the filter logic, built and run in the same image
+test:
+	$(DOCKER) sh -c 'gcc -D_GNU_SOURCE -Wall -Wno-unused-function -Isrc -o /tmp/filter_test test/filter_test.c -ldl -lpthread && /tmp/filter_test'
 
 clean:
 	rm -f $(HOOK_OUT) $(SPLASH_H) $(GEN_SPLASH)

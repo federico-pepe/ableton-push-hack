@@ -19,7 +19,7 @@ embed:
 build: embed
 	@echo "Building $(BINARY) for $(GOOS)/$(GOARCH)..."
 	@mkdir -p $(BUILD_DIR)
-	cd $(SRC_DIR) && GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY) .
+	cd $(SRC_DIR) && CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY) .
 	@cp $(BUILD_DIR)/$(BINARY) $(BINARY)
 	@echo "Done: $(BINARY)"
 

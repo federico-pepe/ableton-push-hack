@@ -355,7 +355,7 @@ install_one() {
   local needs_port; needs_port="$(python3 -c "
 import json, sys
 d = json.load(open(sys.argv[1]))
-print('1' if d.get('binary') and (d.get('web_ui') or d.get('shadow_ui')) else '')
+print('1' if d.get('binary') and (d.get('web_ui') or d.get('shadow_ui') or d.get('surface')) else '')
 " "$dir/hack.json" 2>/dev/null || echo "")"
   if [ -n "$needs_port" ]; then
     local port; port="$(allocate_port "$id" "$hacks_dir" "$prev_port")"
@@ -651,19 +651,22 @@ JSON
     python3 -c "
 import json, sys
 d = json.load(open(sys.argv[1]))
-print('1' if d.get('binary') and (d.get('web_ui') or d.get('shadow_ui')) else '')
+print('1' if d.get('binary') and (d.get('web_ui') or d.get('shadow_ui') or d.get('surface')) else '')
 " "$1"
   }
   local np_dir; np_dir="$(mktemp -d)"
   printf '{"binary":"x","web_ui":{"label":"X","path":"/"}}\n' > "$np_dir/with-web-ui.json"
   printf '{"binary":"x"}\n' > "$np_dir/binary-only.json"
   printf '{"binary":""}\n' > "$np_dir/no-binary.json"
+  printf '{"binary":"x","surface":{"label":"X","color":"sky"}}\n' > "$np_dir/surface-only.json"
   [ "$(needs_port_check "$np_dir/with-web-ui.json")" = "1" ] \
     || die "self-test: needs_port_check missed a hack that declares web_ui"
   [ -z "$(needs_port_check "$np_dir/binary-only.json")" ] \
     || die "self-test: needs_port_check assigned a port to a binary with no web_ui/shadow_ui"
   [ -z "$(needs_port_check "$np_dir/no-binary.json")" ] \
     || die "self-test: needs_port_check assigned a port to a no-binary hack"
+  [ "$(needs_port_check "$np_dir/surface-only.json")" = "1" ] \
+    || die "self-test: needs_port_check missed an app of Push Hack Home (surface)"
   rm -rf "$np_dir"
 
   # 4. extraction: same `tar -xzf ... -C hacks_dir` cmd_install uses, into a

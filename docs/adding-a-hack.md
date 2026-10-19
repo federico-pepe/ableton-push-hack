@@ -55,6 +55,33 @@ range 7701-7710 is reserved for the framework: 7701 is push-manager, and
 7702 is push-catalog. When a user installs the hack through
 `push-catalog`, the catalog assigns a port and overwrites this value.
 
+## A hack that uses Push's screen, buttons and pads
+
+If your hack takes over Push's whole surface (as Stacks and Riffs do), make
+it an app of Push Hack Home, push-manager's switcher. Users open Home with
+Shift + Help and pick your hack there. Do not give your hack a button
+combination of its own: every hack sees every press, so two combinations
+can collide.
+
+1. Add a `surface` hook to `hack.json`:
+
+   ```json
+   "surface": { "label": "MYHACK", "color": "violet" }
+   ```
+
+   `label` is ASCII, at most 7 letters. `color` is a Push palette name.
+2. Set `pmclient.Client.App` to your hack's id, and call `RunSurface`. Draw
+   and react to presses only between `OnFocus` and `OnBlur`. Send frames
+   with `PushFrame`.
+3. Send your card's two status lines with `SurfaceStatus` when they change.
+4. If your hack has its own "back to Live" button, call
+   `SurfaceLeave("live")`.
+
+push-manager switches the display and the MIDI intercept for you. Pass the
+buttons that Live should keep (such as Play and Record) to `RunSurface`.
+If your hack stops while it owns the surface, push-manager shows Home and
+says so. See push-manager's README, "Push Hack Home", for the details.
+
 ## Publish the hack
 
 Add a release workflow, cut a release, and add an entry to

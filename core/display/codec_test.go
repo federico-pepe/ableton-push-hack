@@ -67,6 +67,43 @@ func TestBGR565RoundTrip(t *testing.T) {
 	}
 }
 
+// The fast NRGBA path must produce exactly what the general path does.
+func TestEncodeFrameMatchesGeneralPath(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, VisW, VisH))
+	for i := range img.Pix {
+		img.Pix[i] = byte(i*131 + i/7)
+	}
+	for i := 3; i < len(img.Pix); i += 4 {
+		img.Pix[i] = 255
+	}
+	fast := ToBGR565(img)
+	// Wrap the same pixels in a type the fast path does not take.
+	slow := ToBGR565(struct{ image.Image }{img})
+	if !bytes.Equal(fast, slow) {
+		t.Fatal("NRGBA fast path differs from the general path")
+	}
+	frame := make([]byte, FrameBytes)
+	EncodeFrame(img, frame)
+	if !bytes.Equal(frame, fast[:FrameBytes]) || !bytes.Equal(frame, fast[FrameBytes:]) {
+		t.Fatal("EncodeFrame differs from ToBGR565's halves")
+	}
+}
+
+func BenchmarkEncodeFrame(b *testing.B) {
+	img := image.NewNRGBA(image.Rect(0, 0, VisW, VisH))
+	frame := make([]byte, FrameBytes)
+	for i := 0; i < b.N; i++ {
+		EncodeFrame(img, frame)
+	}
+}
+
+func BenchmarkToBGR565General(b *testing.B) {
+	img := struct{ image.Image }{image.NewNRGBA(image.Rect(0, 0, VisW, VisH))}
+	for i := 0; i < b.N; i++ {
+		ToBGR565(img)
+	}
+}
+
 func TestToWireBlack(t *testing.T) {
 	// measured on device: black frame goes out as e7 f3 e7 ff repeated, both halves.
 	px := make([]byte, TotalBytes)

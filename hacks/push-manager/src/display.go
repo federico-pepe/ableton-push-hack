@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"image"
 	"image/color"
 	"image/draw"
@@ -196,6 +197,14 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "mode must be 0 (off), 1 (bar) or 2 (custom)", http.StatusBadRequest)
 		return
 	}
+	if body.Mode != ModePassthrough && shuttingDown.Load() { // release.go: Push3 needs its screen
+		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go
+		http.Error(w, why, http.StatusConflict)
+		return
+	}
 	// When entering takeover mode (2) with no content yet, clear framebuf to
 	// black so stale pixels from a previous session don't show.
 	if body.Mode == ModeTakeover && shmGetMode() != ModeTakeover {
@@ -243,8 +252,8 @@ func handleDisplayDirect(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/display/image  multipart field "image" = PNG or JPEG
-// Scales image to 960×160, converts to BGR565, writes to shm.
-// Also auto-sets mode to 2 (takeover) if currently in passthrough/bar.
+// Scales image to 960×160, converts to BGR565, writes to shm. The caller
+// sets mode 2 (takeover) first; this handler never changes the mode.
 func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
@@ -258,6 +267,10 @@ func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
+	if !surface.FrameAllowed(r.Header.Get(appHeader)) { // surface.go: one writer
+		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
+		return
+	}
 	img, format, err := image.Decode(f)
 	if err != nil {
 		http.Error(w, "decode image: "+err.Error(), http.StatusBadRequest)
@@ -279,6 +292,35 @@ func handleDisplayImage(w http.ResponseWriter, r *http.Request) {
 		"size":   fmt.Sprintf("%dx%d", dispVisW, dispH),
 		"mode":   shmGetMode(),
 	})
+}
+
+// POST /api/display/frame  body = one raw frame, application/octet-stream:
+// FrameBytes (327680) of BGR565 little-endian at the framebuffer's
+// 1024-pixel stride, as core/display.EncodeFrame (or pmclient.PushFrame)
+// makes it. No decoding and no scaling: the bytes are copied into both
+// halves of shm. For hacks that redraw many times a second, where a PNG
+// through /api/display/image costs ~11 ms a frame. Like /image, it never
+// changes the mode.
+func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	frame, err := io.ReadAll(http.MaxBytesReader(w, r.Body, coredisplay.FrameBytes+1))
+	if err != nil || len(frame) != coredisplay.FrameBytes {
+		http.Error(w, fmt.Sprintf("want exactly %d bytes of BGR565 at stride %d",
+			coredisplay.FrameBytes, coredisplay.Stride), http.StatusBadRequest)
+		return
+	}
+	if !surface.FrameAllowed(r.Header.Get(appHeader)) { // surface.go: one writer
+		http.Error(w, "the screen belongs to someone else now", http.StatusConflict)
+		return
+	}
+	if err := shm.WriteFrame(frame); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // ── Startup splash ────────────────────────────────────────────────────────

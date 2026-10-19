@@ -356,18 +356,23 @@ func shadowUIStop() {
 
 // shadowUISwitchToBrowse switches the active shadow UI to the Browse panel and
 // lights its tab. No-op if the shadow UI is not running.
-func shadowUISwitchToBrowse() {
+func shadowUISwitchToBrowse() { shadowUISwitchTo("browser") }
+
+// shadowUISwitchTo switches the running Shadow UI to the tab with this id
+// and lights it: Push Hack Home opening a tool. No-op if the Shadow UI is
+// not running or the tab is not shown.
+func shadowUISwitchTo(id string) {
 	shadowUI.mu.Lock()
 	idx := -1
 	for i, t := range shadowUI.tabs {
-		if t.ID == "browser" {
+		if t.ID == id {
 			idx = i
 			break
 		}
 	}
 	if !shadowUI.active || idx < 0 {
 		shadowUI.mu.Unlock()
-		return // Browse tab switched off, or browser-bridge not installed
+		return // the tab is switched off, or its hack is not installed
 	}
 	shadowUI.panelIdx = idx
 	panel := shadowUI.panels[idx]

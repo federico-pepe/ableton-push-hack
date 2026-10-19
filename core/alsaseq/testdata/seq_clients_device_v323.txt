@@ -1,0 +1,77 @@
+Client info
+  cur  clients : 7
+  peak clients : 7
+  max  clients : 192
+
+Client   0 : "System" [Kernel]
+  Port   0 : "Timer" (Rwe-)
+  Port   1 : "Announce" (R-e-)
+    Connecting To: 130:0
+Client  16 : "Ableton Push 3" [Kernel]
+  Port   0 : "Ableton Push 3 Live Port" (RWeX)
+    Connecting To: 132:0, 128:0
+    Connected From: 129:0[r:0]
+  Port   1 : "Ableton Push 3 User Port" (RWeX)
+    Connecting To: 130:2
+  Port   2 : "Ableton Push 3 External Port" (RWeX)
+    Connecting To: 130:3
+    Connected From: 130:1
+Client 128 : "RtMidi Input Client" [User]
+  Port   0 : "Ableton Internal Input" (-We-)
+    Connected From: 16:0
+  Output pool :
+    Pool size          : 500
+    Cells in use       : 0
+    Peak cells in use  : 0
+    Alloc success      : 0
+    Alloc failures     : 0
+  Input pool :
+    Pool size          : 200
+    Cells in use       : 0
+    Peak cells in use  : 6
+    Alloc success      : 4177
+    Alloc failures     : 0
+Client 129 : "RtMidi Output Client" [User]
+  Port   0 : "Ableton Internal Output" (R-e-)
+    Connecting To: 16:0[r:0]
+  Output pool :
+    Pool size          : 500
+    Cells in use       : 0
+    Peak cells in use  : 0
+    Alloc success      : 0
+    Alloc failures     : 0
+Client 130 : "Ableton Live" [User]
+  Port   0 : "Announce" (-WeX)
+    Connected From: 0:1
+  Port   1 : "midi_in_3" (R-eX)
+    Connecting To: 16:2
+  Port   2 : "midi_out_2" (-WeX)
+    Connected From: 16:1
+  Port   3 : "midi_out_3" (-WeX)
+    Connected From: 16:2
+  Port   4 : "midi_out_4" (-WeX)
+    Connected From: 131:0
+  Input pool :
+    Pool size          : 200
+    Cells in use       : 0
+    Peak cells in use  : 2
+    Alloc success      : 1246
+    Alloc failures     : 0
+Client 131 : "Client-131" [User]
+  Port   0 : "Push Manager" (R-e-)
+    Connecting To: 130:4
+  Input pool :
+    Pool size          : 200
+    Cells in use       : 0
+    Peak cells in use  : 0
+    Alloc success      : 0
+    Alloc failures     : 0
+Client 132 : "Client-132" [User]
+  Port   0 : "Push Manager In" (-We-)
+    Connected From: 16:0
+  Input pool :
+    Pool size          : 200
+    Cells in use       : 0
+    Peak cells in use  : 6
+    Alloc success      : 4940
+    Alloc failures     : 0

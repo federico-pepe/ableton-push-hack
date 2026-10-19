@@ -28,6 +28,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -706,6 +707,7 @@ func processFixedEvent(evType uint8, data []byte) {
 			emitMidi([]byte{0x90 | ch, note, vel})
 		}
 		applyRemap("note", ch, note, vel)
+		surfaceInputPad(note, vel) // Home's pad columns, while Home is open
 	case alsaseq.EvNoteOff:
 		emitMidi([]byte{0x80 | data[0], data[1], data[2]})
 		applyRemap("note", data[0], data[1], 0)
@@ -720,7 +722,10 @@ func processFixedEvent(evType uint8, data []byte) {
 		ccNum := uint8(param & 0x7F)
 		ccVal := uint8(value & 0x7F)
 		applyRemap("cc", ch, ccNum, ccVal)
-		if shadowUIIsActive() {
+		// Push Hack Home first (surface_io.go): its gesture, and every
+		// press while Home is open. What it takes, nothing else acts on.
+		took := surfaceInputCC(ccNum, ccVal)
+		if shadowUIIsActive() && !took {
 			go shadowUIHandleCC(ccNum, ccVal)
 		}
 		if ccVal == 0x7F {
@@ -730,7 +735,8 @@ func processFixedEvent(evType uint8, data []byte) {
 			// When intercept is off, Push firmware manages its own LED state.
 			// While the Shadow UI is active it fully owns the 4 under-screen
 			// buttons (press + release), so skip the generic toggle for them.
-			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) {
+			// Not while Home or an app owns the surface: they paint their own.
+			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) && surface.Outside() {
 				if filt := ensureMidiFilt(); filt != nil && filt[4] == 1 {
 					ledConfigMu.Lock()
 					cfg, hasCfg := ledConfigs[ccNum]
@@ -751,7 +757,7 @@ func processFixedEvent(evType uint8, data []byte) {
 		} else if ccVal == 0 {
 			chordCCReleased(ccNum)
 			// Handle momentary release — turn off LED when button is released.
-			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) {
+			if isTogglableCC(ccNum) && !(shadowUIIsActive() && isScreenBotCC(ccNum)) && surface.Outside() {
 				if filt := ensureMidiFilt(); filt != nil && filt[4] == 1 {
 					ledConfigMu.Lock()
 					cfg, ok := ledConfigs[ccNum]
@@ -1332,7 +1338,9 @@ func chordCCPressed(cc uint8) {
 
 	// direct mode: another app (mixxx) owns the screen + buttons. chords
 	// would clear its LEDs, draw OSD over it, open the shadow UI.
-	if directDisplayOn() {
+	// Push Hack Home or an app owning the surface: same, or they would draw
+	// over it (Shift + Set over Riffs did, 2026-10-17).
+	if directDisplayOn() || !surface.Outside() {
 		return
 	}
 	for _, chord := range toFire {
@@ -1681,6 +1689,20 @@ func ensureMidiFilt() []byte {
 		return nil
 	}
 	defer f.Close()
+	// push-manager runs as root, Push3 -- and the hook inside it -- as
+	// ableton. A file root creates gets the umask (0644, root:root), and
+	// the hook can no longer open it: intercept silently does nothing until
+	// someone fixes the file by hand (seen on device after an update that
+	// started push-manager before Push3). So whoever created it, leave it
+	// as the hook makes it: 0666, owned like the folder it lives in.
+	if err := f.Chmod(0666); err != nil {
+		log.Printf("midi_filt: chmod: %v", err)
+	}
+	if uid, gid := ownerOf(filepath.Dir(midiFiltFile)); uid >= 0 {
+		if err := f.Chown(uid, gid); err != nil {
+			log.Printf("midi_filt: chown: %v", err)
+		}
+	}
 	if err := f.Truncate(midiFiltSize); err != nil {
 		log.Printf("midi_filt: truncate: %v", err)
 		return nil
@@ -1702,15 +1724,57 @@ func ensureMidiFilt() []byte {
 	return midiFiltData
 }
 
+// midiflt bytes 5..15 are a bitmap of CCs that pass through while the
+// filter is on: bit n of byte 5+n/8 is CC n, so CC 0-87 fit (Play 85 and
+// Record 86 among them). push_hook.c reads the same bits. An older hook
+// ignores them, and zero means "pass nothing", so either side can be the
+// older one.
+const (
+	midiFiltPassOff = 5
+	midiFiltPassMax = (midiFiltSize - midiFiltPassOff) * 8 // 88
+)
+
+func setMidiFiltPass(data []byte, ccs []int) []int {
+	for i := midiFiltPassOff; i < midiFiltSize; i++ {
+		data[i] = 0
+	}
+	var set []int
+	for _, cc := range ccs {
+		if cc >= 0 && cc < midiFiltPassMax {
+			data[midiFiltPassOff+cc/8] |= 1 << (cc % 8)
+			set = append(set, cc)
+		}
+	}
+	return set
+}
+
+func midiFiltPassList(data []byte) []int {
+	set := []int{}
+	for cc := 0; cc < midiFiltPassMax; cc++ {
+		if data[midiFiltPassOff+cc/8]&(1<<(cc%8)) != 0 {
+			set = append(set, cc)
+		}
+	}
+	return set
+}
+
 // POST /api/midi/filter — set MIDI intercept mode
-// Body: {"enabled": true|false}
+// Body: {"enabled": true|false, "pass_cc": [85, 86]}
+//
+// pass_cc lists buttons that still reach Live while the filter is on (CC
+// 0-87); it is replaced on every enable and cleared on disable, so a hack
+// cannot leave buttons passing by accident. Enabling through this API also
+// marks Push's LEDs as taken: the hack paints them, and when the filter goes
+// off push-manager repaints Live's (led_restore.go), the same as after its
+// own Shadow UI.
 func handleMidiFilter(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
 		return
 	}
 	var body struct {
-		Enabled bool `json:"enabled"`
+		Enabled bool  `json:"enabled"`
+		PassCC  []int `json:"pass_cc"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad JSON", http.StatusBadRequest)
@@ -1721,21 +1785,41 @@ func handleMidiFilter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "midi_filt shm not available — is push-display deployed?", http.StatusServiceUnavailable)
 		return
 	}
+	if body.Enabled && shuttingDown.Load() { // release.go: Push3 needs the buttons now
+		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go
+		http.Error(w, why, http.StatusConflict)
+		return
+	}
+	var pass []int
 	if body.Enabled {
+		pass = setMidiFiltPass(data, body.PassCC)
+		ledsCleared.Store(true)
 		data[4] = 1
 	} else {
 		data[4] = 0
+		setMidiFiltPass(data, nil)
 	}
-	jsonResponse(w, map[string]interface{}{"enabled": body.Enabled})
+	if pass == nil {
+		pass = []int{}
+	}
+	jsonResponse(w, map[string]interface{}{"enabled": body.Enabled, "pass_cc": pass})
 }
 
 // GET /api/midi/filter — current filter state
 func handleMidiFilterStatus(w http.ResponseWriter, r *http.Request) {
 	data := ensureMidiFilt()
 	enabled := data != nil && data[4] == 1
+	pass := []int{}
+	if data != nil {
+		pass = midiFiltPassList(data)
+	}
 	jsonResponse(w, map[string]interface{}{
 		"enabled":   enabled,
 		"available": data != nil,
+		"pass_cc":   pass,
 	})
 }
 
