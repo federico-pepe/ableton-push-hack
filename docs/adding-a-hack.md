@@ -72,7 +72,7 @@ can collide.
    `label` is ASCII, at most 7 letters. `color` is a Push palette name.
 2. Set `pmclient.Client.App` to your hack's id, and call `RunSurface`. Draw
    and react to presses only between `OnFocus` and `OnBlur`. Send frames
-   with `PushFrame`.
+   with `Push` (it uses `PushFrame` and falls back to `PushImage` on an older push-manager).
 3. Send your card's two status lines with `SurfaceStatus` when they change.
 4. If your hack has its own "back to Live" button, call
    `SurfaceLeave("live")`.
