@@ -517,7 +517,7 @@ the first presses.
 | Control | In Home |
 |---|---|
 | Top button 1-8 | Open the entry in that column. |
-| Pad column 1-8 | Open the entry in that column. Each column is lit in its entry's colour (dim while the app is stopped); the chosen entry's top pad is white. |
+| Top pad row 1-8 | Open the entry in that column. One pad per entry is lit in its colour (dim while the app is stopped); the chosen entry's pad is white. The other pads stay dark and do nothing. |
 | Jog | Turn to choose, press to open. |
 | Page < > | The next or previous page. Lit when there is one. |
 | Bottom 1, `< LAST` | Back to the app you came from. |

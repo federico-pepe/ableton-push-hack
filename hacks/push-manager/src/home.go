@@ -3,10 +3,11 @@
 // Eight entries a page, each in the screen column under its top button:
 // the superstar first, then the starred entries, then the rest in the
 // user's order (ui_tabs.go). An entry is an app (a hack that takes the
-// surface) or a tool (a Shadow UI panel). The pads repeat the columns: any
-// pad in a column opens its entry. Drawn only when something changes.
+// surface) or a tool (a Shadow UI panel). The top pad row is a quiet hint
+// of the columns: one pad per entry, in its colour, opens it; every other
+// pad is dark and does nothing. Drawn only when something changes.
 //
-//	top 1-8, pad column 1-8   open that entry
+//	top 1-8, top pad 1-8      open that entry
 //	jog turn / press          choose / open
 //	page < >                  the next or previous page
 //	bottom 1  < LAST          back to the app you came from
@@ -264,8 +265,9 @@ func drawStar(img *image.NRGBA, cx, cy, r int, c color.NRGBA) {
 // ---- LEDs -----------------------------------------------------------------------
 
 // homeLEDs is what Home lights: pad notes and button CCs to palette
-// indexes. Every column's pads in its entry's colour, a near-black grey
-// while the app is stopped, the chosen entry's top pad white.
+// indexes. One pad per entry, on the top row, in its entry's colour (a
+// near-black grey while the app is stopped; white for the chosen entry);
+// every other pad dark. A whole lit grid read as something to play.
 func homeLEDs(v homeView) (pads map[uint8]uint8, ccs map[uint8]uint8) {
 	idx := func(name string) uint8 { i, _ := push3.ColorByName(name); return i }
 	pads, ccs = map[uint8]uint8{}, map[uint8]uint8{}
@@ -283,9 +285,12 @@ func homeLEDs(v homeView) (pads map[uint8]uint8, ccs map[uint8]uint8) {
 			}
 		}
 		for row := 0; row < 8; row++ {
-			p := c
-			if col < len(page) && from+col == v.Cursor && row == 7 {
-				p = idx("white_btn")
+			p := uint8(0)
+			if row == homePadRow {
+				p = c
+				if col < len(page) && from+col == v.Cursor {
+					p = idx("white_btn")
+				}
 			}
 			pads[push3.PadNote(col, row)] = p
 		}
@@ -370,7 +375,11 @@ func (s *Surface) HomeCC(cc, val uint8) bool {
 	return true
 }
 
-// HomePad is a pad while Home owns the surface: its column's entry.
+// homePadRow is the pad row Home lights and listens to: the top one.
+const homePadRow = 7
+
+// HomePad is a pad while Home owns the surface: a top-row pad opens its
+// column's entry; the other pads are dark and do nothing.
 func (s *Surface) HomePad(note, vel uint8) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -380,7 +389,10 @@ func (s *Surface) HomePad(note, vel uint8) bool {
 	if vel == 0 || !push3.IsPadNote(note) {
 		return true
 	}
-	col, _ := push3.PadCoord(note)
+	col, row := push3.PadCoord(note)
+	if row != homePadRow {
+		return true
+	}
 	v := s.view()
 	if page, from := v.onPage(); col < len(page) {
 		s.cursor = from + col

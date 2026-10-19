@@ -7,6 +7,14 @@ between minor versions).
 
 ## [Unreleased]
 
+### Fixed
+
+- Leaving Push Hack Home (or an app) for Live often left LEDs lit: the buttons and pads Home had lit, that Live holds off. push-manager now switches every LED off before it gives the surface back, as the Shadow UI does, and then Push3 repaints its own.
+
+### Changed
+
+- Push Hack Home lights only the top pad row: one pad per entry, in its colour (white for the chosen one). Only those pads open an entry; the other pads stay dark. Before, every pad was lit, which read as something to play.
+
 ## [0.1.13-alpha] - 2026-10-19
 
 ### Added
