@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- **Push Hack Harmony**, `core/harmony`: one app tells others what it plays (the key, the scale, the chord of the moment) over MIDI, so another app can follow it. A sender opens a port named `<App> Harmony`; a follower connects to every such port by itself. A chord change can be sent before it happens, counted in MIDI clock pulses, so the follower switches on the same clock. The package also names chords from plain notes and guesses the key. The format is open: [docs/harmony-sync.md](docs/harmony-sync.md). Stacks sends it. Needs a `core/v*` tag before consumers get it.
+
 ### Removed
 
 - Catalog: Riffs, for now. Its repository is private, so the entry could not be installed.

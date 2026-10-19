@@ -163,6 +163,24 @@ explicitly:
   Without this, a hack that silently no-ops every display call because a
   dependency isn't installed is very hard to diagnose from the logs.
 
+## Harmony between hacks
+
+A hack that plays chords or a key can tell other hacks about it with Push
+Hack Harmony (`core/harmony`, spec in
+[docs/harmony-sync.md](docs/harmony-sync.md)). Keep to its rules:
+
+- A sender opens a readable port named `<App> Harmony` and sends only the
+  SysEx messages there, never on its note port.
+- A follower opens its own writable port, connects it to every
+  `* Harmony` port except its own, and tries again every few seconds (the
+  kernel gives a restarted app the same client number, so subscribe again
+  and treat EBUSY as "still connected").
+- Announce a change `delta` clock pulses before it happens; both sides
+  count Live's clock from the same Start.
+- A hack that must keep playing while another app has the surface needs an
+  explicit, off-by-default setting for it (Stacks: "plays when
+  closed"). Parked stays the default.
+
 ## Adding a New Hack
 
 New optional hacks live in their **own repo** (`push-hack-<id>`), not in
@@ -219,6 +237,7 @@ Framework and API (`docs/`):
 - `docs/architecture.md` — framework layer, hack structure convention, `core/` shared library, per-hack file layout, deployed directory layout, Push 3 hardware/OS facts
 - `docs/api-reference.md` — HTTP routes for push-manager and push-catalog, the RemotePanel contract, the push-display shared-memory protocol
 - `docs/vst3-on-push3.md` — load Linux VST3 plugins in Live on Push 3 (scan flag, preset generator `scripts/VST/make-vst3-preset.py`)
+- `docs/harmony-sync.md` — Push Hack Harmony: how one hack tells others what it plays over MIDI (ports, the SysEx message, timing), and how a follower uses it
 - `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`
 - `docs/adding-a-hack.md` — full walkthrough for a new hack: folder layout, `hack.json`/`Makefile` examples, port rules, `core/` shared library
 
