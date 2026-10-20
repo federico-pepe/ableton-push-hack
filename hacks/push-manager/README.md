@@ -562,6 +562,11 @@ Record), and the app draws until you leave it.
   (`/api/enable`, which restarts its service). The card says STARTING...,
   and the app opens by itself when it connects. After 15 seconds without
   it, Home says the app did not start.
+- The power button gives the surface to Live (`release.go`), also from the
+  Shadow UI and from old hacks that hold it: its press
+  is one SysEx on the Push's Live Port, and Push3 asks "shut down?" a
+  second later. Nothing latches. After Cancel, Shift + Help opens Home
+  again.
 - push-manager gives the surface to Live when it starts (`release.go`).
   Apps connect again by themselves.
 
@@ -586,7 +591,7 @@ intercept stays on: Live never sees a press in between.
 
 The tests in `src/surface_test.go` hold these rules after every event of
 10,000 random sequences (gestures, sessions opening and closing, button
-presses, legacy calls): exactly one owner; the intercept
+presses, legacy calls, the power button): exactly one owner; the intercept
 and the screen as the table says; only the owner's frames reach the
 screen; an owning app's session ending opens Home; inside an app only Shift + Help and Help do anything in
 push-manager.

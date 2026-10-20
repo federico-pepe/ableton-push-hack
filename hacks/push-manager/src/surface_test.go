@@ -41,7 +41,13 @@ func (f *fakeIO) homeShow(v homeView)  { f.home, f.display, f.view = true, true,
 func (f *fakeIO) homeHide()            { f.home = false }
 func (f *fakeIO) openTool(id string)   { f.intercept, f.display, f.tool = true, true, id }
 func (f *fakeIO) startApp(id string)   { f.started = append(f.started, id) }
-func (f *fakeIO) now() time.Time       { return f.t }
+func (f *fakeIO) releaseHeld() {
+	f.closeTool()
+	if f.intercept || f.display {
+		f.release()
+	}
+}
+func (f *fakeIO) now() time.Time { return f.t }
 func (f *fakeIO) closeTool() {
 	if f.tool != "" {
 		f.tool, f.display = "", false // the Shadow UI gives the screen back when it stops
@@ -315,6 +321,54 @@ func TestSurfaceLegacyAndOpen(t *testing.T) {
 	}
 }
 
+func TestSurfacePowerPress(t *testing.T) {
+	b := newBench()
+	b.SessionOpen("riffs", nil)
+	b.Gesture(1)
+	b.HomeCC(CCScreenTop1, 127)
+	b.PowerPress()
+	if b.own != ownOutside || b.io.intercept || b.io.display {
+		t.Fatalf("power press: owner %s, intercept %v, display %v", b.own, b.io.intercept, b.io.display)
+	}
+	b.PowerPress() // a second message does nothing
+	b.Gesture(1)   // nothing latches: Home opens again
+	if b.own != ownHome {
+		t.Fatalf("after a power press Home must open again, owner %s", b.own)
+	}
+	b.PowerPress()
+	if b.own != ownOutside || b.io.home {
+		t.Fatalf("power press from Home: owner %s, home drawn %v", b.own, b.io.home)
+	}
+}
+
+// A press in Live changes nothing; one with the Shadow UI or an old hack
+// holding the surface gives it back.
+func TestSurfacePowerPressOutside(t *testing.T) {
+	b := newBench()
+	b.PowerPress()
+	if b.io.intercept || b.io.display || b.io.tool != "" {
+		t.Fatal("a press in Live must change nothing")
+	}
+	b.io.intercept, b.io.display = true, true // an old hack took the surface itself
+	b.PowerPress()
+	if b.io.intercept || b.io.display {
+		t.Errorf("an old hack kept the surface: intercept %v, display %v", b.io.intercept, b.io.display)
+	}
+	b.io.openTool("browser") // the Shadow UI, opened by Shift + Preferences
+	b.PowerPress()
+	if b.io.intercept || b.io.display || b.io.tool != "" {
+		t.Errorf("the Shadow UI kept the surface: %+v", b.io)
+	}
+}
+
+func TestIsPowerPress(t *testing.T) {
+	press := []byte{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x3A, 0x2A, 0x64, 0xF7}
+	rest := []byte{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x3A, 0x22, 0x64, 0xF7}
+	if !isPowerPress(press) || isPowerPress(rest) || isPowerPress(press[:9]) || isPowerPress(nil) {
+		t.Error("only F0 00 21 1D 01 01 3A 2A 64 F7 is a power press")
+	}
+}
+
 // 10,000 random sequences of everything that can happen, the rules
 // checked after every event.
 func TestSurfaceRandom(t *testing.T) {
@@ -394,6 +448,9 @@ func TestSurfaceRandom(t *testing.T) {
 				what = "tick"
 				b.io.t = b.io.t.Add(time.Duration(rng.IntN(20)) * time.Second)
 				b.Tick()
+			case k < 98:
+				what = "power press"
+				b.PowerPress()
 			default:
 				what = "star"
 				b.setStar([]string{"riffs", "stacks", "browser", "files"}[rng.IntN(4)], rng.IntN(2) == 0, rng.IntN(3) == 0)
