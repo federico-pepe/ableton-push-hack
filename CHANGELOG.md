@@ -7,6 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.15-alpha] - 2026-10-20
+
 ### Added
 
 - A `v*` tag now builds and publishes a Push Hack release on GitHub: a tarball with push-manager, push-catalog and `push_hook.so`, and a `manifest.json` with the SHA-256 of each file. `scripts/package-release.sh` makes the files. Groundwork for the on-device self-update.

@@ -212,3 +212,7 @@ Extra: `hack.json` is mode 600 and holds user settings. The updater must not tou
 Done and confirmed on device: LED repaint on restart fix (branch `fix/led-repaint-on-restart`), step 2 version stamping, step 3 semver, step 4 checker, step 5 web bar, System card and routes, step 6 Shadow UI bar and prompt. Steps 7 (CI release, no signing), 8 and 9 (apply, helper, rollback) are built. Confirmed on device 2026-10-20: a failed update (new push-manager exits at start) rolled back in about 18 s, and a good update (0.1.10-alpha to 0.1.11-alpha) worked. Found on device and fixed: the helper must run from the old binary, not the new one; a dead helper must roll back; the new service dying must fail within 2 s; the Shadow UI must re-read the result file. Not yet tested: a real GitHub release, a hook change, power loss during an update.
 
 Bench left on the device for testing (remove it first; it also leaves the unit on a bench-built 0.1.11-alpha): `/data/push-hack/update/settings.json` `url` key and `/data/push-hack/update/bench/` with a `python3 -m http.server 8099`. Remove before a real release.
+
+## 14. Correction (2026-10-20)
+
+This plan assumed the next release was `0.1.10-alpha`, from reading `git tag` in text order. The tags go to `v0.1.14-alpha` (sort with `git tag --sort=-v:refname`). `VERSION` is now `0.1.15-alpha`. Version numbers in this plan (0.1.10, 0.1.11, 0.1.12) are examples and bench names only. The first real test is: install the `0.1.15-alpha` build with `install.sh`, tag `v0.1.16-alpha`, press UPDATE.
