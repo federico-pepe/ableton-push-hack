@@ -34,6 +34,8 @@ cd hacks/push-manager && PATH=$PATH:/usr/local/go/bin make
 cd hacks/push-display && make          # cross-compiles push_hook.so via Docker
 ```
 
+**Release version:** the `VERSION` file at the repo root (for example `0.1.10-alpha`) is the one source of the repo's release number. The push-manager and push-catalog Makefiles stamp it into the binary (`-X main.buildVersion`). Change `VERSION` in the release commit, rebuild both binaries, and tag `v` + that string.
+
 **Committed pre-built binaries:** `hacks/push-manager/push-manager` and
 `hacks/push-catalog/push-catalog` are git-tracked (unlike `hacks/*/build/`,
 which stays gitignored) so `./scripts/install.sh` works with no Go/Docker
@@ -86,6 +88,15 @@ interposition cannot be removed from a running process, and by the time any
 update signal appears, Push3 is already the hooked process flashing
 firmware. **Uninstall the hack (`./scripts/uninstall.sh`) before an OS
 update, then reinstall after.** See `hacks/push-display/README.md`.
+
+## Push Hack self-update
+
+push-manager can install a newer Push Hack release (`hacks/push-manager/src/update/`, flow in the push-manager README, "Push Hack update"). Rules that must not break:
+
+- It writes only `push-manager`, `push-catalog` and `push_hook.so` under `/data/push-hack/hacks/<id>/`, and its own files under `/data/push-hack/update/`. Never `/etc`, never a catalog hack, never `hack.json`. A change that needs `/etc` sets `needs_reinstall` in `releasemeta.json`.
+- It never restarts Push3 (that ends the Live session). A new `push_hook.so` loads at the next Push3 restart.
+- The helper runs from the old binary (`push-manager.prev`). The new binary is only trusted after it answers with the target `hack_version`.
+- A release must keep `-version` printing the release number, and `/api/status` returning `hack_version`. An update checks both.
 
 ## USB-A port safety
 
@@ -226,9 +237,15 @@ git tag v0.1.1-alpha
 git push origin v0.1.1-alpha
 ```
 
-There is no tag-triggered CI release job in this repo (unlike
-`push-tethered-app`) — tagging here is changelog bookkeeping, not a
-publish step.
+Pushing the tag starts `.github/workflows/release.yml`. It checks the tag
+against `VERSION`, runs `scripts/package-release.sh` (builds push-manager and
+push-catalog, takes the committed `push_hook.so`, writes `manifest.json`), and
+publishes a GitHub Release with the tarball and the manifest. A tag with `-`
+in it is a pre-release. Nothing is signed: trust is HTTPS and this repo, the
+same as for the catalog. Set `releasemeta.json`
+`needs_reinstall` to `true` when a release changes anything under `/etc`
+(init.d scripts, udev rules, the `push3` patch): the on-device update then
+refuses and asks for `install.sh`.
 
 ## Reference Docs
 

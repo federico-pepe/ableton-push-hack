@@ -71,3 +71,16 @@ hacks/push-display/deploy.sh --no-build
 | `--remove` | Remove `push-display` instead of deploying it |
 
 See [`hacks/push-display/README.md`](../hacks/push-display/README.md) for the full deploy and risk notes for this hack.
+
+## package-release.sh
+
+Builds the Push Hack release files into `dist/` (not committed). The release workflow runs it; you can run it on a Mac to check the output.
+
+```bash
+scripts/package-release.sh [v0.1.10-alpha]
+```
+
+- Reads `VERSION`. If you pass a tag, it stops when the tag is not `v` + `VERSION`.
+- Runs `make` in `hacks/push-manager` and `hacks/push-catalog`. Takes `hacks/push-display/push_hook.so` as committed (it builds through Docker).
+- Writes `dist/push-hack-<version>.tar.gz`, `dist/manifest.json` (version, `shm_protocol` from `push_hook.c`, `needs_reinstall` from `releasemeta.json`, and the SHA-256 of every file) (the loose copy also holds the tarball's SHA-256).
+- Does not sign anything.

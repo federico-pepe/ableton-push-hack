@@ -1,0 +1,38 @@
+name: Release
+
+# A v* tag builds the Push Hack release files and publishes a GitHub Release.
+# Push Manager on the device reads that release.
+# Plan: plans/2026-10-20-push-hack-self-update.md
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build and package
+        run: scripts/package-release.sh "${GITHUB_REF_NAME}"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # -alpha, -beta and -rc tags are pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/push-hack-*.tar.gz
+            dist/manifest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

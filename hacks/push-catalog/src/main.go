@@ -51,10 +51,19 @@ func runStore(registry string, args ...string) (string, error) {
 	return string(out), err
 }
 
+// buildVersion is the repo release this binary was built from. The Makefile
+// sets it from the VERSION file; "dev" means a plain `go build`.
+var buildVersion = "dev"
+
 func main() {
 	cfgPath := flag.String("config", "hack.json", "path to hack.json")
 	addr := flag.String("addr", "", "override listen address (default :<port from config>)")
+	showVersion := flag.Bool("version", false, "print the Push Hack release this binary is from and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(buildVersion)
+		return
+	}
 
 	cfg := config{Port: 7702}
 	if b, err := os.ReadFile(*cfgPath); err != nil {

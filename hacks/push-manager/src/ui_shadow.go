@@ -195,6 +195,7 @@ type ShadowUI struct {
 	panels   []Panel   // one per tab, same index
 	panelIdx int
 	stopCh   chan struct{}
+	updShown bool // render loop only: the update bar was up last frame
 }
 
 var shadowUI = &ShadowUI{}
@@ -263,8 +264,23 @@ func shadowUnregisterLEDs() {
 // MIDI.
 func updateBotLEDs(panel Panel) {
 	colors := panel.BotLEDColors()
+	updateOverrideLEDs(&colors) // the update bar's button (ui_update.go)
 	for i := 0; i < 8; i++ {
 		sendSeqCC(0, CCScreenBotN(i), int32(colors[i])) //nolint:errcheck
+	}
+}
+
+// shadowUIRefreshBotLEDs relights the under-screen buttons for the current
+// panel, with the update bar's changes on top.
+func shadowUIRefreshBotLEDs() {
+	shadowUI.mu.Lock()
+	var panel Panel
+	if shadowUI.active && shadowUI.panelIdx < len(shadowUI.panels) {
+		panel = shadowUI.panels[shadowUI.panelIdx]
+	}
+	shadowUI.mu.Unlock()
+	if panel != nil {
+		updateBotLEDs(panel)
 	}
 }
 
@@ -417,6 +433,9 @@ func shadowUIIsActive() bool {
 // shadowUIHandleCC routes a CC event into the active shadow UI.
 // Called from the MIDI reader goroutine.
 func shadowUIHandleCC(cc, val uint8) {
+	if shadowUIIsActive() && updateCC(cc, val) { // update bar and prompt (ui_update.go)
+		return
+	}
 	shadowUI.mu.Lock()
 	if !shadowUI.active {
 		shadowUI.mu.Unlock()
@@ -499,10 +518,16 @@ func (s *ShadowUI) renderFrame() {
 	// Strips
 	drawPanelTabs(img, panels, panelIdx)
 	buttons, hint := panel.SoftBotStrip()
+	buttons, hint = updateStrip(buttons, hint)
 	widgets.DrawBotStrip(img, widgets.Default, suiContentBot, suiW, suiColW, suiBotH, buttons, hint)
 
 	// Panel content (clipped to content area)
 	panel.Render(img)
+	drawUpdate(img)
+	if shown := updateBarShown(); shown != s.updShown {
+		s.updShown = shown
+		go updateBotLEDs(panel) // the 8th button's LED follows the bar
+	}
 
 	pixels := imageToBGR565(img)
 	if err := shmWritePixels(pixels); err != nil {

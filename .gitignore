@@ -40,3 +40,4 @@ hacks/random-preset/random-preset
 
 # Third-party plugin binaries and firmware used for on-device tests (not ours to redistribute)
 resources/VST/
+dist/
