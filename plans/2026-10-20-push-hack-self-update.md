@@ -58,14 +58,14 @@ All new code goes in `hacks/push-manager/src/`. Nothing goes in `core/`, so no `
 - Committed binaries must be rebuilt at release time, after `VERSION` changes (existing rule in CLAUDE.md). A binary built between releases reports the last release. That is acceptable. Dev builds append `-dev`.
 - `/api/status` (main.go:427) adds `"hack_version"`. Keep `config.Version` for the hack's own `hack.json` field.
 
-### 4.2 A release artifact
+### 4.2 A release artifact (built: `.github/workflows/release.yml`, `scripts/package-release.sh`, `scripts/releasetool/`)
 
 New `scripts/release.sh <version>`:
 
 1. Check the tree is clean and `VERSION` matches.
 2. Build push-manager and push-catalog. Build push-display if its source changed.
 3. Make `push-hack-<version>.tar.gz` with the binaries, `push_hook.so`, and a `manifest.json`.
-4. Write `SHA256SUMS`. Optionally sign it (decision D2).
+4. Write the loose `manifest.json` with the tarball's SHA-256. No signature (D2).
 5. Print the `gh release create` command. The owner runs it. The script does not publish by itself.
 
 `manifest.json` fields: `version`, `needs_reinstall` (bool, true when a release changes init.d scripts, udev rules, or the `/etc/init.d/push3` patch), `hook_changed` (bool), `shm_protocol` (int), `notes_url`.
@@ -153,7 +153,7 @@ Spike S0, read-only over SSH plus one throwaway Go binary. Report results to the
 ## 9. Decisions (owner, 2026-10-20)
 
 - **D1.** Yes. Publish GitHub Releases with a tarball from `scripts/release.sh`.
-- **D2.** Yes. Sign `SHA256SUMS` with ed25519. Public key embedded in the binary. Private key stays off GitHub.
+- **D2 (dropped 2026-10-20).** The owner first said yes to ed25519 signing, then dropped it to match the other repos and the catalog: trust is HTTPS and the GitHub repo. The release carries SHA-256 hashes only, to catch a broken download. Known cost: a compromised GitHub account could publish a malicious release that units install as root. A key pair made for this sits in `~/.push-hack-release/` and is not used.
 - **D3 (as built, step 6).** UPDATE is the 8th under-screen button (CC27), because top button 8 is already tab 8. The prompt has OK on button 7 and CANCEL on button 8, so a double tap on the opening button cancels. Original note: use a button above or below the screen. No double press. Flow: bar shows an "Update" button, then a modal "OK / Cancel". While the modal is open, push-manager takes those buttons, so no other hack can act on them. Open point for the mockup step: pick the exact CCs so they do not clash with the active panel's own soft buttons (CC20-27, `SoftBotStrip`), and check a hack that does not own the surface but still hears the press.
 - **D4.** Bottom bar. Shown only when an update is available. Hidden while Home or an app owns the surface.
 - **D5.** Call GitHub only. Never call ableton.com. `update.auto_check` setting turns it off (zero traffic).

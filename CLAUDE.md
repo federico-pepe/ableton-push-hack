@@ -228,9 +228,15 @@ git tag v0.1.1-alpha
 git push origin v0.1.1-alpha
 ```
 
-There is no tag-triggered CI release job in this repo (unlike
-`push-tethered-app`) — tagging here is changelog bookkeeping, not a
-publish step.
+Pushing the tag starts `.github/workflows/release.yml`. It checks the tag
+against `VERSION`, runs `scripts/package-release.sh` (builds push-manager and
+push-catalog, takes the committed `push_hook.so`, writes `manifest.json`), and
+publishes a GitHub Release with the tarball and the manifest. A tag with `-`
+in it is a pre-release. Nothing is signed: trust is HTTPS and this repo, the
+same as for the catalog. Set `releasemeta.json`
+`needs_reinstall` to `true` when a release changes anything under `/etc`
+(init.d scripts, udev rules, the `push3` patch): the on-device update then
+refuses and asks for `install.sh`.
 
 ## Reference Docs
 
