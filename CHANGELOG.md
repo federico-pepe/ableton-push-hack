@@ -16,6 +16,7 @@ between minor versions).
 
 - Leaving an app for Live from its listening mode (the app has only the screen) left all of Live's LEDs dark until the next press. push-manager now repaints them on that path too.
 - Opening Push Hack Home from Live showed Live's screen for a moment, then a black frame, before Home. Home's frame now goes up first.
+- When an app gave the pads and buttons to Live but kept the screen (Stacks' listening mode), the app's pad colours stayed on pads that Live keeps dark, for example the out-of-key pads of a chromatic layout. push-manager now switches every LED off first, as it does when it gives the surface back to Live, and Live then repaints its own.
 
 ## [0.1.14-alpha] - 2026-10-19
 
