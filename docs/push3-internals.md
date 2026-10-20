@@ -871,7 +871,7 @@ something.
 A short press does not run `power.sh`. Push3 itself asks the question
 "Asking user whether they want to shut down" on the Push screen. Push3 writes
 this line to `/data/logs/Push3.log` (twice, or "repeated 2 time(s)"). The
-script runs only after the user answers yes, or after a long hold.
+script runs after the user answers yes. We did not test a long hold.
 
 We tested a short press on a Push 3 (AbletonOS 3.23). While the question was
 on screen:
@@ -890,8 +890,7 @@ fails.
 
 As a result, push-manager cannot find the press. A hack that owns the
 surface (screen and intercept on) hides this question, and the user cannot
-answer it. The user must first leave the hack, for example with Shift +
-Help. An earlier version of push-manager watched `.shutdown` to give the
+answer it. The user must first press Help to go back to Live. An earlier version of push-manager watched `.shutdown` to give the
 surface back (removed 2026-10-20). That watcher could never fire before the
 user answered the question.
 
