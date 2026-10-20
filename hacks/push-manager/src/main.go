@@ -426,6 +426,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		"status":        "ok",
 		"name":          config.Name,
 		"version":       config.Version,
+		"hack_version":  buildVersion,
 		"port":          config.Port,
 		"read_only":     config.Settings.ReadOnly,
 		"allowed_roots": config.AllowedRoots,
@@ -440,10 +441,19 @@ func httpError(w http.ResponseWriter, err error) { httpx.Error(w, err) }
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
+// buildVersion is the repo release this binary was built from. The Makefile
+// sets it from the VERSION file; "dev" means a plain `go build`.
+var buildVersion = "dev"
+
 func main() {
 	configPath := flag.String("config", "hack.json", "path to hack.json config file")
 	portOverride := flag.Int("port", 0, "override port from config")
+	showVersion := flag.Bool("version", false, "print the Push Hack release this binary is from and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(buildVersion)
+		return
+	}
 
 	// Load config
 	if err := loadConfig(*configPath); err != nil {
@@ -568,7 +578,7 @@ func main() {
 	handler := withCORS(withLogging(mux))
 
 	addr := fmt.Sprintf(":%d", config.Port)
-	log.Printf("Push Manager %s starting on %s", config.Version, addr)
+	log.Printf("Push Manager %s (Push Hack %s) starting on %s", config.Version, buildVersion, addr)
 	log.Printf("Allowed roots: %s", strings.Join(config.AllowedRoots, ", "))
 
 	srv := httpx.NewServer(addr, handler) // WriteTimeout is long (5min) for large downloads

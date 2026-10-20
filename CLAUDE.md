@@ -34,6 +34,8 @@ cd hacks/push-manager && PATH=$PATH:/usr/local/go/bin make
 cd hacks/push-display && make          # cross-compiles push_hook.so via Docker
 ```
 
+**Release version:** the `VERSION` file at the repo root (for example `0.1.10-alpha`) is the one source of the repo's release number. The push-manager and push-catalog Makefiles stamp it into the binary (`-X main.buildVersion`). Change `VERSION` in the release commit, rebuild both binaries, and tag `v` + that string.
+
 **Committed pre-built binaries:** `hacks/push-manager/push-manager` and
 `hacks/push-catalog/push-catalog` are git-tracked (unlike `hacks/*/build/`,
 which stays gitignored) so `./scripts/install.sh` works with no Go/Docker

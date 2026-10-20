@@ -9,6 +9,7 @@ between minor versions).
 
 ### Added
 
+- Push Manager and Push Catalog know which Push Hack release they are from. The `VERSION` file at the repo root is the source; the Makefiles stamp it into the binary. `push-manager -version` and `push-catalog -version` print it, and `GET /api/status` returns it as `hack_version`. First step of the Push Hack self-update (`plans/2026-10-20-push-hack-self-update.md`).
 - Help on its own goes back to Live from Push Hack Home or from any app. It acts when you let go of Help. This works in Stacks' listening mode too: Live sees that press as well and opens its help screen, so push-manager closes it with one more Help tap. In Live, Help is still Live's own Help. Apps must not use Help themselves.
 - Holding Help for half a second opens Push Hack Home, as Shift + Help does, from Live, a tool or an app. It acts while you still hold Help. In Live you may see Live's help screen for that half second; push-manager closes it before Home opens.
 
