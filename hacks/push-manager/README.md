@@ -66,7 +66,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/surface/status` | `{"app", "lines": ["...", "..."]}`: the two lines on the app's card in Home (ASCII, about 14 characters show). 409 without a session. |
 | `POST` | `/api/surface/input` | `{"app", "input": false}`: the owning app keeps the screen and gives the pads and buttons to Live (Stacks' listen mode); `true` takes them back. Giving them to Live switches every LED off first, and Live repaints its own. 409 if the app does not own the surface. |
 | `POST` | `/api/surface/leave` | `{"app", "to": "live"\|"home"}`: the owning app gives the surface up (its own LIVE button). |
-| `POST` | `/api/surface/open` | `{"id"}`: open an entry as if chosen in Home (a hack's web panel). 409 while another app owns the surface, or after the power button. |
+| `POST` | `/api/surface/open` | `{"id"}`: open an entry as if chosen in Home (a hack's web panel). 409 while another app owns the surface. |
 | `POST` | `/api/surface/star` | `{"id", "star": bool, "super": bool}`: star an entry, or make it the superstar (only one; a superstar is always starred). Saved in `ui_tabs.json`. |
 | `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?, enabled}]` sorted by `id`. `enabled` is computed, not read from `hack.json` — it mirrors Push Hack Catalog's own boot-autostart check (see below), not "currently running". The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
 | `GET` | `/api/ui/tabs` | The one ordered list behind both navigations: `{max: 8, entries: [{id, label, source, has_shadow, shadow, shadow_available, requires, has_web, web, web_label, web_path, port}]}`. Built-in Shadow panels plus every installed hack declaring `web_ui` or `shadow_ui`, with the user's saved order and switches applied. |
@@ -562,10 +562,8 @@ Record), and the app draws until you leave it.
   (`/api/enable`, which restarts its service). The card says STARTING...,
   and the app opens by itself when it connects. After 15 seconds without
   it, Home says the app did not start.
-- The power button gives the surface to Live, as it always did
-  (`release.go`). After it, Home does not open again.
-- push-manager gives the surface to Live when it starts. Apps connect
-  again by themselves.
+- push-manager gives the surface to Live when it starts (`release.go`).
+  Apps connect again by themselves.
 
 ### Who owns the surface
 
@@ -588,10 +586,9 @@ intercept stays on: Live never sees a press in between.
 
 The tests in `src/surface_test.go` hold these rules after every event of
 10,000 random sequences (gestures, sessions opening and closing, button
-presses, legacy calls, the power button): exactly one owner; the intercept
+presses, legacy calls): exactly one owner; the intercept
 and the screen as the table says; only the owner's frames reach the
-screen; an owning app's session ending opens Home; after the power button
-only Live; inside an app only Shift + Help and Help do anything in
+screen; an owning app's session ending opens Home; inside an app only Shift + Help and Help do anything in
 push-manager.
 
 ### Making a hack an app
