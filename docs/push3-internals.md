@@ -866,6 +866,35 @@ That file is a command, not a log: when Live exits and the file exists, the
 launcher powers the device off and deletes it. Never create it to test
 something.
 
+### What a power-button press does (tested 2026-10-20)
+
+A short press does not run `power.sh`. Push3 itself asks the question
+"Asking user whether they want to shut down" on the Push screen. Push3 writes
+this line to `/data/logs/Push3.log` (twice, or "repeated 2 time(s)"). The
+script runs only after the user answers yes, or after a long hold.
+
+We tested a short press on a Push 3 (AbletonOS 3.23). While the question was
+on screen:
+
+- `/data/settings/.shutdown` did not appear.
+- Live kept running (same PID).
+- The four Linux input devices (`/dev/input/event0` to `event3`) gave no
+  event. The two "Power Button" devices are ACPI devices, and the XMOS does
+  not use them.
+
+The press reaches Push3 over the XMOS USB link. We found no signal that a
+program can read cheaply. The only trace is the `Push3.log` line, and a
+performance instrument must not poll a log file. Reading the USB traffic
+needs a change in the push-display hook, which freezes the device when it
+fails.
+
+As a result, push-manager cannot find the press. A hack that owns the
+surface (screen and intercept on) hides this question, and the user cannot
+answer it. The user must first leave the hack, for example with Shift +
+Help. An earlier version of push-manager watched `.shutdown` to give the
+surface back (removed 2026-10-20). That watcher could never fire before the
+user answered the question.
+
 ## The notes played on the pads (2026-10-17)
 
 The pads do not reach Live as a MIDI input. Push3 turns a pad into a pitch
