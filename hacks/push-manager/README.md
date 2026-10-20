@@ -567,7 +567,7 @@ Record), and the app draws until you leave it.
   is one SysEx on the Push's Live Port, and Push3 asks "shut down?" a
   second later. Nothing latches. After Cancel, Shift + Help opens Home
   again.
-- push-manager gives the surface to Live when it starts (`release.go`).
+- push-manager gives the surface to Live when it starts (`release.go`). If the buttons were taken, it also repaints Live's LEDs once MIDI is up.
   Apps connect again by themselves.
 
 ### Who owns the surface

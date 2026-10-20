@@ -49,9 +49,19 @@ func releaseSurface() bool {
 	return changed
 }
 
+// restoreLEDsAtStart is set when start found the intercept on. The old
+// process cleared the LEDs and died before it could repaint them; main
+// repaints once MIDI is up.
+var restoreLEDsAtStart bool
+
 // clearStaleSurface runs once at start: whatever a hack held before a
 // reboot or a power loss, nobody holds it now.
 func clearStaleSurface() {
+	if data := ensureMidiFilt(); data != nil && data[4] != 0 {
+		// watchInterceptOff never sees this on->off: it starts after.
+		ledsCleared.Store(true)
+		restoreLEDsAtStart = true
+	}
 	if releaseSurface() {
 		log.Printf("release: intercept and display were still taken from before this start; given back to Push3")
 	}
