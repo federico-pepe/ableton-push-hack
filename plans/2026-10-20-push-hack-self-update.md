@@ -154,7 +154,7 @@ Spike S0, read-only over SSH plus one throwaway Go binary. Report results to the
 
 - **D1.** Yes. Publish GitHub Releases with a tarball from `scripts/release.sh`.
 - **D2.** Yes. Sign `SHA256SUMS` with ed25519. Public key embedded in the binary. Private key stays off GitHub.
-- **D3.** Use a button above or below the screen. No double press. Flow: bar shows an "Update" button, then a modal "OK / Cancel". While the modal is open, push-manager takes those buttons, so no other hack can act on them. Open point for the mockup step: pick the exact CCs so they do not clash with the active panel's own soft buttons (CC20-27, `SoftBotStrip`), and check a hack that does not own the surface but still hears the press.
+- **D3 (as built, step 6).** UPDATE is the 8th under-screen button (CC27), because top button 8 is already tab 8. The prompt has OK on button 7 and CANCEL on button 8, so a double tap on the opening button cancels. Original note: use a button above or below the screen. No double press. Flow: bar shows an "Update" button, then a modal "OK / Cancel". While the modal is open, push-manager takes those buttons, so no other hack can act on them. Open point for the mockup step: pick the exact CCs so they do not clash with the active panel's own soft buttons (CC20-27, `SoftBotStrip`), and check a hack that does not own the surface but still hears the press.
 - **D4.** Bottom bar. Shown only when an update is available. Hidden while Home or an app owns the surface.
 - **D5.** Call GitHub only. Never call ableton.com. `update.auto_check` setting turns it off (zero traffic).
 - **D6.** Refuse the update when `shm_protocol` differs from the loaded hook; say "restart Push first".
@@ -206,3 +206,9 @@ Each step ends with `go vet`, tests, and no commit (owner commits). Hardware ste
 Extra: `hack.json` is mode 600 and holds user settings. The updater must not touch it (already in section 5).
 
 **S4 timing (measured, 2 restarts):** old process exits in about 50 ms after SIGTERM. New process answers `GET /api/status` about 100 ms after `start`. The process gap is well under 1 s. The health-check route is `/api/status` (the field `version` there is `hack.json`'s, so add `hack_version`). Screen behaviour, owner-confirmed on device 2026-10-20: in Live view nothing visible. With the shadow UI open the screen goes black for the gap, then shows Live. The restart sent the surface to Live (`clearStaleSurface`) but left the LEDs as the shadow UI had them. That bug was fixed and confirmed on device the same day (`release.go`, `main.go`: LED repaint at start). So the restart path of the updater needs no new work for this. Apps holding the surface return to Live; the confirm prompt says so.
+
+## 13. Progress (2026-10-20 to 21)
+
+Done and confirmed on device: LED repaint on restart fix (branch `fix/led-repaint-on-restart`), step 2 version stamping, step 3 semver, step 4 checker, step 5 web bar, System card and routes, step 6 Shadow UI bar and prompt. Next: step 7 `scripts/release.sh`, then steps 8 and 9 (apply, helper, rollback).
+
+Bench left on the device for testing: `/data/push-hack/update/settings.json` `url` key and `/data/push-hack/update/bench/` with a `python3 -m http.server 8099`. Remove before a real release.

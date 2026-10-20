@@ -30,6 +30,7 @@ func startUpdateChecker(configPath string, mux *http.ServeMux) {
 		IncludePrerelease: store.IncludePrerelease,
 		Logf:              log.Printf,
 	})
+	updateChecker = checker // the Shadow UI bar reads it (ui_update.go)
 	(&update.API{C: checker, S: store}).Register(mux)
 
 	go func() {

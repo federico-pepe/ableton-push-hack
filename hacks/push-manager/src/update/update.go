@@ -357,3 +357,27 @@ func (c *Checker) saveLocked() {
 		c.logOnce("update state not saved: " + err.Error())
 	}
 }
+
+// Pending returns the version to offer, if an update is available and the user
+// has not dismissed it. Cheap: the screen asks every frame.
+func (c *Checker) Pending() (version string, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	include := c.cfg.IncludePrerelease == nil || c.cfg.IncludePrerelease()
+	cur, err := semver.Parse(c.cfg.Installed)
+	if err != nil {
+		return "", false
+	}
+	for i := range c.st.Releases { // newest first
+		r := &c.st.Releases[i]
+		if r.Prerelease && !include {
+			continue
+		}
+		lat, err := semver.Parse(r.Version)
+		if err != nil || lat.Compare(cur) <= 0 || r.Version == c.st.Dismissed {
+			return "", false
+		}
+		return r.Version, true
+	}
+	return "", false
+}
