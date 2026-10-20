@@ -519,6 +519,7 @@ func main() {
 
 	// Routes
 	mux := http.NewServeMux()
+	startUpdateChecker(*configPath, mux)
 	mux.HandleFunc("/", handleUI)
 	mux.HandleFunc("/api/roots", handleRoots)
 	mux.HandleFunc("/api/list", handleList)

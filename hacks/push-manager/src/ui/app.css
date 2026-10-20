@@ -13,6 +13,7 @@ html { height: 100%; -webkit-tap-highlight-color: transparent; }
   --white:    rgb(22, 22, 24);       /* page background (dark) */
   --red:      rgb(254, 89, 72);
   --green:    rgb(103, 194, 58);
+  --yellow:   rgb(255, 214, 0);      /* update bar; dark text on it */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
   --px:       20px;
@@ -678,3 +679,30 @@ canvas#draw-canvas {
       .br-tag b{cursor:pointer;opacity:.6}
       .br-load{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;flex:none}
       .br-addtag{background:none;border:1px dashed var(--grey);color:var(--grey-mid);border-radius:10px;padding:1px 8px;font-size:11px;cursor:pointer}
+
+/* ── Push Hack update ──────────────────────────────────────────────────── */
+#update-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px var(--px); padding-bottom: calc(8px + var(--safe-bot));
+  background: var(--yellow); color: rgb(22, 22, 24);
+  font-size: 14px; font-weight: 600;
+}
+#update-bar-msg { flex: 1; min-width: 0; }
+.upd-bar-btn {
+  background: transparent; color: inherit; border: 1px solid rgba(22, 22, 24, 0.5);
+  padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer;
+}
+body.has-update-bar { padding-bottom: 52px; }
+.upd-row { display: flex; justify-content: space-between; font-size: 13px; padding: 2px 0; }
+.upd-row span:first-child { color: var(--grey-mid); }
+.upd-msg { font-size: 12px; margin-top: 6px; color: var(--grey-mid); min-height: 16px; }
+.upd-msg.err { color: var(--red); }
+.upd-actions { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.upd-btn {
+  background: var(--grey); color: var(--black); border: 1px solid var(--grey-mid);
+  padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.upd-btn:disabled { opacity: 0.5; cursor: default; }
+.upd-link { color: var(--blue); font-size: 13px; }
+.upd-opt { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 6px; cursor: pointer; }

@@ -87,6 +87,21 @@
         Enable USB mouse/keyboard (USB-A port)
       </label>
     </div>
+
+    <!-- Push Hack update -->
+    <div id="update-card" style="margin-top:12px;padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">PUSH HACK UPDATE</div>
+      <div class="upd-row"><span>Installed</span><span id="upd-installed">-</span></div>
+      <div class="upd-row"><span>Latest</span><span id="upd-latest">-</span></div>
+      <div class="upd-row"><span>Last checked</span><span id="upd-last">-</span></div>
+      <div id="upd-msg" class="upd-msg"></div>
+      <div class="upd-actions">
+        <button class="upd-btn" id="upd-check" onclick="checkUpdateNow()">Check now</button>
+        <a id="upd-notes" class="upd-link" target="_blank" rel="noopener" style="display:none">Release notes</a>
+      </div>
+      <label class="upd-opt"><input type="checkbox" id="upd-auto" onchange="updateSettingsChanged()"> Check for updates automatically (once a day, from GitHub)</label>
+      <label class="upd-opt"><input type="checkbox" id="upd-pre" onchange="updateSettingsChanged()"> Include alpha and beta releases</label>
+    </div>
   </div>
 
   <!-- Display -->
@@ -481,6 +496,12 @@
     <div id="browser-list"></div>
   </div>
 
+</div>
+
+<div id="update-bar" style="display:none">
+  <span id="update-bar-msg"></span>
+  <button class="upd-bar-btn" onclick="showStats()">Details</button>
+  <button class="upd-bar-btn" onclick="dismissUpdate()">Dismiss</button>
 </div>
 
 <div id="toast-wrap"></div>

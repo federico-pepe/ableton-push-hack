@@ -204,6 +204,7 @@ function showStats() {
   $('header-nav').style.display = 'none';
 }
 function startStatsPolling() {
+  loadUpdate();
   loadStats();
   loadUsbHidState();
   _statsTimer = setInterval(loadStats, 3000);
@@ -2132,3 +2133,73 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { stopVideoStream(); stopDrawStream(); }
 });
 window.addEventListener('pagehide', () => { stopVideoStream(); stopDrawStream(); });
+
+
+// ── Push Hack update ───────────────────────────────────────────────────────
+let _upd = null;
+
+async function loadUpdate() {
+  try { _upd = await api('GET', '/api/update/status'); } catch (e) { return; }
+  renderUpdate();
+}
+
+function updFmt(t) { return t ? new Date(t).toLocaleString() : 'never'; }
+
+function renderUpdate() {
+  const u = _upd;
+  if (!u) return;
+  const bar = $('update-bar');
+  const show = !!u.visible && !!u.latest;
+  bar.style.display = show ? '' : 'none';
+  document.body.classList.toggle('has-update-bar', show);
+  if (show) $('update-bar-msg').textContent = 'Push Hack ' + u.latest.version + ' is available (you have ' + u.installed + ')';
+
+  $('upd-installed').textContent = u.installed;
+  $('upd-latest').textContent = u.latest ? u.latest.version + (u.latest.prerelease ? ' (pre-release)' : '') : 'unknown';
+  $('upd-last').textContent = updFmt(u.last_check);
+  const msg = $('upd-msg');
+  msg.classList.toggle('err', !!u.last_error && !u.available);
+  if (u.last_error) msg.textContent = 'Last check failed: ' + u.last_error + (u.available ? '. Showing the last known release.' : '');
+  else if (u.available) msg.textContent = 'An update is available.';
+  else if (u.latest) msg.textContent = 'You are up to date.';
+  else msg.textContent = u.last_check ? 'No release found.' : 'Not checked yet.';
+  const notes = $('upd-notes');
+  const ok = u.latest && /^https:\/\/github\.com\//.test(u.latest.url || '');
+  notes.style.display = ok ? '' : 'none';
+  if (ok) notes.href = u.latest.url;
+  $('upd-auto').checked = !!u.auto_check;
+  $('upd-pre').checked = !!u.include_prerelease;
+}
+
+async function checkUpdateNow() {
+  const b = $('upd-check');
+  b.disabled = true;
+  try {
+    _upd = await api('POST', '/api/update/check');
+    renderUpdate();
+  } catch (e) {
+    toast(/less than a minute/.test(e.message) ? 'Checked a moment ago. Try again in a minute.' : 'Check failed: ' + e.message, 'error');
+  }
+  b.disabled = false;
+}
+
+async function dismissUpdate() {
+  if (!_upd || !_upd.latest) return;
+  try {
+    _upd = await api('POST', '/api/update/dismiss', {version: _upd.latest.version});
+    renderUpdate();
+  } catch (e) { toast('Could not dismiss: ' + e.message, 'error'); }
+}
+
+async function updateSettingsChanged() {
+  try {
+    _upd = await api('POST', '/api/update/settings', {
+      auto_check: $('upd-auto').checked,
+      include_prerelease: $('upd-pre').checked,
+    });
+    renderUpdate();
+  } catch (e) { toast('Could not save: ' + e.message, 'error'); loadUpdate(); }
+}
+
+loadUpdate();
+setInterval(loadUpdate, 5 * 60 * 1000);

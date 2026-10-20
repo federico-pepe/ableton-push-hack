@@ -23,6 +23,10 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/rename` | Rename/move. JSON body: `{"old": "/abs/path", "new": "/abs/path"}` |
 | `POST` | `/api/copy` | Copy file or directory tree. JSON body: `{"src": "/abs/path", "dst": "/abs/path"}`. Both paths must be within allowed roots. Destination must not already exist. Chowns result to match destination directory owner. |
 | `POST` | `/api/unmount?path=<path>` | Unmount a removable drive. Path must be directly under `/run/media/`. Calls `syscall.Unmount` then removes the udev lock file (`/tmp/.automount-<name>`) so the drive can be re-mounted on next plug. |
+| `GET` | `/api/update/status` | Push Hack update state: `installed`, `latest`, `available`, `visible` (show the bar), `dismissed`, `last_check`, `next_check`, `last_error`, `auto_check`, `include_prerelease`. Makes no request. |
+| `POST` | `/api/update/check` | Check GitHub now. Returns the new status. `429` if the last try was under a minute ago. A failed request is `200` with `last_error` set. |
+| `POST` | `/api/update/dismiss` | Body `{"version":"0.1.11-alpha"}`. Hides the bar for that version. |
+| `GET`/`POST` | `/api/update/settings` | `{"auto_check":bool,"include_prerelease":bool}`; POST takes either or both. |
 | `GET` | `/api/stats` | System stats: CPU %, memory, disk, IP addresses, battery, uptime, hotspot password |
 | `GET` | `/api/display/status` | Display hook status: `{connected, direct, mode, frame_seq, width, height}`. `connected` is also true while `direct` is on. |
 | `POST` | `/api/display/direct` | JSON body `{"enabled": true\|false}`. `true` claims the screen over USB, so push-manager drives it without Push3. Every frame push-manager writes then goes to the screen, whatever `mode` is. Only works while Push3 is stopped (409 otherwise). Set `false` before you start Push3 again: the call returns after the screen is released. |
@@ -365,6 +369,17 @@ Auto-refreshes every 3 seconds. Shows:
 - Uptime (from `/proc/uptime`)
 
 > **Battery not shown:** Push 3's battery state is only accessible via the XMOS firmware's custom MIDI SysEx protocol — `/sys/class/power_supply/` is empty. The UI handles the `battery` field gracefully (hidden when absent).
+
+### Push Hack update
+Push Manager checks GitHub for a newer Push Hack release. It only looks; it does not install anything yet.
+
+- It asks `api.github.com` for the release list of this repo: at most once a day, the first time 1 to 11 minutes after start. It never calls ableton.com. The answer is cached with an ETag, so an unchanged list costs nothing against GitHub's limit.
+- A failed check (no internet, rate limit) is quiet. It retries after 1 h, then 2 h, 4 h and so on, up to 24 h.
+- `-alpha`, `-beta` and `-rc` releases count by default. Order follows semver, so `0.1.9-alpha` is older than `0.1.10-alpha`.
+- When a newer release exists, the web page shows a yellow bar at the bottom ("Dismiss" hides it for that version). The System page has a card with the installed and latest version, "Check now", and two switches: check automatically, and include alpha and beta releases. With the first switch off, push-manager makes no request at all.
+- Files, in `/data/push-hack/update/`: `settings.json` (the switches) and `state.json` (last check, ETag, known releases).
+- Bench test without GitHub: put `"url": "http://127.0.0.1:8099/releases.json"` in `settings.json` and serve a GitHub-style release list there. This key is not available over HTTP.
+- Code: `src/update/` (checker, settings, routes) and `src/semver/`, wired in by `src/update_wire.go`. Plan: `plans/2026-10-20-push-hack-self-update.md`.
 
 ### Display page
 Accessed via "Display" button in header. Tab-based layout:
