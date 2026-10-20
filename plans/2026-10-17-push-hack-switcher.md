@@ -145,8 +145,8 @@ When Home opens, the app you came from is chosen, and tagged LAST.
   (`/api/enable`, which restarts the service). The card says STARTING...,
   and the app opens by itself as soon as it connects. After 15 seconds
   without it: "RIFFS DID NOT START -- SEE ITS LOG".
-- **The power button:** as today (release.go): the surface goes to Live at
-  once, and nobody gets it back until the device is off.
+- **The power button:** removed 2026-10-20. Its watcher did not work on
+  device. Push3 handles the button as before.
 - **push-manager restarts:** as today, it gives the surface to Live at its
   start. The apps reconnect by themselves and are listed again.
 
@@ -162,7 +162,6 @@ Live --(Shift+Help)--> Home --(open app)--> App(id)
   |                     |  +--(Shift+Help)----+
   +-------(LIVE)--------+  +--(app stops)-----+
 Home --(open tool)--> Tool(panel) --(Shift+Help)--> Home
-any --(power button)--> Live, and stays Live
 ```
 
 For each owner, push-manager sets the surface the same way, in one place:
@@ -228,15 +227,14 @@ so the two cannot both draw. Stacks 0.3.0 uses the session.
 3. Only the owning app's frames reach the screen.
 4. An owning app's session ending gives the surface to Home within a
    second.
-5. After the power button, nothing but Live owns the surface.
-6. Inside an app, only Shift + Help (and Shift + Help, Help) and Help do
+5. Inside an app, only Shift + Help (and Shift + Help, Help) and Help do
    anything in push-manager.
 
 Tests:
 
 - The state machine: a table of transitions, and 10,000 random sequences
-  of events (gestures, sessions opening and closing, legacy calls, frames,
-  the power button), checking the six rules after every event.
+  of events (gestures, sessions opening and closing, legacy calls, frames),
+  checking the five rules after every event.
 - Gestures: Shift down, Help tap, Shift up opens Home; two taps the
   superstar; Shift up with no Help, or Help without Shift, does nothing.
 - Sessions over a real HTTP server: focus and blur arrive; closing the

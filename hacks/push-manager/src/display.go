@@ -212,10 +212,6 @@ func handleDisplayMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "mode must be 0 (off), 1 (bar) or 2 (custom)", http.StatusBadRequest)
 		return
 	}
-	if body.Mode != ModePassthrough && shuttingDown.Load() { // release.go: Push3 needs its screen
-		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
-		return
-	}
 	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go
 		http.Error(w, why, http.StatusConflict)
 		return

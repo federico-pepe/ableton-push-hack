@@ -1791,10 +1791,6 @@ func handleMidiFilter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "midi_filt shm not available — is push-display deployed?", http.StatusServiceUnavailable)
 		return
 	}
-	if body.Enabled && shuttingDown.Load() { // release.go: Push3 needs the buttons now
-		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
-		return
-	}
 	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go
 		http.Error(w, why, http.StatusConflict)
 		return

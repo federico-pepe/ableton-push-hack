@@ -98,7 +98,6 @@ type Surface struct {
 	startAt  time.Time
 	cursor   int // Home's chosen entry, an index into entries()
 	shift    bool
-	down     bool // the power button was pressed: Live until off
 }
 
 func newSurface(io surfaceIO, entries func() []homeEntry, setStar func(string, bool, bool)) *Surface {
@@ -157,7 +156,7 @@ func (s *Surface) FrameAllowed(app string) bool {
 func (s *Surface) Gesture(taps int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.down || taps < 1 {
+	if taps < 1 {
 		return
 	}
 	if taps == 1 {
@@ -189,7 +188,7 @@ func (s *Surface) Gesture(taps int) {
 func (s *Surface) HelpAlone() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.down || (s.own != ownHome && s.own != ownApp) {
+	if s.own != ownHome && s.own != ownApp {
 		return
 	}
 	if s.own == ownApp && !s.input {
@@ -207,7 +206,7 @@ func (s *Surface) HelpAlone() {
 func (s *Surface) LongHelp(liveSaw bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.down || s.own == ownHome {
+	if s.own == ownHome {
 		return
 	}
 	if liveSaw && s.own == ownOutside {
@@ -316,9 +315,6 @@ func (s *Surface) Leave(app, to string) error {
 func (s *Surface) Open(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.down {
-		return fmt.Errorf("Push is shutting down")
-	}
 	if s.own == ownApp && s.app != id {
 		return fmt.Errorf("the surface belongs to %s", s.app)
 	}
@@ -330,19 +326,6 @@ func (s *Surface) Open(id string) error {
 	}
 	s.open(id)
 	return nil
-}
-
-// Power is the power button: Live, until the device is off.
-func (s *Surface) Power() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.down {
-		return
-	}
-	s.down = true
-	if s.own != ownOutside {
-		s.toLive()
-	}
 }
 
 // Tick runs once a second: an app Home started and that never connected.

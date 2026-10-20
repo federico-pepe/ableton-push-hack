@@ -137,9 +137,6 @@ func (b *testBench) rules(t *testing.T, where string) {
 			t.Fatalf("%s: a frame from %q allowed=%v, want %v (owner %s %s)", where, app, got, want, s.own, s.app)
 		}
 	}
-	if s.down && s.own != ownOutside {
-		t.Fatalf("%s: after the power button %s owns the surface", where, s.own)
-	}
 }
 
 func TestSurfaceTransitions(t *testing.T) {
@@ -318,25 +315,6 @@ func TestSurfaceLegacyAndOpen(t *testing.T) {
 	}
 }
 
-func TestSurfacePowerButton(t *testing.T) {
-	b := newBench()
-	b.SessionOpen("riffs", nil)
-	b.Gesture(1)
-	b.HomeCC(CCScreenTop1, 127)
-	b.Power()
-	if b.own != ownOutside || b.io.intercept || b.io.display {
-		t.Fatalf("power: owner %s, intercept %v, display %v", b.own, b.io.intercept, b.io.display)
-	}
-	b.Gesture(1)
-	b.Gesture(2)
-	if b.own != ownOutside {
-		t.Fatal("after the power button, gestures must do nothing")
-	}
-	if err := b.Open("riffs"); err == nil {
-		t.Error("after the power button, Open must be refused")
-	}
-}
-
 // 10,000 random sequences of everything that can happen, the rules
 // checked after every event.
 func TestSurfaceRandom(t *testing.T) {
@@ -368,7 +346,7 @@ func TestSurfaceRandom(t *testing.T) {
 				what = "help held"
 				was := b.own
 				b.LongHelp(rng.IntN(2) == 0)
-				if !b.down && b.own != ownHome {
+				if b.own != ownHome {
 					t.Fatalf("run %d step %d: Help held from %s left the owner %s", run, step, was, b.own)
 				}
 			case k < 32:
@@ -416,9 +394,6 @@ func TestSurfaceRandom(t *testing.T) {
 				what = "tick"
 				b.io.t = b.io.t.Add(time.Duration(rng.IntN(20)) * time.Second)
 				b.Tick()
-			case k < 98:
-				what = "power"
-				b.Power()
 			default:
 				what = "star"
 				b.setStar([]string{"riffs", "stacks", "browser", "files"}[rng.IntN(4)], rng.IntN(2) == 0, rng.IntN(3) == 0)

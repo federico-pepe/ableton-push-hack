@@ -459,10 +459,8 @@ func main() {
 	// Connect to push-display shared memory (non-fatal if hook not running)
 	initDisplayShm()
 
-	// Nobody holds the surface at start, and the power button takes it back
-	// (release.go).
+	// Nobody holds the surface at start (release.go).
 	clearStaleSurface()
-	go watchShutdown()
 	go runSurface() // Push Hack Home: Shift + Help (surface.go)
 
 	// Mark Live's own Log.txt once Live is up so support can confirm push-hack is
