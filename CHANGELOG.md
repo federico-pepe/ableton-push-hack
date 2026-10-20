@@ -17,6 +17,7 @@ between minor versions).
 - Push Hack Home or an app hid Push3's "shut down?" question after a press of the power button. The press shows as a SysEx on the Push's Live Port, and push-manager now gives the surface to Live when it sees it. After Cancel, Shift + Help opens Home again.
 
 - Leaving an app for Live from its listening mode (the app has only the screen) left all of Live's LEDs dark until the next press. push-manager now repaints them on that path too.
+- After push-manager restarted while Push Hack Home, an app or the Shadow UI held the buttons, the LEDs stayed as that screen left them. push-manager now repaints Live's LEDs once MIDI is up at start. Seen on device 2026-10-20.
 - Opening Push Hack Home from Live showed Live's screen for a moment, then a black frame, before Home. Home's frame now goes up first.
 - When an app gave the pads and buttons to Live but kept the screen (Stacks' listening mode), the app's pad colours stayed on pads that Live keeps dark, for example the out-of-key pads of a chromatic layout. push-manager now switches every LED off first, as it does when it gives the surface back to Live, and Live then repaints its own.
 

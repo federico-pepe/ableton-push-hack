@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/httpx"
 )
@@ -500,6 +501,10 @@ func main() {
 		initMidiOut()
 		startMidiReader()
 		go watchInterceptOff()
+		if restoreLEDsAtStart {
+			time.Sleep(ledRestoreDelay)
+			restorePushLEDs()
+		}
 	}()
 
 	// Routes
