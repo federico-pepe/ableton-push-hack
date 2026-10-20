@@ -377,6 +377,17 @@ func (d *deviceIO) closeTool() {
 	}
 }
 
+// releaseHeld: the Shadow UI stops; then, if the intercept is on or the
+// screen is not Push3's, all goes back to Live as in release. With nothing
+// held a power press in Live changes nothing, LEDs included.
+func (d *deviceIO) releaseHeld() {
+	d.closeTool()
+	data := ensureMidiFilt()
+	if (data != nil && data[4] != 0) || shmGetMode() != ModePassthrough {
+		d.release()
+	}
+}
+
 // startApp asks push-catalog to start a stopped app: enable restarts its
 // service (and switches its boot start back on).
 func (d *deviceIO) startApp(id string) {

@@ -882,17 +882,30 @@ on screen:
   event. The two "Power Button" devices are ACPI devices, and the XMOS does
   not use them.
 
-The press reaches Push3 over the XMOS USB link. We found no signal that a
-program can read cheaply. The only trace is the `Push3.log` line, and a
-performance instrument must not poll a log file. Reading the USB traffic
-needs a change in the push-display hook, which freezes the device when it
-fails.
+The press does show on MIDI. The XMOS sends one SysEx on the Push's
+`Live Port` (ALSA 16:0), about one second before Push3 asks the question:
 
-As a result, push-manager cannot find the press. A hack that owns the
-surface (screen and intercept on) hides this question, and the user cannot
-answer it. The user must first press Help to go back to Live. An earlier version of push-manager watched `.shutdown` to give the
-surface back (removed 2026-10-20). That watcher could never fire before the
-user answered the question.
+```
+F0 00 21 1D 01 01 3A 2A 64 F7
+```
+
+At rest, the same message arrives about once a second with `22` in place of
+`2A`. We read the port with `aseqdump -p 16:0,16:1,16:2` as root. In four
+presses we saw four `2A` messages. In 15 seconds of rest we saw none. We do
+not know what a long hold sends, or whether another event also sets that
+bit. `3A` is not in any public Push 3 documentation.
+
+push-manager reads this port already. When it sees the message, it gives the
+surface to Live (`release.go`, `Surface.PowerPress`). Then the question is
+visible and the buttons work. Nothing latches: after Cancel, Shift + Help
+opens Home again. This covers Home, apps, the Shadow UI and old hacks
+that take the screen themselves (Keyboard Visualizer): if the intercept is
+on or the screen is not Push3's, both go back to Live. With nothing held, a
+press changes nothing.
+
+An earlier version watched `/data/settings/.shutdown` (removed 2026-10-20).
+That file changes only after the user answers the question, so that watcher
+could never work.
 
 ## The notes played on the pads (2026-10-17)
 

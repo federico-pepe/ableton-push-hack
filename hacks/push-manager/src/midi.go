@@ -621,6 +621,9 @@ func (midiSeqHandler) VarLen(evType uint8, src alsaseq.Addr, payload []byte) {
 	if evType != alsaseq.EvSysEx {
 		return
 	}
+	if isPowerPress(payload) { // release.go
+		go surface.PowerPress()
+	}
 	// Route Ableton palette responses to query waiter before emitting.
 	if isPaletteResponse(payload) {
 		select {

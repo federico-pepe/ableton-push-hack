@@ -64,6 +64,7 @@ type surfaceIO interface {
 	homeHide()               // stop drawing Home
 	openTool(id string)      // the Shadow UI, on this panel
 	closeTool()              // stop the Shadow UI, if it runs
+	releaseHeld()            // the Shadow UI or an old hack holds the screen or the buttons: give them back to Live; nothing held, nothing done
 	startApp(id string)      // ask push-catalog to start a stopped app
 	now() time.Time
 }
@@ -307,6 +308,22 @@ func (s *Surface) Leave(app, to string) error {
 		s.toLive()
 	}
 	return nil
+}
+
+// PowerPress is the power button going down (release.go): Push3 is about
+// to ask "shut down?", so Home or the app gives the surface to Live. Nothing
+// latches. After Cancel, Home opens again as usual. Outside Home's hands,
+// the Shadow UI or an old hack (Keyboard Visualizer) may hold the surface
+// too: it goes back to Live the same way.
+func (s *Surface) PowerPress() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log.Printf("surface: power button, owner %s", s.own)
+	if s.own != ownOutside {
+		s.toLive()
+		return
+	}
+	s.io.releaseHeld()
 }
 
 // Open opens an entry from outside Home's own buttons (the web UI). It is
