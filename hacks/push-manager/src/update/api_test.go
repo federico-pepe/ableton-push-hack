@@ -3,9 +3,11 @@ package update
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newAPI(t *testing.T, f *fixture) (*API, http.Handler) {
@@ -106,5 +108,54 @@ func TestStoreKeepsURLAndDefaults(t *testing.T) {
 	st.Set(false, true)
 	if s := OpenStore(p).Get(); s.URL != "http://bench" || s.AutoCheck {
 		t.Fatalf("reload = %+v", s)
+	}
+}
+
+func TestAPIInstallOnlyTheNewestRelease(t *testing.T) {
+	f := newFixture(t, "0.1.10-alpha")
+	r := newRel(t)
+	r.ready("0.1.11-alpha")
+	f.body = `[{"tag_name":"v0.1.11-alpha","prerelease":true,"draft":false,"html_url":"https://x","assets":[` +
+		`{"name":"manifest.json","browser_download_url":"` + r.release.Assets[0].URL + `","size":1},` +
+		`{"name":"` + r.release.Assets[1].Name + `","browser_download_url":"` + r.release.Assets[1].URL + `","size":1}]}]`
+	store := OpenStore(filepath.Join(f.dir, "settings.json"))
+	f.c.cfg.IncludePrerelease = store.IncludePrerelease
+	api := &API{C: f.c, S: store, A: r.app, Dir: r.dir}
+	mux := http.NewServeMux()
+	api.Register(mux)
+	do(mux, "POST", "/api/update/check", "")
+
+	if w := do(mux, "POST", "/api/update/apply", `{"version":"0.1.9"}`); w.Code != 409 {
+		t.Fatalf("old version = %d", w.Code)
+	}
+	if w := do(mux, "POST", "/api/update/apply", `{}`); w.Code != 400 {
+		t.Fatalf("empty = %d", w.Code)
+	}
+	if w := do(mux, "GET", "/api/update/apply", ""); w.Code != 405 {
+		t.Fatalf("GET = %d", w.Code)
+	}
+	if w := do(mux, "POST", "/api/update/apply", `{"version":"0.1.11-alpha"}`); w.Code != 202 || !strings.Contains(w.Body.String(), `"apply":{"phase"`) {
+		t.Fatalf("apply = %d %s", w.Code, w.Body)
+	}
+	for i := 0; i < 200 && r.startedN() == 0 && r.app.State().Phase != "failed"; i++ { // let it finish before the temp dirs go
+		time.Sleep(10 * time.Millisecond)
+	}
+	if r.startedN() != 1 {
+		t.Fatalf("helper not started: %+v", r.app.State())
+	}
+}
+
+func TestAPIResultAndAck(t *testing.T) {
+	f := newFixture(t, "0.1.10-alpha")
+	store := OpenStore(filepath.Join(f.dir, "settings.json"))
+	os.WriteFile(filepath.Join(f.dir, resultFile), []byte(`{"ok":false,"version":"0.1.11-alpha","error":"boom"}`), 0o644)
+	api := &API{C: f.c, S: store, Dir: f.dir}
+	mux := http.NewServeMux()
+	api.Register(mux)
+	if w := do(mux, "GET", "/api/update/status", ""); !strings.Contains(w.Body.String(), `"error":"boom"`) {
+		t.Fatalf("%s", w.Body)
+	}
+	if w := do(mux, "POST", "/api/update/ack", ""); !strings.Contains(w.Body.String(), `"result":null`) {
+		t.Fatalf("%s", w.Body)
 	}
 }

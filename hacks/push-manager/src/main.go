@@ -449,10 +449,15 @@ func main() {
 	configPath := flag.String("config", "hack.json", "path to hack.json config file")
 	portOverride := flag.Int("port", 0, "override port from config")
 	showVersion := flag.Bool("version", false, "print the Push Hack release this binary is from and exit")
+	finishUpdate := flag.Bool("finish-update", false, "internal: restart services after an update and check them")
+	updateDir := flag.String("update-dir", "", "internal: the update directory, with -finish-update")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(buildVersion)
 		return
+	}
+	if *finishUpdate {
+		os.Exit(runFinishUpdate(*updateDir))
 	}
 
 	// Load config

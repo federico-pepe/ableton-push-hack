@@ -5,7 +5,7 @@ BUILD_DIR := build
 # Target: Ableton Push 3 Standalone (Intel x86_64 Linux)
 GOOS      := linux
 GOARCH    := amd64
-VERSION   := $(shell cat ../../VERSION)
+VERSION   := $(or $(PUSH_HACK_VERSION),$(shell cat ../../VERSION))
 LDFLAGS   := -s -w -X main.buildVersion=$(VERSION)
 
 .PHONY: all build build-local embed fmt vet clean

@@ -10,8 +10,10 @@ import (
 
 // API serves the update routes for the web page. It only reports and checks.
 type API struct {
-	C *Checker
-	S *Store
+	C   *Checker
+	S   *Store
+	A   *Applier // nil: no install
+	Dir string   // update dir, for the last result
 }
 
 // Register adds the routes to mux.
@@ -20,6 +22,56 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/update/check", a.handleCheck)
 	mux.HandleFunc("/api/update/dismiss", a.handleDismiss)
 	mux.HandleFunc("/api/update/settings", a.handleSettings)
+	mux.HandleFunc("/api/update/apply", a.handleApply)
+	mux.HandleFunc("/api/update/ack", a.handleAck)
+}
+
+// Install starts the update to version. It must be the newest release the
+// checker knows, and newer than what runs. Nothing else is ever installed.
+func (a *API) Install(version string) error {
+	if a.A == nil {
+		return errors.New("install is not available")
+	}
+	s := a.C.Status()
+	if !s.Available || s.Latest == nil || s.Latest.Version != version {
+		return errors.New("that is not the newest release")
+	}
+	return a.A.Start(*s.Latest)
+}
+
+func (a *API) handleApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Version string `json:"version"`
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body) != nil || body.Version == "" {
+		http.Error(w, `body: {"version":"..."}`, http.StatusBadRequest)
+		return
+	}
+	if err := a.Install(body.Version); err != nil {
+		code := http.StatusConflict
+		if errors.Is(err, ErrBusy) {
+			code = http.StatusTooManyRequests
+		}
+		http.Error(w, err.Error(), code)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, a.snapshot())
+}
+
+// handleAck forgets how the last update ended, after the user has seen it.
+func (a *API) handleAck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.Dir != "" {
+		ClearResult(a.Dir)
+	}
+	writeJSON(w, 200, a.snapshot())
 }
 
 type releaseJSON struct {
@@ -40,6 +92,8 @@ type statusJSON struct {
 	LastError         string       `json:"last_error"`
 	AutoCheck         bool         `json:"auto_check"`
 	IncludePrerelease bool         `json:"include_prerelease"`
+	Apply             *ApplyState  `json:"apply"`  // an update in progress, or how it failed
+	Result            *Result      `json:"result"` // how the last finished update ended
 }
 
 func (a *API) snapshot() statusJSON {
@@ -55,6 +109,16 @@ func (a *API) snapshot() statusJSON {
 	}
 	if !s.LastCheck.IsZero() {
 		out.LastCheck = &s.LastCheck
+	}
+	if a.A != nil {
+		if st := a.A.State(); st.Phase != "" {
+			out.Apply = &st
+		}
+	}
+	if a.Dir != "" {
+		if r, ok := LoadResult(a.Dir); ok {
+			out.Result = &r
+		}
 	}
 	if !s.NextCheck.IsZero() && set.AutoCheck {
 		out.NextCheck = &s.NextCheck

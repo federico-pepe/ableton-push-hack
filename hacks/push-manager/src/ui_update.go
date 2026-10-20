@@ -13,6 +13,7 @@ package main
 import (
 	"image"
 	"image/color"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,15 +27,21 @@ const (
 	updBarH       = 14
 	updPromptWait = 15 * time.Second
 	updNoticeFor  = 4 * time.Second
+	updResultFor  = 10 * time.Second
 )
 
 var (
 	updateChecker *update.Checker // set by startUpdateChecker
 	updatePrompt  = &update.Prompt{Open: CCScreenBot8, OK: CCScreenBot7, Cancel: CCScreenBot8, Timeout: updPromptWait}
 
-	updMu     sync.Mutex
-	updNotice string
-	updUntil  time.Time
+	updMu         sync.Mutex
+	updNotice     string
+	updUntil      time.Time
+	updResult     string    // how the last update ended
+	updResultAt   time.Time // when the bar first showed it
+	updResultKey  time.Time // At of the result shown, to spot a new one
+	updResultRead time.Time // when last_result.json was last read
+	updateDir     string    // the update directory, set at start
 )
 
 var (
@@ -52,13 +59,90 @@ func updatePending() (string, bool) {
 	return updateChecker.Pending()
 }
 
-// updateInstall runs when the user presses OK. Installing is not built yet;
-// say so on the bar instead of doing nothing.
+// updateInstall runs when the user presses OK.
 func updateInstall(version string) {
+	if updateAPI == nil {
+		updateNote("Install is not available")
+		return
+	}
+	if err := updateAPI.Install(version); err != nil {
+		updateNote(err.Error())
+	}
+}
+
+func updateNote(msg string) {
 	updMu.Lock()
-	updNotice = "Install is not available yet"
+	updNotice = msg
 	updUntil = time.Now().Add(updNoticeFor)
 	updMu.Unlock()
+}
+
+// updateResultLine is how the last update ended, as one line for the bar.
+// The helper writes last_result.json after push-manager is back up, so this
+// reads the file again and again: at most every 2 s, only while the Shadow UI
+// draws. A result shows for updResultFor from the first frame that sees it;
+// the web page's OK removes the file.
+func updateResultLine(now time.Time) string {
+	updMu.Lock()
+	defer updMu.Unlock()
+	if updateDir == "" {
+		return ""
+	}
+	if now.Sub(updResultRead) >= 2*time.Second {
+		updResultRead = now
+		r, ok := update.LoadResult(updateDir)
+		switch {
+		case !ok:
+			updResult, updResultKey = "", time.Time{}
+		case !r.At.Equal(updResultKey): // a result not shown yet
+			updResultKey, updResultAt = r.At, now
+			if r.OK {
+				updResult = "Push Hack updated to " + r.Version
+			} else {
+				updResult = "Update to " + r.Version + " failed and was rolled back: " + r.Error
+			}
+		}
+	}
+	if updResult == "" || now.Sub(updResultAt) >= updResultFor {
+		return ""
+	}
+	return asciiLine(updResult, 120)
+}
+
+// asciiLine makes s safe for the screen: ASCII only, cut to n runes.
+func asciiLine(s string, n int) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r < 32 || r > 126 {
+			r = '?'
+		}
+		b.WriteRune(r)
+	}
+	return truncate(b.String(), n)
+}
+
+// updateBarText picks what the bar says: progress, then a short note, then
+// the last result (a few seconds), then the plain offer.
+func updateBarText(version string, now time.Time) string {
+	if updateApplier != nil {
+		switch st := updateApplier.State(); st.Phase {
+		case "":
+		case "failed":
+			return asciiLine("Update failed: "+st.Error, 120)
+		default:
+			return "Updating Push Hack to " + st.Version + ": " + st.Phase + "..."
+		}
+	}
+	updMu.Lock()
+	if now.Before(updUntil) {
+		defer updMu.Unlock()
+		return asciiLine(updNotice, 120)
+	}
+	updMu.Unlock()
+	if msg := updateResultLine(now); msg != "" {
+		return msg
+	}
+	return "Push Hack " + version + " is available"
 }
 
 // updateCC offers a button event to the update bar. It reports whether the
@@ -115,10 +199,16 @@ func centerX(s string) int { return (suiW - textWidth(s)) / 2 }
 // drawUpdate draws the bar, and the prompt over it when open.
 func drawUpdate(img *image.NRGBA) {
 	v, pending := updatePending()
+	now := time.Now()
 	if !pending {
+		// After a good update nothing is pending, but its result still shows.
+		if msg := updateResultLine(now); msg != "" {
+			y := suiContentBot - updBarH
+			fillRect(img, 0, y, suiW, updBarH, updYellow)
+			drawText(img, 8, y+updBarH-3, msg, updDark)
+		}
 		return
 	}
-	now := time.Now()
 	if updatePrompt.Active(now, pending) {
 		const w, h = 600, 76
 		x, y := (suiW-w)/2, suiContentY+(suiContentH-h)/2
@@ -134,11 +224,5 @@ func drawUpdate(img *image.NRGBA) {
 	}
 	y := suiContentBot - updBarH
 	fillRect(img, 0, y, suiW, updBarH, updYellow)
-	msg := "Push Hack " + v + " is available"
-	updMu.Lock()
-	if now.Before(updUntil) {
-		msg = updNotice
-	}
-	updMu.Unlock()
-	drawText(img, 8, y+updBarH-3, msg, updDark)
+	drawText(img, 8, y+updBarH-3, updateBarText(v, now), updDark)
 }

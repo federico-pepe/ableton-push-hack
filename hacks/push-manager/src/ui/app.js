@@ -2154,12 +2154,33 @@ function renderUpdate() {
   document.body.classList.toggle('has-update-bar', show);
   if (show) $('update-bar-msg').textContent = 'Push Hack ' + u.latest.version + ' is available (you have ' + u.installed + ')';
 
+  const busy = !!u.apply && u.apply.phase !== '' && u.apply.phase !== 'failed';
+  $('upd-bar-install').style.display = busy ? 'none' : '';
+  $('upd-install').style.display = (u.available && !busy) ? '' : 'none';
+  $('upd-check').disabled = busy;
+  if (busy) {
+    $('update-bar-msg').textContent = 'Updating Push Hack to ' + u.apply.version + ': ' + u.apply.phase + '...';
+    bar.style.display = '';
+    document.body.classList.add('has-update-bar');
+    watchUpdate(u.installed);
+  }
+  const res = $('upd-result');
+  if (u.result) {
+    res.style.display = '';
+    res.className = 'upd-msg ' + (u.result.ok ? 'ok' : 'err');
+    $('upd-result-txt').textContent = u.result.ok
+      ? 'Updated to ' + u.result.version + '.'
+      : 'Update to ' + u.result.version + ' failed and was rolled back: ' + u.result.error;
+  } else res.style.display = 'none';
+
   $('upd-installed').textContent = u.installed;
   $('upd-latest').textContent = u.latest ? u.latest.version + (u.latest.prerelease ? ' (pre-release)' : '') : 'unknown';
   $('upd-last').textContent = updFmt(u.last_check);
   const msg = $('upd-msg');
   msg.classList.toggle('err', !!u.last_error && !u.available);
-  if (u.last_error) msg.textContent = 'Last check failed: ' + u.last_error + (u.available ? '. Showing the last known release.' : '');
+  if (busy) msg.textContent = 'Updating: ' + u.apply.phase + '...';
+  else if (u.apply && u.apply.phase === 'failed') { msg.textContent = 'Update failed: ' + u.apply.error; msg.classList.add('err'); }
+  else if (u.last_error) msg.textContent = 'Last check failed: ' + u.last_error + (u.available ? '. Showing the last known release.' : '');
   else if (u.available) msg.textContent = 'An update is available.';
   else if (u.latest) msg.textContent = 'You are up to date.';
   else msg.textContent = u.last_check ? 'No release found.' : 'Not checked yet.';
@@ -2199,6 +2220,40 @@ async function updateSettingsChanged() {
     });
     renderUpdate();
   } catch (e) { toast('Could not save: ' + e.message, 'error'); loadUpdate(); }
+}
+
+async function installUpdate() {
+  if (!_upd || !_upd.latest) return;
+  const v = _upd.latest.version;
+  if (!confirm('Install Push Hack ' + v + ' now?\n\nApps that hold the Push screen go back to Live, and the screen goes dark for a moment. Live and audio keep running.')) return;
+  try {
+    _upd = await api('POST', '/api/update/apply', {version: v});
+    renderUpdate();
+  } catch (e) { toast('Update not started: ' + e.message, 'error'); }
+}
+
+// While an update runs, push-manager restarts, so requests fail for a moment.
+// Keep asking until it answers with a new version, a result, or a failure.
+let _updWatch = null;
+function watchUpdate(from) {
+  if (_updWatch) return;
+  const t0 = Date.now();
+  _updWatch = setInterval(async () => {
+    let u = null;
+    try { u = await api('GET', '/api/update/status'); } catch (e) {}
+    if (u) {
+      _upd = u;
+      if (u.installed !== from) { clearInterval(_updWatch); _updWatch = null; toast('Updated to ' + u.installed, 'success'); setTimeout(() => location.reload(), 1200); return; }
+      if (u.result && !u.result.ok) { clearInterval(_updWatch); _updWatch = null; renderUpdate(); return; }
+      if (u.apply && u.apply.phase === 'failed') { clearInterval(_updWatch); _updWatch = null; renderUpdate(); return; }
+      renderUpdate();
+    }
+    if (Date.now() - t0 > 180000) { clearInterval(_updWatch); _updWatch = null; toast('No answer from Push Manager after 3 minutes', 'error'); }
+  }, 1000);
+}
+
+async function ackUpdateResult() {
+  try { _upd = await api('POST', '/api/update/ack'); renderUpdate(); } catch (e) {}
 }
 
 loadUpdate();

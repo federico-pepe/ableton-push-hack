@@ -706,3 +706,6 @@ body.has-update-bar { padding-bottom: 52px; }
 .upd-btn:disabled { opacity: 0.5; cursor: default; }
 .upd-link { color: var(--blue); font-size: 13px; }
 .upd-opt { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 6px; cursor: pointer; }
+.upd-go { background: var(--yellow); color: rgb(22, 22, 24); border-color: var(--yellow); font-weight: 600; }
+#upd-result.ok #upd-result-txt { color: var(--green); }
+#upd-result.err #upd-result-txt { color: var(--red); }

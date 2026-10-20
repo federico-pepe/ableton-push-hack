@@ -16,7 +16,9 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-VERSION="$(tr -d '[:space:]' < VERSION)"
+# PUSH_HACK_VERSION overrides VERSION for a bench build only (never for a release).
+VERSION="${PUSH_HACK_VERSION:-$(tr -d '[:space:]' < VERSION)}"
+export PUSH_HACK_VERSION="$VERSION"
 if [[ -n "${1:-}" && "$1" != "v${VERSION}" ]]; then
     echo "error: tag $1 does not match VERSION $VERSION" >&2
     exit 1
@@ -65,7 +67,7 @@ PY
 rm dist/files.txt
 cp "dist/${NAME}/manifest.json" dist/manifest.json
 
-tar -czf "dist/${NAME}.tar.gz" -C dist "${NAME}"
+COPYFILE_DISABLE=1 tar -czf "dist/${NAME}.tar.gz" -C dist "${NAME}"
 rm -rf "dist/${NAME}"
 
 # The manifest in the tarball cannot hold the tarball's own hash, so the loose
