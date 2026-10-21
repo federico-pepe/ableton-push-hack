@@ -56,7 +56,11 @@ installs without `--build`.
 ```bash
 make test    # go test ./core/...
 make vet     # GOOS=linux GOARCH=amd64 go vet ./core/... — off-device, no ALSA/shm coverage
+make test-manager   # push-manager's off-device packages: semver and update (checker, install, rollback)
 ```
+
+The rest of push-manager builds for Linux only. Check it with
+`cd hacks/push-manager/src && GOOS=linux GOARCH=amd64 go vet ./...`.
 
 ### Deploy
 ```bash
@@ -256,7 +260,8 @@ Framework and API (`docs/`):
 - `docs/api-reference.md` — HTTP routes for push-manager and push-catalog, the RemotePanel contract, the push-display shared-memory protocol
 - `docs/vst3-on-push3.md` — load Linux VST3 plugins in Live on Push 3 (scan flag, preset generator `scripts/VST/make-vst3-preset.py`)
 - `docs/harmony-sync.md` — Push Hack Harmony: how one hack tells others what it plays over MIDI (ports, the SysEx message, timing), and how a follower uses it
-- `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, and `hacks/push-display/deploy.sh`
+- `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, `package-release.sh`, and `hacks/push-display/deploy.sh`
+- `plans/2026-10-20-push-hack-self-update.md` — design, decisions, and device results for the Push Hack self-update
 - `docs/adding-a-hack.md` — full walkthrough for a new hack: folder layout, `hack.json`/`Makefile` examples, port rules, `core/` shared library
 
 Push hardware / OS (`docs/`):

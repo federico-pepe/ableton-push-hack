@@ -9,8 +9,8 @@ own README has full request/response detail for every route below.
 **Routes:**
 
 `/api/list`, `/api/download`, `/api/upload`, `/api/delete`, `/api/rename`,
-`/api/copy`, `/api/unmount`, `/api/stats`, `/api/update/{status,check,dismiss,settings}`
-(see push-manager's README, "Push Hack update"), `/api/assets/<path>`,
+`/api/copy`, `/api/unmount`, `/api/stats`, `/api/update/{status,check,dismiss,settings,apply,ack}`
+(see push-manager's README, "Push Hack update"; `/api/status` also returns `hack_version`), `/api/assets/<path>`,
 `/api/display/{status,mode,image,screenshot,direct}` (`screenshot` is a GET
 `/api/display/{status,mode,image,frame,screenshot}` (`frame` takes one raw
 BGR565 frame, see push-manager's README) (`screenshot` is a GET

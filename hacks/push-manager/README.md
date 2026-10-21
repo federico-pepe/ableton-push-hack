@@ -142,6 +142,15 @@ CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall
 
 ---
 
+## Command line
+
+| Flag | Effect |
+|------|--------|
+| `-config <path>` | Path to `hack.json` (default `hack.json`) |
+| `-port <n>` | Override the port from the config |
+| `-version` | Print the Push Hack release this binary comes from, then exit |
+| `-finish-update`, `-update-dir <dir>` | Internal. The update helper uses them. Do not run them by hand. |
+
 ## Configuration (`hack.json`)
 
 ```json
@@ -369,25 +378,61 @@ Auto-refreshes every 3 seconds. Shows:
 - Network IPs (non-loopback IPv4 from `net.Interfaces()`)
 - Hotspot password (from `PushPreferences.json`) — shown inline next to Network row in monospace
 - Uptime (from `/proc/uptime`)
+- A card **Push Hack update**: installed and latest version, last check, Check now, Update now, the two switches, and how the last update ended. See "Push Hack update" below.
 
 > **Battery not shown:** Push 3's battery state is only accessible via the XMOS firmware's custom MIDI SysEx protocol — `/sys/class/power_supply/` is empty. The UI handles the `battery` field gracefully (hidden when absent).
 
 ### Push Hack update
-Push Manager checks GitHub for a newer Push Hack release, and can install it after you confirm.
 
-- It asks `api.github.com` for the release list of this repo: at most once a day, the first time 1 to 11 minutes after start. It never calls ableton.com. The answer is cached with an ETag, so an unchanged list costs nothing against GitHub's limit.
-- A failed check (no internet, rate limit) is quiet. It retries after 1 h, then 2 h, 4 h and so on, up to 24 h.
-- `-alpha`, `-beta` and `-rc` releases count by default. Order follows semver, so `0.1.9-alpha` is older than `0.1.10-alpha`.
-- When a newer release exists, the web page shows a yellow bar at the bottom ("Dismiss" hides it for that version). The System page has a card with the installed and latest version, "Check now", and two switches: check automatically, and include alpha and beta releases. With the first switch off, push-manager makes no request at all.
-- On the Push, the Shadow UI shows the same news: a yellow bar over the last 14 px of the content area, and UPDATE on the 8th under-screen button (its LED is yellow). UPDATE opens a prompt: button 7 is OK, button 8 is CANCEL. The button that opened the prompt cancels it, so a double tap never installs. Other buttons do nothing while it is open, and it closes by itself after 15 s. The bar shows only while the Shadow UI is up (not under Home or an app), and a Dismiss on the web page hides it here too. OK starts the install. While it runs, the bar shows the step; if it fails, the bar says why.
-- **Install** (the web page: "Update now" and the bar's "Update"; the Push: UPDATE, then OK). Only the newest known release can be installed, never an address from the client. Steps: download `manifest.json` and the tarball from the release (only from `github.com/federico-pepe/ableton-push-hack/releases/download/`); check the tarball's SHA-256, size and every file's SHA-256 against the manifest; refuse anything the manifest does not list; run each new binary with `-version` and require the target version; swap the files that differ (the old ones stay as `<file>.prev`, a hard link, so no moment without a file); start a detached helper.
-- **The helper** is the old push-manager (`push-manager.prev -finish-update`), in its own session. It restarts push-catalog, then push-manager (stop, wait until the process is gone, start), and waits for the new push-manager to answer `/api/status` with the target `hack_version`, and to still answer 5 s later. A service that dies right after it starts fails the update within 2 s. On any failure it puts the `.prev` files back, restarts, and records the failure. Log: `/data/push-hack/logs/update.log`.
-- **What it touches:** only `push-manager`, `push-catalog` and `push_hook.so` under `/data/push-hack/hacks/`. Never `/etc`, never `hack.json`, never a catalog hack. A hack that is not installed is skipped. If `manifest.json` has `needs_reinstall: true` the update is refused and says to run `install.sh`. If the release's `shm_protocol` differs from the display hook now loaded in Push3, it is refused until Push is restarted. A changed `push_hook.so` is put in place but only loads when Push3 restarts; the updater never restarts Push3.
-- **What you see:** the screen goes dark for a few seconds, Live and audio keep running, and any app that holds the Push surface goes back to Live. After a restart the bar and the System card show how it ended ("Push Hack updated to ...", or "failed and was rolled back: ...") until you press OK on the web page.
-- If power is lost mid-update, the next push-manager start settles it (`pending.json`): the result is recorded, and the `.prev` files go back if the new version is not running.
-- Files, in `/data/push-hack/update/`: `settings.json` (the switches), `state.json` (last check, ETag, known releases), `pending.json` (only while an update runs), `last_result.json` (until acknowledged), `staging/` (only while an update runs).
-- Bench test without GitHub: put `"url": "http://127.0.0.1:8099/releases.json"` in `settings.json` and serve a GitHub-style release list there. This key is not available over HTTP.
-- Code: `src/update/` (checker, settings, routes) and `src/semver/`, wired in by `src/update_wire.go`. Plan: `plans/2026-10-20-push-hack-self-update.md`.
+Push Manager can tell you that a newer Push Hack release exists, and can install it after you confirm.
+
+**Check**
+
+- Push Manager asks `api.github.com` for the release list of this repo. It asks at most once a day. The first check comes 1 to 11 minutes after the start. It never calls ableton.com.
+- GitHub sends an ETag with the list. An unchanged list then costs nothing against the limit of GitHub.
+- A failed check (no internet, rate limit) is quiet. The next try comes after 1 hour, then 2, 4, 8 and 16 hours, and then every 24 hours.
+- Alpha, beta and rc releases count by default. The order follows semver: `0.1.9-alpha` is older than `0.1.10-alpha`, and `0.1.15-alpha` is older than `0.1.15`.
+- A `dev` build (a plain `go build`) never offers an update.
+
+**Where you see it**
+
+- The web page shows a yellow bar at the bottom. **Dismiss** hides it for that version. A newer release shows it again.
+- The System page has a card with the installed and latest version, **Check now**, **Update now**, and two switches. One switch turns the automatic check on or off. With the check off, Push Manager makes no request. The other switch includes or excludes alpha and beta releases.
+- The Shadow UI shows a yellow bar over the last 14 px of the content area. The 8th button under the screen shows UPDATE, and its light is yellow. The bar shows only while the Shadow UI is open, not under Home or an app. A Dismiss on the web page hides it here too.
+- UPDATE opens a question. Button 7 is OK. Button 8 is CANCEL. The button that opened the question also cancels it, so a double tap does not install. Other buttons do nothing while the question is open. It closes by itself after 15 seconds.
+
+**Install**
+
+Start the install with **Update now**, the bar's **Update**, or UPDATE then OK on the Push. Only the newest known release can be installed. A client cannot give an address.
+
+1. Push Manager downloads `manifest.json` and the tarball. It accepts only addresses that start with `https://github.com/federico-pepe/ableton-push-hack/releases/download/`.
+2. It compares the size and the SHA-256 of the tarball, and of each file in it, with the manifest. It refuses any file that the manifest does not list.
+3. It runs each new binary with `-version`. The binary must print the target version.
+4. It replaces the files that differ. It keeps each old file as `<file>.prev`, as a hard link, so a file never goes missing.
+5. It starts a detached helper. The helper is the old push-manager (`push-manager.prev -finish-update`), in its own session.
+6. The helper restarts push-catalog and then push-manager. For each one it stops the service, waits until the process is gone, and starts it.
+7. The helper waits for the new push-manager to answer `/api/status` with the target `hack_version`. It must still answer 5 seconds later.
+8. If a service dies right after it starts, the update fails within 2 seconds. On any failure the helper puts the `.prev` files back, restarts the services, and records the failure. The log is `/data/push-hack/logs/update.log`.
+
+**What the update changes**
+
+- Only `push-manager`, `push-catalog` and `push_hook.so`, under `/data/push-hack/hacks/`.
+- It never changes `/etc`, `hack.json`, a hack from the catalog, or Push3. A hack that is not installed is skipped.
+- If `manifest.json` has `needs_reinstall: true`, the update refuses and asks for `install.sh`.
+- If the `shm_protocol` of the release differs from the hook that Push3 has loaded, the update refuses until Push restarts.
+- A new `push_hook.so` loads at the next restart of Push3. The updater never restarts Push3.
+
+**What you see**
+
+- The screen goes dark for a few seconds. Live and the audio keep running. Apps that hold the Push surface go back to Live.
+- The bar and the System card show how the update ended: "Push Hack updated to ..." or "failed and was rolled back: ...". The message stays on the web page until you press OK.
+- If the power fails during an update, the next start of push-manager settles it with `pending.json`. It records the result. It puts the `.prev` files back if the new version does not run.
+
+**Files** in `/data/push-hack/update/`: `settings.json` (the switches), `state.json` (last check, ETag, known releases), `pending.json` (only while an update runs), `last_result.json` (until you press OK), and `staging/` (only while an update runs).
+
+**Bench test without GitHub.** Put `"url": "http://127.0.0.1:8099/releases.json"` in `settings.json`. Serve a GitHub-style release list there, with asset addresses on the same host. HTTP cannot set this key.
+
+**Code:** `src/update/` (checker, settings, routes, install, helper), `src/semver/`, `src/ui_update.go` (Shadow UI), and `src/update_wire.go`. Run the tests with `make test-manager`. Plan: `plans/2026-10-20-push-hack-self-update.md`.
 
 ### Display page
 Accessed via "Display" button in header. Tab-based layout:
