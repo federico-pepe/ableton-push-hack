@@ -1,6 +1,7 @@
 # Push Hack self-update
 
-**Status: plan only. No code written. Seven decisions need the owner (section 9). Four device facts are unverified (section 8).**
+**Status: built and released in `v0.1.15-alpha` (PRs 57 to 59). Confirmed on device 2026-10-20: a failed update that rolls back, and a good update from a local test release and from the real GitHub release. Read sections 9, 12, 13 and 14 for what changed from this plan. Where the text below disagrees with them, the later section wins. Examples: no signing (D2), UPDATE on button 8 (D3), the helper runs from the OLD binary, `hook_changed` comes from the manifest hashes, and the real version numbers (section 14).**
+**Not tested yet: a release that changes `push_hook.so`, and a power loss during an update.**
 
 ## 1. Goal
 

@@ -153,7 +153,9 @@ PR-reviewed once." See `catalog/ARCHITECTURE.md` for the full model and
 /data/push-hack/
 ├── hacks/push-manager/   push-manager binary + hack.json
 ├── hacks/push-display/   push_hook.so, framebuf shm, midiflt shm
-└── logs/                 push-manager.log, push-hook.log
+├── update/               settings.json, state.json, last_result.json (and pending.json,
+│                         staging/ only while an update runs)
+└── logs/                 push-manager.log, push-hook.log, update.log
 ```
 
 ## Push 3 — key facts

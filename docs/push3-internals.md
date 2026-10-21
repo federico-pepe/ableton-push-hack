@@ -828,6 +828,10 @@ pad grid stay dark until something changes in the app. Tested on device:
 - A **pad-mode change** (press Session, then Note, or the reverse) makes it
   repaint the **pad grid**. Pressing the mode button you are already in does
   nothing.
+- push-manager does the same at start. If the intercept was on when push-manager
+  stopped (a restart, or a Push Hack update), the old process cleared the LEDs and
+  never repainted them. At start, `clearStaleSurface` (`release.go`) notes this,
+  and `main.go` sends the repaint once MIDI is up (2026-10-20).
 - You can send these presses yourself. Push3's own MIDI input is the ALSA port
   `Ableton Internal Input` (client "RtMidi Input Client", client 128 on the
   tested device, `W` capability). A CC written to it reaches the app as if the

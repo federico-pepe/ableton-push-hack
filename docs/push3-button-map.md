@@ -16,6 +16,8 @@ Channel in MIDI byte = `0x90` (Note On), `0x80` (Note Off), `0xB0` (CC).
 | Top row, left→right | Screen top 1–8 | CC | 102–109 | Press=127, release=0 |
 | Bottom row, left→right | Screen bottom 1–8 | CC | 20–27 | Press=127, release=0 |
 
+While a Push Hack update waits, the Shadow UI uses bottom 8 (CC 27) as UPDATE. Its light is yellow. When the question is open, bottom 7 (CC 26) is OK and bottom 8 is CANCEL. See push-manager's README, "Push Hack update".
+
 ## Encoders
 
 | Encoder | Touch (Note On/Off) | Rotate (CC) | Press (CC) |

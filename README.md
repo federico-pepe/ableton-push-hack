@@ -70,6 +70,16 @@ To install and uninstall Push Hack on your Push 3 Standalone you have two option
 
 ---
 
+## Update Push Hack
+
+Push Manager checks GitHub once a day for a newer Push Hack release. It includes alpha and beta releases. It makes no other call to the internet for this, and it never calls ableton.com.
+
+When a newer release exists, a yellow bar shows on the Push screen and on the web page. You choose when to install it. The install keeps Live and the audio running. If the new version does not start, Push Manager puts the old version back.
+
+You can switch the automatic check off on the System page of the web app. Read [the manual](MANUAL.md#updating-push-hack) for the steps.
+
+---
+
 ## Adding a new hack
 
 See [docs/adding-a-hack.md](docs/adding-a-hack.md) for the full walkthrough — folder layout, `hack.json`/`Makefile` examples, port rules, and the `core/` shared library.

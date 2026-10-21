@@ -27,6 +27,12 @@ for how to get your own hack into the catalog.
 `id` is validated against `^[a-z0-9][a-z0-9-]{0,63}$` before it ever reaches
 the shell.
 
+## Version and updates
+
+`push-catalog -version` prints the Push Hack release this binary comes from (the `VERSION` file at the repo root).
+
+Push Catalog is one of the three core hacks. A Push Hack update from Push Manager replaces this binary and restarts the service. It does not touch the hacks that Push Catalog installed. See the push-manager README, section "Push Hack update".
+
 ## How an install works
 
 1. Read `settings.registry` (this hack's `hack.json`) → fetch

@@ -41,7 +41,7 @@ R/W. **Layouts must stay in sync between `src/push_hook.c` and `../push-manager/
 ```c
 typedef struct __attribute__((packed)) {
     uint32_t magic;          // 0x50555348 ("PUSH")
-    uint32_t version;        // 1
+    uint32_t version;        // 1 (SHM_VERSION in push_hook.c; the Push Hack updater compares it with the release)
     uint32_t mode;           // 0=passthrough, 1=bar overlay, 2=full takeover
     uint32_t frame_seq;      // incremented by push-manager on each frame write
     uint8_t  pixels[655360]; // raw BGR565 (960×160, stride 1024); hook applies XOR on copy
@@ -93,6 +93,12 @@ hacks/push-display/deploy.sh                        # standalone re-deploy
 `/etc/init.d/push3`. **Requires a Push3 restart** to take effect (hook loads when Push3 next starts).
 
 Log: `/data/push-hack/logs/push-hook.log`.
+
+## Update
+
+A Push Hack update from Push Manager replaces `push_hook.so` on disk when the release has a different file. The running Push3 keeps the old hook until Push3 restarts. The updater never restarts Push3.
+
+Each release lists the `SHM_VERSION` of its hook in `manifest.json` (`shm_protocol`). If that number differs from the hook that Push3 has loaded now, the update refuses. Restart Push first, then update. Change `SHM_VERSION` in `push_hook.c` when you change the shared-memory layout.
 
 ## Risk
 
