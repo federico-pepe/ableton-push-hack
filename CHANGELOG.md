@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- Catalog: **Net MIDI** (`rgeissen/push-hack-netmidi`, release `v0.1.1`, core `core/v0.5.6`). It puts the Push's MIDI on the network as Apple MIDI (RTP-MIDI), for an iPad, iPhone or Mac.
+
 ## [0.1.24-alpha] - 2026-11-12
 
 This release adds a VST3 scanning switch to the System tab and to the Shadow UI. It needs no reinstall. The switch restarts Live, so save your set first.
