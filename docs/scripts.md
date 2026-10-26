@@ -71,3 +71,33 @@ hacks/push-display/deploy.sh --no-build
 | `--remove` | Remove `push-display` instead of deploying it |
 
 See [`hacks/push-display/README.md`](../hacks/push-display/README.md) for the full deploy and risk notes for this hack.
+
+## package-release.sh
+
+This script builds the Push Hack release files into `dist/`. Git does not track `dist/`. The release workflow runs the script. You can also run it on a Mac to see the output.
+
+```bash
+scripts/package-release.sh [v0.1.15-alpha]
+```
+
+The script does these steps:
+
+1. It reads `VERSION`. If you give a tag, the script stops when the tag is not `v` plus `VERSION`.
+2. It runs `make` in `hacks/push-manager` and `hacks/push-catalog`.
+3. It takes `hacks/push-display/push_hook.so` as committed. That file builds through Docker.
+4. It writes `dist/push-hack-<version>.tar.gz`.
+5. It writes `dist/manifest.json`.
+
+The manifest holds these fields:
+
+- `version`.
+- `shm_protocol`, from `SHM_VERSION` in `push_hook.c`.
+- `needs_reinstall`, from `releasemeta.json`.
+- The SHA-256, size and path of each file.
+- The name, size and SHA-256 of the tarball.
+
+The script does not sign anything. On macOS it sets `COPYFILE_DISABLE`, so the tarball has no `._` files.
+
+For a test build with another version, set `PUSH_HACK_VERSION=0.1.99-alpha`. The Makefiles also read this variable. Never use it for a real release.
+
+Set `needs_reinstall` to `true` in `releasemeta.json` when a release changes anything under `/etc`. The update on the device then refuses and asks for `install.sh`.

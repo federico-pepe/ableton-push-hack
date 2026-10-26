@@ -27,17 +27,51 @@ var surface = newSurface(&deviceIO{}, homeEntries, setStarPref)
 // up again and is never left thinking Shift is held. Any other button
 // pressed with Shift spoils it: Shift + something else is that something's
 // own shortcut (Live's, or Home's Shift + STAR).
+//
+// Help alone (no Shift) is the third gesture: helpAlone, on Help's release.
+// Home and apps take it as "back to Live"; in Live it stays Live's Help.
+// Held helpHold, it is Shift + Help instead (Home), at once, and its
+// release is nothing. Shift going down, or another button pressed while
+// Help is held, spoils both.
+//
+// The MIDI reader feeds cc; hold comes from a timer: mu keeps them apart.
 type helpGesture struct {
+	mu             sync.Mutex
 	shift, spoiled bool
 	taps           int
+	alone          bool // Help is down and was pressed without Shift
+	gen            int  // counts those presses, so a timer knows its own
 }
 
-// cc feeds one CC message and returns the taps when the gesture fires, 0
-// when it does not.
+const (
+	helpAlone = -1 // cc: Help pressed and let go without Shift
+	helpDown  = -2 // cc: Help pressed without Shift; time it (hold)
+)
+
+// helpHold is how long Help is held to open Home.
+const helpHold = 500 * time.Millisecond
+
+// hold is the timer of the press counted gen: true, once, if Help is still
+// down from that press and nothing spoiled it. Its release then fires nothing.
+func (g *helpGesture) hold(gen int) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.alone || g.gen != gen {
+		return false
+	}
+	g.alone = false
+	return true
+}
+
+// cc feeds one CC message and returns the taps when the gesture fires,
+// helpAlone for Help alone, helpDown when Help goes down alone, 0 when
+// nothing fires.
 func (g *helpGesture) cc(cc, val uint8) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	switch {
 	case cc == CCShift && val > 0:
-		g.shift, g.taps, g.spoiled = true, 0, false
+		g.shift, g.taps, g.spoiled, g.alone = true, 0, false, false
 	case cc == CCShift:
 		fire := 0
 		if g.shift && g.taps > 0 && !g.spoiled {
@@ -45,6 +79,19 @@ func (g *helpGesture) cc(cc, val uint8) int {
 		}
 		g.shift, g.taps = false, 0
 		return fire
+	case !g.shift && cc == CCHelp && val > 0:
+		g.alone = true
+		g.gen++
+		return helpDown
+	case !g.shift && cc == CCHelp:
+		fire := 0
+		if g.alone {
+			fire = helpAlone
+		}
+		g.alone = false
+		return fire
+	case !g.shift && val > 0 && isTogglableCC(cc): // Help + something: not ours
+		g.alone = false
 	case !g.shift || val == 0:
 	case cc == CCHelp:
 		g.taps++
@@ -71,9 +118,27 @@ func surfaceInputCC(cc, val uint8) bool {
 		down := val > 0
 		queueSurface(func() { surface.SetShift(down) })
 	}
-	if taps := gesture.cc(cc, val); taps > 0 {
+	switch taps := gesture.cc(cc, val); {
+	case taps > 0:
 		queueSurface(func() { surface.Gesture(taps) })
 		return true
+	case taps == helpAlone:
+		if o, _ := surface.Owner(); o == ownHome || o == ownApp {
+			queueSurface(surface.HelpAlone)
+			return true
+		}
+	case taps == helpDown:
+		// Intercept off: Live has the buttons and saw this press too.
+		data := ensureMidiFilt()
+		liveSaw := data != nil && data[4] == 0
+		gesture.mu.Lock()
+		gen := gesture.gen
+		gesture.mu.Unlock()
+		time.AfterFunc(helpHold, func() {
+			if gesture.hold(gen) {
+				queueSurface(func() { surface.LongHelp(liveSaw) })
+			}
+		})
 	}
 	if o, _ := surface.Owner(); o == ownHome {
 		queueSurface(func() { surface.HomeCC(cc, val) })
@@ -192,11 +257,80 @@ func (d *deviceIO) take(pass []int) {
 
 func (d *deviceIO) setPass(pass []int) { d.intercept(true, pass) }
 
-func (d *deviceIO) screenOnly() { d.intercept(false, nil) }
+// screenOnly gives the pads and buttons to Live, the screen stays the
+// app's. Every LED goes dark first, as release does: Push3's repaint (a
+// Shift and a pad-mode toggle, led_restore.go) sends only what changed in
+// its own view, so a pad dark in both Session and Note kept the app's
+// colour. Seen on device in Stacks' listening mode with a chromatic pad
+// layout: "multi-colored pads". The clear marks them cleared, so the
+// repaint runs when the intercept goes off.
+func (d *deviceIO) screenOnly() {
+	d.forget()
+	clearAllLEDs(0)
+	d.intercept(false, nil)
+}
 
+// release gives the surface back to Live. Every LED goes dark first, as
+// the Shadow UI's exit does: Push3 repaints only the LEDs it holds on (a
+// Shift and a pad-mode toggle, led_restore.go), so whatever Home or an app
+// lit that Live holds off stayed lit -- top and bottom buttons, arrows,
+// pads (reported: "when exiting the Home, most of the time all the LEDs
+// are still lit"). The clear also marks them cleared, so the repaint runs.
+//
+// From screen-only the intercept is off already, so watchInterceptOff sees
+// no change and would not repaint: Live's LEDs stayed dark. Repaint here
+// then, the same way and after the same delay.
 func (d *deviceIO) release() {
 	d.forget()
+	data := ensureMidiFilt()
+	wasOn := data != nil && data[4] != 0
+	clearAllLEDs(0)
 	releaseSurface() // release.go; watchInterceptOff repaints Live's LEDs
+	if !wasOn {
+		go func() {
+			time.Sleep(ledRestoreDelay)
+			restorePushLEDs()
+		}()
+	}
+}
+
+// closeLiveHelp taps Help into Live's own input, after Live has read the
+// user's release. Runs before release and take, while Live still has the
+// buttons, so its tap gets through and never meets the repaint's Shift
+// (Shift + Help is another thing in Live). held: the user still holds Help
+// (a long press), so Live is told it is up first, or the tap is a second
+// press of a button Live thinks is down.
+func (d *deviceIO) closeLiveHelp(held bool) {
+	p, ok := alsaseq.FindByName(appInputPortName, alsaseq.CapWrite)
+	if !ok {
+		log.Printf("surface: %q not found, Live's help stays open", appInputPortName)
+		return
+	}
+	liveTaps.Lock()
+	defer liveTaps.Unlock()
+	if held {
+		midiOutMu.Lock()
+		c := midiOut
+		midiOutMu.Unlock()
+		if c != nil {
+			c.SendCC(p.Addr, 0, CCHelp, 0) //nolint:errcheck
+		}
+	}
+	time.Sleep(liveSettle)
+	tapAppButton(p.Addr, CCHelp)
+	log.Printf("surface: closed Live's help (Live had the buttons and saw Help too)")
+}
+
+// homeCover draws Home's frame and takes the screen, nothing else: the
+// buttons and LEDs come with take and homeShow. takeDisplay then sees the
+// screen taken already and does not clear it to black.
+func (d *deviceIO) homeCover(v homeView) {
+	if err := shmWritePixels(imageToBGR565(renderHome(v))); err != nil {
+		log.Printf("surface: draw Home: %v", err)
+	}
+	if err := shmSetMode(ModeTakeover); err != nil {
+		log.Printf("surface: take the screen: %v", err)
+	}
 }
 
 func (d *deviceIO) homeShow(v homeView) {
@@ -240,6 +374,17 @@ func (d *deviceIO) openTool(id string) {
 func (d *deviceIO) closeTool() {
 	if shadowUIIsActive() {
 		shadowUIStop()
+	}
+}
+
+// releaseHeld: the Shadow UI stops; then, if the intercept is on or the
+// screen is not Push3's, all goes back to Live as in release. With nothing
+// held a power press in Live changes nothing, LEDs included.
+func (d *deviceIO) releaseHeld() {
+	d.closeTool()
+	data := ensureMidiFilt()
+	if (data != nil && data[4] != 0) || shmGetMode() != ModePassthrough {
+		d.release()
 	}
 }
 

@@ -57,11 +57,13 @@ range 7701-7710 is reserved for the framework: 7701 is push-manager, and
 
 ## A hack that uses Push's screen, buttons and pads
 
-If your hack takes over Push's whole surface (as Stacks and Riffs do), make
+If your hack takes over Push's whole surface (as Stacks does), make
 it an app of Push Hack Home, push-manager's switcher. Users open Home with
-Shift + Help and pick your hack there. Do not give your hack a button
-combination of its own: every hack sees every press, so two combinations
-can collide.
+Shift + Help (or by holding Help) and pick your hack there, and press
+Help to go back to Live.
+Do not give your hack a button combination of its own: every hack sees
+every press, so two combinations can collide. Do not use Help in your
+hack either: push-manager takes it while your hack owns the surface.
 
 1. Add a `surface` hook to `hack.json`:
 
@@ -72,7 +74,7 @@ can collide.
    `label` is ASCII, at most 7 letters. `color` is a Push palette name.
 2. Set `pmclient.Client.App` to your hack's id, and call `RunSurface`. Draw
    and react to presses only between `OnFocus` and `OnBlur`. Send frames
-   with `PushFrame`.
+   with `Push` (it uses `PushFrame` and falls back to `PushImage` on an older push-manager).
 3. Send your card's two status lines with `SurfaceStatus` when they change.
 4. If your hack has its own "back to Live" button, call
    `SurfaceLeave("live")`.

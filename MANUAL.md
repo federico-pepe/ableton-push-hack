@@ -64,6 +64,60 @@ If you want to remove ALL the data, add the --purge flag
 
 `./scripts/unistall.sh --purge`
 
+## Updating Push Hack
+
+Push Hack can update itself. This is different from an update of Push's own software (see the next section).
+
+### How you know that an update exists
+
+Push Manager asks GitHub once a day if a newer release exists. A yellow bar then shows:
+
+- On the web page, at the bottom of every tab.
+- On the Push screen, at the bottom of the Shadow UI. The bar shows only while the Shadow UI is open.
+
+The right-most button under the screen shows UPDATE. Its light is yellow.
+
+### Install the update from the Push
+
+1. Open the Shadow UI.
+2. Press UPDATE (the right-most button under the screen).
+3. Press OK (the second button from the right) to install. Press CANCEL (the right-most button) to stop.
+
+The right-most button opens the question and also cancels it. A double tap on that button does not install anything. The question closes by itself after 15 seconds.
+
+### Install the update from the web page
+
+1. Open the System tab.
+2. Press **Update now**, or press **Update** in the yellow bar.
+3. Confirm in the dialog.
+
+### What happens during the update
+
+- The screen goes dark for a few seconds. Live and the audio keep running.
+- Apps that use the Push screen (for example Stacks) go back to Live.
+- The web page reloads by itself when the new version runs.
+- A message shows the result: "Push Hack updated to ..." or "failed and was rolled back".
+
+If the new version does not start, Push Manager puts the old version back. The update takes about 20 seconds.
+
+### Turn the check off, or hide the bar
+
+Open the System tab. In the card **Push Hack update**:
+
+- Clear **Check for updates automatically** to stop all calls to GitHub.
+- Clear **Include alpha and beta releases** to see stable releases only.
+- Press **Dismiss** in the yellow bar to hide it for that version. A newer release shows it again.
+
+### When the update is not possible
+
+- **The release changes system files.** The update refuses and tells you to run `install.sh` (or the Push Hack Installer) from a computer.
+- **The release has a new display hook.** The update refuses until you restart Push. Push Manager never restarts Push itself, because that ends your Live session.
+- **The display hook file changes.** Push Manager puts the new file in place. Push loads it at the next restart.
+
+The update changes only Push Manager, Push Catalog and the display hook. It does not change hacks that you installed from the Push Hack Catalog.
+
+Push Hack versions that were installed before this feature do not update themselves. Install once with `install.sh` or the Push Hack Installer.
+
 ## Updating Push's Software with the hack installed
 
 Whenever a software update for Push is released, we **highly recommend** uninstalling the hack by following the instructions above before proceeding with the update, then reinstalling it afterwards.

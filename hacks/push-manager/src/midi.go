@@ -621,6 +621,9 @@ func (midiSeqHandler) VarLen(evType uint8, src alsaseq.Addr, payload []byte) {
 	if evType != alsaseq.EvSysEx {
 		return
 	}
+	if isPowerPress(payload) { // release.go
+		go surface.PowerPress()
+	}
 	// Route Ableton palette responses to query waiter before emitting.
 	if isPaletteResponse(payload) {
 		select {
@@ -1503,7 +1506,8 @@ var allButtonCCs = []uint8{
 }
 
 // clearAllLEDs sends CC value=0 to every known button LED except exceptCC,
-// and Note velocity=0 to all 64 pad notes (36–99).
+// and Note velocity=0 to all 64 pad notes (36–99). exceptCC 0: no anchor,
+// every LED dark.
 // Also resets ledToggleState, preserving exceptCC if it was active.
 // Intended to be called in a goroutine.
 func clearAllLEDs(exceptCC uint8) {
@@ -1524,12 +1528,17 @@ func clearAllLEDs(exceptCC uint8) {
 		}
 	}
 	// Explicitly light up the anchor button
-	if err := sendSeqCC(0, exceptCC, 127); err != nil {
-		log.Printf("clearAllLEDs anchor cc=%d: %v", exceptCC, err)
+	if exceptCC != 0 {
+		if err := sendSeqCC(0, exceptCC, 127); err != nil {
+			log.Printf("clearAllLEDs anchor cc=%d: %v", exceptCC, err)
+		}
 	}
 	// Sync toggle state map
 	ledToggleMu.Lock()
-	ledToggleState = map[uint8]uint8{exceptCC: 127}
+	ledToggleState = map[uint8]uint8{}
+	if exceptCC != 0 {
+		ledToggleState[exceptCC] = 127
+	}
 	ledToggleMu.Unlock()
 }
 
@@ -1783,10 +1792,6 @@ func handleMidiFilter(w http.ResponseWriter, r *http.Request) {
 	data := ensureMidiFilt()
 	if data == nil {
 		http.Error(w, "midi_filt shm not available — is push-display deployed?", http.StatusServiceUnavailable)
-		return
-	}
-	if body.Enabled && shuttingDown.Load() { // release.go: Push3 needs the buttons now
-		http.Error(w, "Push is shutting down", http.StatusServiceUnavailable)
 		return
 	}
 	if ok, why := surface.LegacyAllowed(r.Header.Get(appHeader)); !ok { // surface.go

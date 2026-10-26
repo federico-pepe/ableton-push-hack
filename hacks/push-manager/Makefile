@@ -9,7 +9,8 @@ GOARCH    := amd64
 # Build flags: strip debug info to minimise size. Static comes from
 # CGO_ENABLED=0 below: with gcc around (golang Docker image) Go links
 # dynamically, and Push has no /lib64/ld-linux loader -- "No such file".
-LDFLAGS   := -s -w
+VERSION   := $(or $(PUSH_HACK_VERSION),$(shell cat ../../VERSION))
+LDFLAGS   := -s -w -X main.buildVersion=$(VERSION)
 
 .PHONY: all build clean fmt vet
 

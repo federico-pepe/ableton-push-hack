@@ -8,6 +8,7 @@ package pmclient
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
@@ -18,6 +19,10 @@ import (
 
 	"github.com/federico-pepe/ableton-push-hack/core/display"
 )
+
+// ErrNoFrameRoute is PushFrame's error when push-manager has no
+// /api/display/frame (a release before raw frames). Push falls back on it.
+var ErrNoFrameRoute = errors.New("push-manager has no /api/display/frame (update Push Hack)")
 
 // Client talks to a push-manager instance over HTTP.
 type Client struct {
@@ -30,7 +35,8 @@ type Client struct {
 	// push-manager lets it through only while this app owns the surface.
 	App string
 
-	frame []byte // PushFrame's reusable buffer
+	frame   []byte // PushFrame's reusable buffer
+	noFrame bool   // push-manager has no raw-frame route: Push uses PushImage
 }
 
 // AppHeader is the header that names the app a call comes from.
@@ -323,10 +329,30 @@ func (c *Client) PushFrame(img *image.NRGBA) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNoFrameRoute
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("display/frame: unexpected status %s", resp.Status)
 	}
 	return nil
+}
+
+// Push sends one frame the quickest way push-manager allows: PushFrame for a
+// 960x160 NRGBA, PushImage for anything else, and PushImage for good once
+// push-manager answers that it has no raw-frame route. A hack that redraws
+// calls this and needs no version check. Set display mode 2 first. Not safe
+// for concurrent use (PushFrame's buffer).
+func (c *Client) Push(img image.Image) error {
+	n, ok := img.(*image.NRGBA)
+	if ok && !c.noFrame && n.Rect == image.Rect(0, 0, display.VisW, display.VisH) {
+		err := c.PushFrame(n)
+		if !errors.Is(err, ErrNoFrameRoute) {
+			return err
+		}
+		c.noFrame = true
+	}
+	return c.PushImage(img)
 }
 
 // Tempo returns the current Live song BPM via GET /api/live/tempo.

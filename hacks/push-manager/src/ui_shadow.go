@@ -195,6 +195,7 @@ type ShadowUI struct {
 	panels   []Panel   // one per tab, same index
 	panelIdx int
 	stopCh   chan struct{}
+	updShown bool // render loop only: the update bar was up last frame
 }
 
 var shadowUI = &ShadowUI{}
@@ -263,8 +264,23 @@ func shadowUnregisterLEDs() {
 // MIDI.
 func updateBotLEDs(panel Panel) {
 	colors := panel.BotLEDColors()
+	updateOverrideLEDs(&colors) // the update bar's button (ui_update.go)
 	for i := 0; i < 8; i++ {
 		sendSeqCC(0, CCScreenBotN(i), int32(colors[i])) //nolint:errcheck
+	}
+}
+
+// shadowUIRefreshBotLEDs relights the under-screen buttons for the current
+// panel, with the update bar's changes on top.
+func shadowUIRefreshBotLEDs() {
+	shadowUI.mu.Lock()
+	var panel Panel
+	if shadowUI.active && shadowUI.panelIdx < len(shadowUI.panels) {
+		panel = shadowUI.panels[shadowUI.panelIdx]
+	}
+	shadowUI.mu.Unlock()
+	if panel != nil {
+		updateBotLEDs(panel)
 	}
 }
 
@@ -281,15 +297,20 @@ func (s *ShadowUI) buildTabs() {
 			prev[key(t)] = s.panels[i]
 		}
 	}
-	s.tabs = activeShadowTabs()
-	s.panels = make([]Panel, len(s.tabs))
-	for i, t := range s.tabs {
+	tabs := activeShadowTabs()
+	// Build the whole list, then swap it in. renderFrame copies s.panels
+	// under the lock, but a half-filled s.panels (nil entries) must never be
+	// visible: a nil Panel's Label() panics, and that crashed push-manager
+	// with the intercept on and the screen taken (catalog install, 2026-10-19).
+	panels := make([]Panel, len(tabs))
+	for i, t := range tabs {
 		if p, ok := prev[key(t)]; ok {
-			s.panels[i] = p
+			panels[i] = p
 		} else {
-			s.panels[i] = t.newPanel()
+			panels[i] = t.newPanel()
 		}
 	}
+	s.tabs, s.panels = tabs, panels
 	if s.panelIdx >= len(s.panels) {
 		s.panelIdx = 0
 	}
@@ -412,6 +433,9 @@ func shadowUIIsActive() bool {
 // shadowUIHandleCC routes a CC event into the active shadow UI.
 // Called from the MIDI reader goroutine.
 func shadowUIHandleCC(cc, val uint8) {
+	if shadowUIIsActive() && updateCC(cc, val) { // update bar and prompt (ui_update.go)
+		return
+	}
 	shadowUI.mu.Lock()
 	if !shadowUI.active {
 		shadowUI.mu.Unlock()
@@ -483,18 +507,27 @@ func (s *ShadowUI) renderFrame() {
 	}
 	panel := s.panels[s.panelIdx]
 	panelIdx := s.panelIdx
+	// A copy: the tab strip below is drawn after the lock is released, and
+	// buildTabs may replace s.panels meanwhile.
+	panels := append([]Panel(nil), s.panels...)
 	s.mu.Unlock()
 
 	img := image.NewNRGBA(image.Rect(0, 0, suiW, suiH))
 	fillRect(img, 0, 0, suiW, suiH, suiBlack)
 
 	// Strips
-	drawPanelTabs(img, shadowUI.panels, panelIdx)
+	drawPanelTabs(img, panels, panelIdx)
 	buttons, hint := panel.SoftBotStrip()
+	buttons, hint = updateStrip(buttons, hint)
 	widgets.DrawBotStrip(img, widgets.Default, suiContentBot, suiW, suiColW, suiBotH, buttons, hint)
 
 	// Panel content (clipped to content area)
 	panel.Render(img)
+	drawUpdate(img)
+	if shown := updateBarShown(); shown != s.updShown {
+		s.updShown = shown
+		go updateBotLEDs(panel) // the 8th button's LED follows the bar
+	}
 
 	pixels := imageToBGR565(img)
 	if err := shmWritePixels(pixels); err != nil {

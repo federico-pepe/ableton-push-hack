@@ -7,9 +7,45 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.15-alpha] - 2026-10-20
+
 ### Added
 
+- Push Hack can update itself. Push Manager checks GitHub once a day for a newer release, alpha and beta included, and never calls ableton.com. When one exists, a yellow bar shows on the web page and on the Shadow UI. On the Push, the 8th button under the screen is UPDATE, then OK or CANCEL. On the web, the System page has **Update now**, the two switches (automatic check, alpha and beta) and the last result. The install checks every file against the manifest, replaces push-manager, push-catalog and the display hook, and restarts the services. If the new push-manager does not answer with the new version, the old files come back. It does not change `/etc`, `hack.json`, hacks from the catalog, or Push3. See `hacks/push-manager/README.md`, "Push Hack update".
+- Push Manager and Push Catalog know which Push Hack release they are from. The `VERSION` file at the repo root is the source, and the Makefiles stamp it into the binary. `push-manager -version` and `push-catalog -version` print it, and `GET /api/status` returns it as `hack_version`.
+- A `v*` tag builds and publishes a Push Hack release on GitHub: a tarball with push-manager, push-catalog and `push_hook.so`, and a `manifest.json` with the SHA-256 of each file. Nothing is signed. `scripts/package-release.sh` makes the files, and `releasemeta.json` sets `needs_reinstall` for a release that changes `/etc`.
+- `make test-manager` runs the tests of the off-device packages of push-manager.
+- Help on its own goes back to Live from Push Hack Home or from any app. It acts when you let go of Help. This works in Stacks' listening mode too: Live sees that press as well and opens its help screen, so push-manager closes it with one more Help tap. In Live, Help is still Live's own Help. Apps must not use Help themselves.
+- Holding Help for half a second opens Push Hack Home, as Shift + Help does, from Live, a tool or an app. It acts while you still hold Help. In Live you may see Live's help screen for that half second; push-manager closes it before Home opens.
+
+### Fixed
+
+- Push Hack Home or an app hid Push3's "shut down?" question after a press of the power button. The press shows as a SysEx on the Push's Live Port, and push-manager now gives the surface to Live when it sees it. After Cancel, Shift + Help opens Home again.
+
+- Leaving an app for Live from its listening mode (the app has only the screen) left all of Live's LEDs dark until the next press. push-manager now repaints them on that path too.
+- After push-manager restarted while Push Hack Home, an app or the Shadow UI held the buttons, the LEDs stayed as that screen left them. push-manager now repaints Live's LEDs once MIDI is up at start. Seen on device 2026-10-20.
+- Opening Push Hack Home from Live showed Live's screen for a moment, then a black frame, before Home. Home's frame now goes up first.
+- When an app gave the pads and buttons to Live but kept the screen (Stacks' listening mode), the app's pad colours stayed on pads that Live keeps dark, for example the out-of-key pads of a chromatic layout. push-manager now switches every LED off first, as it does when it gives the surface back to Live, and Live then repaints its own.
+
+## [0.1.14-alpha] - 2026-10-19
+
+### Added
+
+- `core/pmclient`: `Client.Push` sends a frame the fastest way push-manager allows. It uses `PushFrame` for a 960x160 NRGBA image and `PushImage` for any other image. If push-manager answers 404 on `/api/display/frame` (an older release), it uses `PushImage` from then on. `PushFrame` now returns `ErrNoFrameRoute` in that case. A hack that redraws often calls `Push` and needs no version check.
 - **Push Hack Harmony**, `core/harmony`: one app tells others what it plays (the key, the scale, the chord of the moment) over MIDI, so another app can follow it. A sender opens a port named `<App> Harmony`; a follower connects to every such port by itself. A chord change can be sent before it happens, counted in MIDI clock pulses, so the follower switches on the same clock. The package also names chords from plain notes and guesses the key. The format is open: [docs/harmony-sync.md](docs/harmony-sync.md). Stacks sends it. Needs a `core/v*` tag before consumers get it.
+
+### Changed
+
+- Push Hack Home lights only the top pad row: one pad per entry, in its colour (white for the chosen one). Only those pads open an entry; the other pads stay dark. Before, every pad was lit, which read as something to play.
+
+### Fixed
+
+- push-manager no longer crashes when you install or remove a hack from the CATALOG tab while the Shadow UI is open. The Shadow UI drew the tab strip from a list that the catalog reload was still filling, found an empty entry and panicked. The crash left the MIDI intercept on and the screen taken, so Push froze until push-manager was restarted. The tab list is now built in full before it replaces the old one, and the drawing code works on a copy.
+- Leaving Push Hack Home (or an app) for Live often left LEDs lit: the buttons and pads Home had lit, that Live holds off. push-manager now switches every LED off before it gives the surface back, as the Shadow UI does, and then Push3 repaints its own.
+
+### Removed
+
+- Catalog: Riffs, for now. Its repository is private, so the entry could not be installed.
 
 ## [0.1.13-alpha] - 2026-10-19
 
@@ -48,7 +84,7 @@ between minor versions).
 - An install from push-manager's CATALOG tab no longer fails after 3 minutes. Large hacks (Mixxx Mode is about 170 MB) take longer over Wi-Fi. The limit is now 30 minutes.
 - push-manager no longer interferes with another app that owns the screen in direct mode. While direct mode is on, the Shift+Set and Shift+Settings chords do nothing, and the Shadow UI does not open. Before, a chord in Mixxx mode cleared every LED, drew an OSD over Mixxx and opened the Shadow UI. Turning direct mode on also closes an open Shadow UI and turns MIDI intercept off, so Push3 gets its MIDI again after you switch back. This lets a hack's Shadow UI tab start an app that takes over the screen.
 - Two hacks could react to one button combination: Riffs opened with Shift + Set, which is also push-manager's `browser_open` chord, so one press started the Shadow UI and Riffs at once, both drawing on the screen (device log, 2026-10-17). Push Hack Home (below) gives every app one way in, and push-manager's chords no longer fire while an app owns the surface.
-- A hack that owned the surface could leave Push unusable. With its screen showing and the MIDI intercept on, Live's questions on the power button ("save changes?") could be neither seen nor answered, so only holding the power button turned Push off. The intercept flag then survived into the next start, and Live's "recover your work?" could not be answered either. push-manager now clears the intercept and the display at its start, gives both back to Push3 as soon as the power button is pressed (it watches `/data/settings/.shutdown`, which `power.sh` writes), and refuses a hack's takeover until the device is off. Only a marker that appears or changes counts as a press. At start the launcher deletes the last shutdown's marker, and that deletion is not a press: if it were, every app would be refused until push-manager restarted.
+- A hack's MIDI intercept or screen takeover could survive a power loss. `midiflt` is a file, and the hook read it as soon as Push3 started, so Live's "recover your work?" could not be answered. push-manager now clears both at its start. An earlier change also watched the power button; it did not work on device and is removed.
 - MIDI intercept could do nothing at all. push-manager runs as root, and when it created `midiflt` before Push3 did, the file was `root`, mode 0644, and the hook (running as `ableton`) could not open it. push-manager now keeps the file at mode 0666, owned like its folder, and the hook retries the open every 2 seconds.
 - `push-manager`: the comment on `/api/display/image` said it sets takeover mode; it does not.
 - `core/alsaseq`: `EvStop` and `EvContinue` were swapped. The kernel uses 31 for Continue and 32 for Stop, so a hack that follows Live's MIDI clock read Stop as Continue. Checked against the kernel header and on a Push 3, where Live's Stop arrives as type 32. A new test keeps all event type numbers equal to the kernel's. Needs a `core/v*` tag before consumers get it.

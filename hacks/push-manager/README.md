@@ -23,6 +23,12 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/rename` | Rename/move. JSON body: `{"old": "/abs/path", "new": "/abs/path"}` |
 | `POST` | `/api/copy` | Copy file or directory tree. JSON body: `{"src": "/abs/path", "dst": "/abs/path"}`. Both paths must be within allowed roots. Destination must not already exist. Chowns result to match destination directory owner. |
 | `POST` | `/api/unmount?path=<path>` | Unmount a removable drive. Path must be directly under `/run/media/`. Calls `syscall.Unmount` then removes the udev lock file (`/tmp/.automount-<name>`) so the drive can be re-mounted on next plug. |
+| `GET` | `/api/update/status` | Push Hack update state: `installed`, `latest`, `available`, `visible` (show the bar), `dismissed`, `last_check`, `next_check`, `last_error`, `auto_check`, `include_prerelease`, `apply` (an update in progress or its failure), `result` (how the last update ended). Makes no request. |
+| `POST` | `/api/update/check` | Check GitHub now. Returns the new status. `429` if the last try was under a minute ago. A failed request is `200` with `last_error` set. |
+| `POST` | `/api/update/apply` | Body `{"version":"0.1.11-alpha"}`. Must be the newest known release. `202` and the status; `409` if not allowed (reason in the body); `429` if an update already runs. Progress is `apply.phase` in the status. |
+| `POST` | `/api/update/ack` | Forget how the last update ended. |
+| `POST` | `/api/update/dismiss` | Body `{"version":"0.1.11-alpha"}`. Hides the bar for that version. |
+| `GET`/`POST` | `/api/update/settings` | `{"auto_check":bool,"include_prerelease":bool}`; POST takes either or both. |
 | `GET` | `/api/stats` | System stats: CPU %, memory, disk, IP addresses, battery, uptime, hotspot password |
 | `GET` | `/api/display/status` | Display hook status: `{connected, direct, mode, frame_seq, width, height}`. `connected` is also true while `direct` is on. |
 | `POST` | `/api/display/direct` | JSON body `{"enabled": true\|false}`. `true` claims the screen over USB, so push-manager drives it without Push3. Every frame push-manager writes then goes to the screen, whatever `mode` is. Only works while Push3 is stopped (409 otherwise). Set `false` before you start Push3 again: the call returns after the screen is released. |
@@ -34,7 +40,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/display/frame` | Send one raw frame, `application/octet-stream`: exactly 327680 bytes of BGR565 little-endian at the framebuffer's 1024-pixel stride (`core/display.EncodeFrame`, `pmclient.PushFrame`). No decoding: about 1 ms a frame on device, against about 11 ms for a PNG through `/image`. Does not change the mode. The same 409 rule as `/image`: only the owner's frames reach the screen. |
 | `GET` | `/api/display/screenshot` | PNG of the current framebuf (960×160). Reads shm back (`shmReadFrame`) and encodes via `bgr565ToImage`+`png.Encode`. Only reflects **push-manager-owned** frames (Shadow UI, OSD, image upload) — the native Ableton UI is never copied into shm in passthrough, so it can't be captured. `X-Display-Mode` response header (`0`/`1`/`2`) lets the client warn when not in takeover (frame is stale). `Content-Disposition: attachment; filename="push-screenshot.png"`. Returns 503 if the hook isn't connected. |
 | `GET` | `/api/assets/<path>` | Proxy Push's own PNG assets from `/opt/push3/products/push3/assets/Images/`. Cached 24h. |
-| `GET` | `/api/status` | Health check + config summary |
+| `GET` | `/api/status` | Health check + config summary. `hack_version` is the Push Hack release this binary was built from (`version` is the `hack.json` field). |
 | `GET` | `/api/midi/events?n=<N>` | Return last N MIDI events from ring buffer (default 50). JSON: `{connected, total, write_idx, events[]}` |
 | `GET` | `/api/midi/stream` | SSE stream of live MIDI events. Sends `event: connected` on open, then `data: {json}` per event. |
 | `POST` | `/api/midi/filter` | Set MIDI intercept (409 while Push Hack Home or an app owns the surface, unless from the owning app). JSON body: `{"enabled": true\|false, "pass_cc": [85, 86]}`. `pass_cc` (CC 0-87) lists buttons that still reach Live while intercept is on; it is replaced on every enable and cleared on disable. Enabling through this API also means a hack paints the LEDs, so push-manager repaints Live's LEDs when the filter goes off. Writes to `midiflt` shm file read by push_hook.so. When enabled, the `snd_seq_event_input` hook inside Push3's process neutralizes Note On/Off, CC, Poly Pressure, Program Change, Channel Pressure, and Pitch Bend events (types 6–13) before RtMidi reads them — Live sees no input. SysEx and Active Sensing always pass through. When intercept goes off after the LEDs were cleared (Shadow UI, chord), push-manager repaints Push's button and pad LEDs by sending Shift and a pad-mode change to Push3's own MIDI input (see `docs/push3-internals.md`, "LED state after intercept OFF"). |
@@ -64,9 +70,9 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `GET` | `/api/surface` | Push Hack Home: who owns the surface (`owner`: `outside`, `home` or `app`), the app that owns it, the last app, and Home's `entries` in order (`ID`, `Label`, `App`, `Color`, `Star`, `Super`, `Running`, `Status`...). A 404 here means a push-manager without Home. See [Push Hack Home](#push-hack-home-the-switcher). |
 | `GET` | `/api/surface/session?app=<id>&pass_cc=<cc,...>` | An app's session: server-sent events kept open while the app runs. Events: `ready`, `focus` (`{"input": true}`: the app owns the surface), `blur` (it does not), and a `: ping` comment every second. `pass_cc` are the buttons that still reach Live while the app owns the surface. 404 for an id that is not an installed, enabled hack with `surface` in its `hack.json`. A new session for the same app replaces the old one. |
 | `POST` | `/api/surface/status` | `{"app", "lines": ["...", "..."]}`: the two lines on the app's card in Home (ASCII, about 14 characters show). 409 without a session. |
-| `POST` | `/api/surface/input` | `{"app", "input": false}`: the owning app keeps the screen and gives the pads and buttons to Live (Stacks' listen mode); `true` takes them back. 409 if the app does not own the surface. |
+| `POST` | `/api/surface/input` | `{"app", "input": false}`: the owning app keeps the screen and gives the pads and buttons to Live (Stacks' listen mode); `true` takes them back. Giving them to Live switches every LED off first, and Live repaints its own. 409 if the app does not own the surface. |
 | `POST` | `/api/surface/leave` | `{"app", "to": "live"\|"home"}`: the owning app gives the surface up (its own LIVE button). |
-| `POST` | `/api/surface/open` | `{"id"}`: open an entry as if chosen in Home (a hack's web panel). 409 while another app owns the surface, or after the power button. |
+| `POST` | `/api/surface/open` | `{"id"}`: open an entry as if chosen in Home (a hack's web panel). 409 while another app owns the surface. |
 | `POST` | `/api/surface/star` | `{"id", "star": bool, "super": bool}`: star an entry, or make it the superstar (only one; a superstar is always starred). Saved in `ui_tabs.json`. |
 | `GET` | `/api/hacks/installed` | Every deployed hack, read live off each `/data/push-hack/hacks/<id>/hack.json`: `[{id, name, port, web_ui?, enabled}]` sorted by `id`. `enabled` is computed, not read from `hack.json` — it mirrors Push Hack Catalog's own boot-autostart check (see below), not "currently running". The web UI polls it every 10s to hide a feature whose dependency is missing (the Browser tab needs `browser-bridge`) and to build the menu-bar links — see [Menu bar links](#menu-bar-links-for-other-hacks). |
 | `GET` | `/api/ui/tabs` | The one ordered list behind both navigations: `{max: 8, entries: [{id, label, source, has_shadow, shadow, shadow_available, requires, has_web, web, web_label, web_path, port}]}`. Built-in Shadow panels plus every installed hack declaring `web_ui` or `shadow_ui`, with the user's saved order and switches applied. |
@@ -135,6 +141,15 @@ CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall
 - **Unmount scope:** `/api/unmount` only accepts paths directly under `/run/media/` — one level deep, no traversal.
 
 ---
+
+## Command line
+
+| Flag | Effect |
+|------|--------|
+| `-config <path>` | Path to `hack.json` (default `hack.json`) |
+| `-port <n>` | Override the port from the config |
+| `-version` | Print the Push Hack release this binary comes from, then exit |
+| `-finish-update`, `-update-dir <dir>` | Internal. The update helper uses them. Do not run them by hand. |
 
 ## Configuration (`hack.json`)
 
@@ -363,8 +378,61 @@ Auto-refreshes every 3 seconds. Shows:
 - Network IPs (non-loopback IPv4 from `net.Interfaces()`)
 - Hotspot password (from `PushPreferences.json`) — shown inline next to Network row in monospace
 - Uptime (from `/proc/uptime`)
+- A card **Push Hack update**: installed and latest version, last check, Check now, Update now, the two switches, and how the last update ended. See "Push Hack update" below.
 
 > **Battery not shown:** Push 3's battery state is only accessible via the XMOS firmware's custom MIDI SysEx protocol — `/sys/class/power_supply/` is empty. The UI handles the `battery` field gracefully (hidden when absent).
+
+### Push Hack update
+
+Push Manager can tell you that a newer Push Hack release exists, and can install it after you confirm.
+
+**Check**
+
+- Push Manager asks `api.github.com` for the release list of this repo. It asks at most once a day. The first check comes 1 to 11 minutes after the start. It never calls ableton.com.
+- GitHub sends an ETag with the list. An unchanged list then costs nothing against the limit of GitHub.
+- A failed check (no internet, rate limit) is quiet. The next try comes after 1 hour, then 2, 4, 8 and 16 hours, and then every 24 hours.
+- Alpha, beta and rc releases count by default. The order follows semver: `0.1.9-alpha` is older than `0.1.10-alpha`, and `0.1.15-alpha` is older than `0.1.15`.
+- A `dev` build (a plain `go build`) never offers an update.
+
+**Where you see it**
+
+- The web page shows a yellow bar at the bottom. **Dismiss** hides it for that version. A newer release shows it again.
+- The System page has a card with the installed and latest version, **Check now**, **Update now**, and two switches. One switch turns the automatic check on or off. With the check off, Push Manager makes no request. The other switch includes or excludes alpha and beta releases.
+- The Shadow UI shows a yellow bar over the last 14 px of the content area. The 8th button under the screen shows UPDATE, and its light is yellow. The bar shows only while the Shadow UI is open, not under Home or an app. A Dismiss on the web page hides it here too.
+- UPDATE opens a question. Button 7 is OK. Button 8 is CANCEL. The button that opened the question also cancels it, so a double tap does not install. Other buttons do nothing while the question is open. It closes by itself after 15 seconds.
+
+**Install**
+
+Start the install with **Update now**, the bar's **Update**, or UPDATE then OK on the Push. Only the newest known release can be installed. A client cannot give an address.
+
+1. Push Manager downloads `manifest.json` and the tarball. It accepts only addresses that start with `https://github.com/federico-pepe/ableton-push-hack/releases/download/`.
+2. It compares the size and the SHA-256 of the tarball, and of each file in it, with the manifest. It refuses any file that the manifest does not list.
+3. It runs each new binary with `-version`. The binary must print the target version.
+4. It replaces the files that differ. It keeps each old file as `<file>.prev`, as a hard link, so a file never goes missing.
+5. It starts a detached helper. The helper is the old push-manager (`push-manager.prev -finish-update`), in its own session.
+6. The helper restarts push-catalog and then push-manager. For each one it stops the service, waits until the process is gone, and starts it.
+7. The helper waits for the new push-manager to answer `/api/status` with the target `hack_version`. It must still answer 5 seconds later.
+8. If a service dies right after it starts, the update fails within 2 seconds. On any failure the helper puts the `.prev` files back, restarts the services, and records the failure. The log is `/data/push-hack/logs/update.log`.
+
+**What the update changes**
+
+- Only `push-manager`, `push-catalog` and `push_hook.so`, under `/data/push-hack/hacks/`.
+- It never changes `/etc`, `hack.json`, a hack from the catalog, or Push3. A hack that is not installed is skipped.
+- If `manifest.json` has `needs_reinstall: true`, the update refuses and asks for `install.sh`.
+- If the `shm_protocol` of the release differs from the hook that Push3 has loaded, the update refuses until Push restarts.
+- A new `push_hook.so` loads at the next restart of Push3. The updater never restarts Push3.
+
+**What you see**
+
+- The screen goes dark for a few seconds. Live and the audio keep running. Apps that hold the Push surface go back to Live.
+- The bar and the System card show how the update ended: "Push Hack updated to ..." or "failed and was rolled back: ...". The message stays on the web page until you press OK.
+- If the power fails during an update, the next start of push-manager settles it with `pending.json`. It records the result. It puts the `.prev` files back if the new version does not run.
+
+**Files** in `/data/push-hack/update/`: `settings.json` (the switches), `state.json` (last check, ETag, known releases), `pending.json` (only while an update runs), `last_result.json` (until you press OK), and `staging/` (only while an update runs).
+
+**Bench test without GitHub.** Put `"url": "http://127.0.0.1:8099/releases.json"` in `settings.json`. Serve a GitHub-style release list there, with asset addresses on the same host. HTTP cannot set this key.
+
+**Code:** `src/update/` (checker, settings, routes, install, helper), `src/semver/`, `src/ui_update.go` (Shadow UI), and `src/update_wire.go`. Run the tests with `make test-manager`. Plan: `plans/2026-10-20-push-hack-self-update.md`.
 
 ### Display page
 Accessed via "Display" button in header. Tab-based layout:
@@ -486,12 +554,34 @@ buttons) and `src/surface_io.go` (the gesture, the device side and the API).
 |---|---|---|---|---|
 | **Shift + Help** | Home | Live | Home | Home |
 | **Shift + Help, Help** | the superstar | the superstar | the superstar | the superstar; from the superstar itself: Live |
+| **Help** | Live's own Help | Live | nothing | Live |
+| **Help held** (0.5 s) | Home | nothing | Home | Home |
 
 Shift + Help, Help means: hold Shift, tap Help twice, let go of Shift.
 Both gestures act when you let go of Shift. That is the safe moment: Live
 has seen Shift go down and up, so it does not think Shift is still held.
 If you press another button while holding Shift, the gesture does not
 fire: that combination is the other button's own shortcut.
+
+Help on its own is the quick way back to Live from Home or from any app. It
+acts when you let go of Help, so Live never sees half a press. If you
+press Shift or another button while Help is held, it does not fire. In
+Live, Help stays Live's own Help: push-manager does not take it. An app
+that has only the screen and gives the buttons to Live (Stacks' listening
+mode) goes back to Live too. Live has the buttons then, so it sees the
+same press and opens its help screen. push-manager closes it again with
+one more Help tap into Live's input, before Live's screen shows. A tool
+(the Shadow UI) has its own way out.
+
+Holding Help for half a second (no Shift) does what Shift + Help does: it
+opens Home, from Live, a tool or an app. It acts while you still hold
+Help, and letting go then does nothing. From Home it does nothing: a
+short press goes to Live. In Live (and in an app's listening mode) Live
+sees the press too and opens its help screen while you hold. push-manager
+tells Live that Help is up, taps Help once more to close the help screen,
+and only then takes the buttons. You may see Live's help screen for that
+half second. Help is the button that stays lit while Home or an app has the
+surface, so the lit button is the way out.
 
 When Home takes the buttons from Live, push-manager first tells Push3
 that Shift and Help are up (through Push3's own MIDI input) and waits
@@ -517,13 +607,14 @@ the first presses.
 | Control | In Home |
 |---|---|
 | Top button 1-8 | Open the entry in that column. |
-| Pad column 1-8 | Open the entry in that column. Each column is lit in its entry's colour (dim while the app is stopped); the chosen entry's top pad is white. |
+| Top pad row 1-8 | Open the entry in that column. One pad per entry is lit in its colour (dim while the app is stopped); the chosen entry's pad is white. The other pads stay dark and do nothing. |
 | Jog | Turn to choose, press to open. |
 | Page < > | The next or previous page. Lit when there is one. |
 | Bottom 1, `< LAST` | Back to the app you came from. |
 | Bottom 2, `STAR` | Star or unstar the chosen entry. Lit amber while it is starred. |
 | Shift + `STAR` | Make the chosen entry the superstar. Again: no superstar. There is only one. |
 | Bottom 8, `LIVE` | Back to Live. |
+| Help | Back to Live, as from an app. |
 
 Opening a **tool** opens the Shadow UI on that panel. Opening an **app**
 lends it the surface: push-manager switches the display and the MIDI
@@ -539,10 +630,13 @@ Record), and the app draws until you leave it.
   (`/api/enable`, which restarts its service). The card says STARTING...,
   and the app opens by itself when it connects. After 15 seconds without
   it, Home says the app did not start.
-- The power button gives the surface to Live, as it always did
-  (`release.go`). After it, Home does not open again.
-- push-manager gives the surface to Live when it starts. Apps connect
-  again by themselves.
+- The power button gives the surface to Live (`release.go`), also from the
+  Shadow UI and from old hacks that hold it: its press
+  is one SysEx on the Push's Live Port, and Push3 asks "shut down?" a
+  second later. Nothing latches. After Cancel, Shift + Help opens Home
+  again.
+- push-manager gives the surface to Live when it starts (`release.go`). If the buttons were taken, it also repaints Live's LEDs once MIDI is up.
+  Apps connect again by themselves.
 
 ### Who owns the surface
 
@@ -567,8 +661,8 @@ The tests in `src/surface_test.go` hold these rules after every event of
 10,000 random sequences (gestures, sessions opening and closing, button
 presses, legacy calls, the power button): exactly one owner; the intercept
 and the screen as the table says; only the owner's frames reach the
-screen; an owning app's session ending opens Home; after the power button
-only Live; inside an app only Shift + Help does anything in push-manager.
+screen; an owning app's session ending opens Home; inside an app only Shift + Help and Help do anything in
+push-manager.
 
 ### Making a hack an app
 

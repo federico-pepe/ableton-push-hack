@@ -66,12 +66,29 @@ changing Shift + Settings (the Shadow UI toggle stays as it is upstream).
 |---|---|---|---|---|
 | Shift + Help | Home | Live | Home | Home |
 | Shift + Help, Help | the superstar | the superstar | the superstar | the superstar; from the superstar itself: Live |
+| Help | Live's own Help | Live | nothing | Live |
+| Help held (0.5 s) | Home | nothing | Home | Home |
 
 "Shift + Help, Help" means: hold Shift, tap Help twice, let go of Shift.
 Both gestures fire when Shift is let go. That is the safe moment: Live has
 seen Shift go down and up again, so it does not think Shift is still held
 (Stacks found that taking the surface mid-press left Live with a stuck
 Shift).
+
+Help alone (added 2026-10-19, asked for on device: "always use the help
+button to return to Live") goes back to Live from Home or an app, on
+Help's release. Shift, or another button pressed while Help is held,
+spoils it. In Live and in a tool, push-manager does not take Help. An app
+with only the screen (Stacks' listening mode) goes back to Live too; Live
+sees that press as well and opens its help screen, which push-manager
+closes with one more Help tap into Live's input.
+
+Help held for 0.5 s (asked for on device the same day, "in Live and in
+module") is Shift + Help: Home, at once, while Help is still down; its
+release is nothing. From Home it is nothing, since going to Live would
+hand Live a release it never saw pressed. Where Live had the buttons, its
+help screen is closed first (Help up, then a tap), before Home takes the
+buttons and the tap could no longer get through.
 
 While an app or Home owns the surface, the intercept is on, so Live does
 not see Shift + Help at all. From Live, Live sees Shift + Help, as it does
@@ -100,14 +117,16 @@ user's order (the same order as the Shadow UI tabs and the web menu,
 `ui_tabs.json`). So page 1 is always full, and the favorites are the
 first presses.
 
-The pads repeat the columns: each pad column is lit in its entry's colour
-(dim when the app is stopped), and any pad in a column opens that entry.
-The selected entry's top pad is white.
+The top pad row is a quiet hint of the columns: one pad per entry, lit in
+its colour (dim when the app is stopped), opens that entry; the selected
+entry's pad is white, and every other pad stays dark. (Until 2026-10-19
+every pad was lit and any pad in a column opened it: a whole lit grid read
+as something to play.)
 
 | Control | In Home |
 |---|---|
 | Top button 1-8 | open the entry in that column |
-| Pad column 1-8 | open the entry in that column |
+| Top pad row 1-8 | open the entry in that column |
 | Jog turn / press | choose / open |
 | Page < > | the next or previous page |
 | Bottom 1 `< LAST` | back to the app you came from |
@@ -126,8 +145,8 @@ When Home opens, the app you came from is chosen, and tagged LAST.
   (`/api/enable`, which restarts the service). The card says STARTING...,
   and the app opens by itself as soon as it connects. After 15 seconds
   without it: "RIFFS DID NOT START -- SEE ITS LOG".
-- **The power button:** as today (release.go): the surface goes to Live at
-  once, and nobody gets it back until the device is off.
+- **The power button:** removed 2026-10-20. Its watcher did not work on
+  device. Push3 handles the button as before.
 - **push-manager restarts:** as today, it gives the surface to Live at its
   start. The apps reconnect by themselves and are listed again.
 
@@ -143,7 +162,6 @@ Live --(Shift+Help)--> Home --(open app)--> App(id)
   |                     |  +--(Shift+Help)----+
   +-------(LIVE)--------+  +--(app stops)-----+
 Home --(open tool)--> Tool(panel) --(Shift+Help)--> Home
-any --(power button)--> Live, and stays Live
 ```
 
 For each owner, push-manager sets the surface the same way, in one place:
@@ -209,15 +227,14 @@ so the two cannot both draw. Stacks 0.3.0 uses the session.
 3. Only the owning app's frames reach the screen.
 4. An owning app's session ending gives the surface to Home within a
    second.
-5. After the power button, nothing but Live owns the surface.
-6. Inside an app, only Shift + Help (and Shift + Help, Help) do anything
-   in push-manager.
+5. Inside an app, only Shift + Help (and Shift + Help, Help) and Help do
+   anything in push-manager.
 
 Tests:
 
 - The state machine: a table of transitions, and 10,000 random sequences
-  of events (gestures, sessions opening and closing, legacy calls, frames,
-  the power button), checking the six rules after every event.
+  of events (gestures, sessions opening and closing, legacy calls, frames),
+  checking the five rules after every event.
 - Gestures: Shift down, Help tap, Shift up opens Home; two taps the
   superstar; Shift up with no Help, or Help without Shift, does nothing.
 - Sessions over a real HTTP server: focus and blur arrive; closing the

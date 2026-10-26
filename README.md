@@ -47,7 +47,7 @@ This hack can't interact directly with what's happening inside Live on Push (unl
 * Create virtual audio soundcard to send and receive audio from and to Live on Push. This is required, for example, if you want to run a standalone sound module. Users then need to activate the virtual sound card in Push's audio preferences and then route the audio on Push's audio tracks/mixer.
 * Use remote scripts to interact with Live on Push for example to load presets on the selected track. The limit is what is available on the Remote Script (Python) Live API.
 * From an UI perspective there are two options: run a WebUI and access everything from another device via push.local or implement a custom made ShadowUI if you want all the controls to be accessible on Push's directly. `push-manager` and `push-catalog` for example, use both options.
-* A module that takes over Push's whole screen, buttons and pads is an app of **Push Hack Home**, push-manager's switcher. Press **Shift + Help** on Push to open Home and pick an app or a tool; star the ones you use most, and make one the superstar to open it straight away with **Shift + Help, Help**. See [Push Hack Home](hacks/push-manager/README.md#push-hack-home-the-switcher).
+* A module that takes over Push's whole screen, buttons and pads is an app of **Push Hack Home**, push-manager's switcher. Press **Shift + Help** on Push to open Home and pick an app or a tool; star the ones you use most, and make one the superstar to open it straight away with **Shift + Help, Help**. Press **Help** to go back to Live; hold **Help** for half a second to open Home, as Shift + Help does. See [Push Hack Home](hacks/push-manager/README.md#push-hack-home-the-switcher).
 
 ### Main components
 
@@ -67,6 +67,16 @@ To install and uninstall Push Hack on your Push 3 Standalone you have two option
 
 1. Use the new cross-platform [Push Hack Installer](https://github.com/federico-pepe/push-hack-installer)
 2. Use the included scrips. See [docs/scripts.md](docs/scripts.md) for every flag and standalone `push-display` re-deploy.
+
+---
+
+## Update Push Hack
+
+Push Manager checks GitHub once a day for a newer Push Hack release. It includes alpha and beta releases. It makes no other call to the internet for this, and it never calls ableton.com.
+
+When a newer release exists, a yellow bar shows on the Push screen and on the web page. You choose when to install it. The install keeps Live and the audio running. If the new version does not start, Push Manager puts the old version back.
+
+You can switch the automatic check off on the System page of the web app. Read [the manual](MANUAL.md#updating-push-hack) for the steps.
 
 ---
 

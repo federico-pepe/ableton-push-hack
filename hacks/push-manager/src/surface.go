@@ -18,9 +18,11 @@
 // Shift + Help opens Home from anywhere and goes back to Live from Home.
 // Shift + Help, Help (two taps of Help while Shift is held) opens the
 // superstar entry, and from inside it goes back to Live. Both fire when
-// Shift is let go (gesture.go). An app's session ending while it owns the
-// surface lands the user on Home, which says so. The power button
-// (release.go) gives everything to Live.
+// Shift is let go (surface_io.go). Help alone, from Home or an app, goes
+// back to Live, on Help's release; in Live it is Live's Help. Help held
+// helpHold is Shift + Help: Home, from anywhere but Home. An app's session
+// ending while it owns the surface lands the user on Home, which says so.
+// The power button (release.go) gives everything to Live.
 //
 // All side effects go through surfaceIO, so the state machine is tested
 // against a fake (surface_test.go) with random event sequences. The design
@@ -52,15 +54,18 @@ const startTimeout = 15 * time.Second
 
 // surfaceIO is everything the state machine does to the device.
 type surfaceIO interface {
-	take(pass []int)     // intercept on with these pass-through CCs, display taken, LEDs cleared
-	setPass(pass []int)  // intercept on, a new pass-through list
-	screenOnly()         // intercept off, display still taken (an app's listen mode)
-	release()            // intercept off, display back to Push3: Live
-	homeShow(v homeView) // draw Home and its LEDs
-	homeHide()           // stop drawing Home
-	openTool(id string)  // the Shadow UI, on this panel
-	closeTool()          // stop the Shadow UI, if it runs
-	startApp(id string)  // ask push-catalog to start a stopped app
+	take(pass []int)         // intercept on with these pass-through CCs, display taken, LEDs cleared
+	setPass(pass []int)      // intercept on, a new pass-through list
+	screenOnly()             // intercept off, display still taken (an app's listen mode)
+	release()                // intercept off, display back to Push3: Live
+	closeLiveHelp(held bool) // tap Help into Live: it saw the user's Help and opened its help
+	homeCover(v homeView)    // Home's frame on the screen at once, before the buttons are taken
+	homeShow(v homeView)     // draw Home and its LEDs
+	homeHide()               // stop drawing Home
+	openTool(id string)      // the Shadow UI, on this panel
+	closeTool()              // stop the Shadow UI, if it runs
+	releaseHeld()            // the Shadow UI or an old hack holds the screen or the buttons: give them back to Live; nothing held, nothing done
+	startApp(id string)      // ask push-catalog to start a stopped app
 	now() time.Time
 }
 
@@ -94,7 +99,6 @@ type Surface struct {
 	startAt  time.Time
 	cursor   int // Home's chosen entry, an index into entries()
 	shift    bool
-	down     bool // the power button was pressed: Live until off
 }
 
 func newSurface(io surfaceIO, entries func() []homeEntry, setStar func(string, bool, bool)) *Surface {
@@ -153,7 +157,7 @@ func (s *Surface) FrameAllowed(app string) bool {
 func (s *Surface) Gesture(taps int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.down || taps < 1 {
+	if taps < 1 {
 		return
 	}
 	if taps == 1 {
@@ -174,6 +178,49 @@ func (s *Surface) Gesture(taps int) {
 	default:
 		s.open(sup)
 	}
+}
+
+// HelpAlone is Help pressed and let go without Shift: from Home or an app,
+// back to Live. Elsewhere it is Live's own Help, and nothing here. An app
+// with only the screen (Stacks' listening mode) goes back too, but Live has
+// the buttons then: it saw the same press and opened its help screen
+// (seen on device). Help toggles it, so one more tap closes it, while the
+// app's screen still hides Live's.
+func (s *Surface) HelpAlone() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.own != ownHome && s.own != ownApp {
+		return
+	}
+	if s.own == ownApp && !s.input {
+		s.io.closeLiveHelp(false)
+	}
+	s.toLive()
+}
+
+// LongHelp is Help held without Shift: Shift + Help's Home, from Live, a
+// tool or an app. From Home it is nothing: the short press goes to Live,
+// and going there now would hand Live a release it never saw pressed.
+// liveSaw: Live had the buttons (Live itself, or an app's screen-only)
+// and opened its help screen on the press; close it before Home takes
+// the buttons, while the tap still gets through.
+func (s *Surface) LongHelp(liveSaw bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.own == ownHome {
+		return
+	}
+	if liveSaw && s.own == ownOutside {
+		// Home over Live before the tap: else Live's screen shows between
+		// its help closing and Home (seen on device: help, Live, Home).
+		s.homeCursor()
+		s.notice = ""
+		s.io.homeCover(s.view())
+	}
+	if liveSaw {
+		s.io.closeLiveHelp(true)
+	}
+	s.toHome("")
 }
 
 // SessionOpen registers an app's session; a newer one for the same app
@@ -263,15 +310,28 @@ func (s *Surface) Leave(app, to string) error {
 	return nil
 }
 
+// PowerPress is the power button going down (release.go): Push3 is about
+// to ask "shut down?", so Home or the app gives the surface to Live. Nothing
+// latches. After Cancel, Home opens again as usual. Outside Home's hands,
+// the Shadow UI or an old hack (Keyboard Visualizer) may hold the surface
+// too: it goes back to Live the same way.
+func (s *Surface) PowerPress() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log.Printf("surface: power button, owner %s", s.own)
+	if s.own != ownOutside {
+		s.toLive()
+		return
+	}
+	s.io.releaseHeld()
+}
+
 // Open opens an entry from outside Home's own buttons (the web UI). It is
 // refused while another app owns the surface, so one app never takes it
 // from another.
 func (s *Surface) Open(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.down {
-		return fmt.Errorf("Push is shutting down")
-	}
 	if s.own == ownApp && s.app != id {
 		return fmt.Errorf("the surface belongs to %s", s.app)
 	}
@@ -283,19 +343,6 @@ func (s *Surface) Open(id string) error {
 	}
 	s.open(id)
 	return nil
-}
-
-// Power is the power button: Live, until the device is off.
-func (s *Surface) Power() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.down {
-		return
-	}
-	s.down = true
-	if s.own != ownOutside {
-		s.toLive()
-	}
 }
 
 // Tick runs once a second: an app Home started and that never connected.
@@ -318,16 +365,27 @@ func (s *Surface) toHome(notice string) {
 		s.io.setPass(nil)
 	case ownOutside:
 		s.io.closeTool()
+		// Home's frame first: take lets Live settle (120 ms) before the
+		// intercept, and Live's screen showed through that, then black.
+		s.homeCursor()
+		s.notice = notice
+		s.io.homeCover(s.view())
 		s.io.take(nil)
 	}
+	s.homeCursor()
+	s.own, s.app, s.notice = ownHome, "", notice
+	s.redraw()
+}
+
+// homeCursor puts Home's cursor on the app you came from, unless Home is
+// open already.
+func (s *Surface) homeCursor() {
 	if s.own != ownHome {
 		s.cursor = 0
 		if i := s.find(s.last); i >= 0 {
 			s.cursor = i
 		}
 	}
-	s.own, s.app, s.notice = ownHome, "", notice
-	s.redraw()
 }
 
 func (s *Surface) toLive() {

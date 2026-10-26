@@ -1,38 +1,36 @@
 package main
 
-// release.go -- the surface goes back to Push3 whenever Push3 has to be
-// able to talk to you.
+// release.go -- the surface goes back to Live when Live needs to be seen.
 //
-// A hack that owns the surface has the display (mode 2) and the MIDI
-// intercept (midiflt enabled): you see the hack's screen, and Push3 gets
-// none of your button presses. Two moments need Push3 to have both:
+// A press of Push's power button makes Push3 ask "shut down?" on the
+// screen, answered with the buttons. Home or an app hides that question and
+// takes the answer. The press shows as one SysEx on the Push's Live Port
+// (see isPowerPress), so push-manager gives the surface to Live then.
+// Nothing latches: after Cancel, Shift + Help opens Home again.
 //
-//   - Push's power button. /opt/push3/power.sh touches
-//     /data/settings/.shutdown and asks Live to quit. If Live asks a
-//     question first ("save changes?"), it asks on Push's screen, answered
-//     with Push's buttons -- hidden behind the hack's screen and swallowed
-//     by the intercept. Live never quits; only holding the power button
-//     ends it. Seen on device 2026-10-17 with Stacks open.
-//   - The next start. midiflt is a file and keeps its enabled byte across a
-//     power loss, and the hook reads it as soon as Push3 starts: Live's
-//     "recover your work?" could not be answered, and the device seemed to
-//     hang at boot, twice in a row.
+// Also at start: push-manager clears a stale surface.
 //
-// So push-manager clears both at its start, and from the power button on
-// gives them back to Push3 four times a second -- overriding any writer,
-// its own Shadow UI included -- and refuses a hack that asks for them.
+// midiflt is a file and keeps its enabled byte across a power loss, and the
+// hook reads it as soon as Push3 starts. Left on, Live's "recover your
+// work?" could not be answered and the device seemed to hang at boot. So
+// push-manager switches the intercept off and gives the display back
+// to Push3 when it starts.
 
 import (
 	"log"
-	"os"
-	"sync/atomic"
-	"time"
 )
 
-const shutdownFile = "/data/settings/.shutdown" // touched by /opt/push3/power.sh
-
-// shuttingDown is set once the power button has been pressed.
-var shuttingDown atomic.Bool
+// isPowerPress reports whether a SysEx is the power button going down:
+// F0 00 21 1D 01 01 3A 2A 64 F7. At rest the same message carries 22 in
+// the byte before 64, about once a second. Seen on device 2026-10-20: 4
+// presses, 4 messages, none in 15 s of rest. Push3 asks "shut down?" about
+// a second later; no file or log shows the press, see
+// docs/push3-internals.md.
+func isPowerPress(p []byte) bool {
+	return len(p) == 10 && p[1] == 0x00 && p[2] == 0x21 && p[3] == 0x1D &&
+		p[0] == 0xF0 && p[4] == 0x01 && p[5] == 0x01 &&
+		p[6] == 0x3A && p[7] == 0x2A && p[8] == 0x64 && p[9] == 0xF7
+}
 
 // releaseSurface switches the MIDI intercept off and gives the display back
 // to Push3. It reports whether anything had to change.
@@ -51,49 +49,20 @@ func releaseSurface() bool {
 	return changed
 }
 
+// restoreLEDsAtStart is set when start found the intercept on. The old
+// process cleared the LEDs and died before it could repaint them; main
+// repaints once MIDI is up.
+var restoreLEDsAtStart bool
+
 // clearStaleSurface runs once at start: whatever a hack held before a
 // reboot or a power loss, nobody holds it now.
 func clearStaleSurface() {
+	if data := ensureMidiFilt(); data != nil && data[4] != 0 {
+		// watchInterceptOff never sees this on->off: it starts after.
+		ledsCleared.Store(true)
+		restoreLEDsAtStart = true
+	}
 	if releaseSurface() {
 		log.Printf("release: intercept and display were still taken from before this start; given back to Push3")
-	}
-}
-
-// shutdownStamp identifies the shutdown marker as it is now: its absence,
-// or its modification time. Compared with the stamp at start rather than
-// with the clock, which is not to be trusted right after boot -- the file
-// stays from the last shutdown.
-func shutdownStamp() time.Time {
-	fi, err := os.Stat(shutdownFile)
-	if err != nil {
-		return time.Time{}
-	}
-	return fi.ModTime()
-}
-
-// markerPress reports whether the marker's stamp, start then cur, means
-// the power button: a marker that appears or is touched. One that goes
-// away is the last shutdown's, cleaned up at boot -- read as a press
-// (seen 2026-10-18, seconds after a morning start), it latched "shutting
-// down" and Push Hack Home refused every app until push-manager restarted.
-func markerPress(start, cur time.Time) bool { return !cur.IsZero() && !cur.Equal(start) }
-
-// watchShutdown gives the surface back the moment the power button is
-// pressed, and keeps it given back until the device is off.
-func watchShutdown() {
-	start := shutdownStamp()
-	for {
-		time.Sleep(250 * time.Millisecond)
-		if !shuttingDown.Load() {
-			cur := shutdownStamp()
-			if !markerPress(start, cur) {
-				start = cur // a marker that went away is the new start
-				continue
-			}
-			shuttingDown.Store(true)
-			surface.Power() // Home or an app gives up the surface, and nobody gets it again
-			log.Printf("release: power button pressed; the surface goes back to Push3 until it is off")
-		}
-		releaseSurface()
 	}
 }

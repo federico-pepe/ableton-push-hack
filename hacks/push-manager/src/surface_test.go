@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/federico-pepe/ableton-push-hack/core/push3"
 )
 
 // fakeIO is the device as the state machine sees it.
@@ -17,6 +19,8 @@ type fakeIO struct {
 	started                  []string
 	t                        time.Time
 	view                     homeView
+	helpTaps, heldTaps       int
+	covers                   int
 }
 
 func (f *fakeIO) take(pass []int)    { f.intercept, f.display, f.pass = true, true, pass }
@@ -25,11 +29,25 @@ func (f *fakeIO) screenOnly()        { f.intercept, f.pass = false, nil }
 func (f *fakeIO) release() {
 	f.intercept, f.display, f.home, f.tool, f.pass = false, false, false, "", nil
 }
-func (f *fakeIO) homeShow(v homeView) { f.home, f.display, f.view = true, true, v }
-func (f *fakeIO) homeHide()           { f.home = false }
-func (f *fakeIO) openTool(id string)  { f.intercept, f.display, f.tool = true, true, id }
-func (f *fakeIO) startApp(id string)  { f.started = append(f.started, id) }
-func (f *fakeIO) now() time.Time      { return f.t }
+func (f *fakeIO) closeLiveHelp(held bool) {
+	if held {
+		f.heldTaps++
+	} else {
+		f.helpTaps++
+	}
+}
+func (f *fakeIO) homeCover(v homeView) { f.display, f.covers = true, f.covers+1 }
+func (f *fakeIO) homeShow(v homeView)  { f.home, f.display, f.view = true, true, v }
+func (f *fakeIO) homeHide()            { f.home = false }
+func (f *fakeIO) openTool(id string)   { f.intercept, f.display, f.tool = true, true, id }
+func (f *fakeIO) startApp(id string)   { f.started = append(f.started, id) }
+func (f *fakeIO) releaseHeld() {
+	f.closeTool()
+	if f.intercept || f.display {
+		f.release()
+	}
+}
+func (f *fakeIO) now() time.Time { return f.t }
 func (f *fakeIO) closeTool() {
 	if f.tool != "" {
 		f.tool, f.display = "", false // the Shadow UI gives the screen back when it stops
@@ -125,9 +143,6 @@ func (b *testBench) rules(t *testing.T, where string) {
 			t.Fatalf("%s: a frame from %q allowed=%v, want %v (owner %s %s)", where, app, got, want, s.own, s.app)
 		}
 	}
-	if s.down && s.own != ownOutside {
-		t.Fatalf("%s: after the power button %s owns the surface", where, s.own)
-	}
 }
 
 func TestSurfaceTransitions(t *testing.T) {
@@ -163,7 +178,11 @@ func TestSurfaceTransitions(t *testing.T) {
 	}
 	b.rules(t, "home again")
 
-	b.HomePad(36+1, 100) // a pad in column 2: STACKS
+	b.HomePad(36+8, 100) // a dark pad (row 2, column 1): nothing
+	if b.own != ownHome {
+		t.Fatalf("a dark pad opened something: owner %s", b.own)
+	}
+	b.HomePad(36+7*8+1, 100) // column 2's top pad: STACKS
 	if b.own != ownApp || b.app != "stacks" {
 		t.Fatalf("pad column 2: owner %s %s", b.own, b.app)
 	}
@@ -302,22 +321,51 @@ func TestSurfaceLegacyAndOpen(t *testing.T) {
 	}
 }
 
-func TestSurfacePowerButton(t *testing.T) {
+func TestSurfacePowerPress(t *testing.T) {
 	b := newBench()
 	b.SessionOpen("riffs", nil)
 	b.Gesture(1)
 	b.HomeCC(CCScreenTop1, 127)
-	b.Power()
+	b.PowerPress()
 	if b.own != ownOutside || b.io.intercept || b.io.display {
-		t.Fatalf("power: owner %s, intercept %v, display %v", b.own, b.io.intercept, b.io.display)
+		t.Fatalf("power press: owner %s, intercept %v, display %v", b.own, b.io.intercept, b.io.display)
 	}
-	b.Gesture(1)
-	b.Gesture(2)
-	if b.own != ownOutside {
-		t.Fatal("after the power button, gestures must do nothing")
+	b.PowerPress() // a second message does nothing
+	b.Gesture(1)   // nothing latches: Home opens again
+	if b.own != ownHome {
+		t.Fatalf("after a power press Home must open again, owner %s", b.own)
 	}
-	if err := b.Open("riffs"); err == nil {
-		t.Error("after the power button, Open must be refused")
+	b.PowerPress()
+	if b.own != ownOutside || b.io.home {
+		t.Fatalf("power press from Home: owner %s, home drawn %v", b.own, b.io.home)
+	}
+}
+
+// A press in Live changes nothing; one with the Shadow UI or an old hack
+// holding the surface gives it back.
+func TestSurfacePowerPressOutside(t *testing.T) {
+	b := newBench()
+	b.PowerPress()
+	if b.io.intercept || b.io.display || b.io.tool != "" {
+		t.Fatal("a press in Live must change nothing")
+	}
+	b.io.intercept, b.io.display = true, true // an old hack took the surface itself
+	b.PowerPress()
+	if b.io.intercept || b.io.display {
+		t.Errorf("an old hack kept the surface: intercept %v, display %v", b.io.intercept, b.io.display)
+	}
+	b.io.openTool("browser") // the Shadow UI, opened by Shift + Preferences
+	b.PowerPress()
+	if b.io.intercept || b.io.display || b.io.tool != "" {
+		t.Errorf("the Shadow UI kept the surface: %+v", b.io)
+	}
+}
+
+func TestIsPowerPress(t *testing.T) {
+	press := []byte{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x3A, 0x2A, 0x64, 0xF7}
+	rest := []byte{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x3A, 0x22, 0x64, 0xF7}
+	if !isPowerPress(press) || isPowerPress(rest) || isPowerPress(press[:9]) || isPowerPress(nil) {
+		t.Error("only F0 00 21 1D 01 01 3A 2A 64 F7 is a power press")
 	}
 }
 
@@ -338,9 +386,23 @@ func TestSurfaceRandom(t *testing.T) {
 			case k < 14:
 				what = "gesture 1"
 				b.Gesture(1)
-			case k < 20:
+			case k < 17:
 				what = "gesture 2"
 				b.Gesture(2)
+			case k < 19:
+				what = "help alone"
+				was := b.own
+				b.HelpAlone()
+				if (was == ownHome || was == ownApp) && b.own != ownOutside {
+					t.Fatalf("run %d step %d: Help alone from %s left the owner %s", run, step, was, b.own)
+				}
+			case k < 20:
+				what = "help held"
+				was := b.own
+				b.LongHelp(rng.IntN(2) == 0)
+				if b.own != ownHome {
+					t.Fatalf("run %d step %d: Help held from %s left the owner %s", run, step, was, b.own)
+				}
 			case k < 32:
 				what = "session open " + app
 				old = append(old, b.SessionOpen(app, []int{rng.IntN(88)}))
@@ -387,8 +449,8 @@ func TestSurfaceRandom(t *testing.T) {
 				b.io.t = b.io.t.Add(time.Duration(rng.IntN(20)) * time.Second)
 				b.Tick()
 			case k < 98:
-				what = "power"
-				b.Power()
+				what = "power press"
+				b.PowerPress()
 			default:
 				what = "star"
 				b.setStar([]string{"riffs", "stacks", "browser", "files"}[rng.IntN(4)], rng.IntN(2) == 0, rng.IntN(3) == 0)
@@ -426,7 +488,12 @@ func TestHelpGesture(t *testing.T) {
 		{"Shift + Help, Help", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCHelp, 0}, {CCHelp, 127}, {CCHelp, 0}, {CCShift, 0}}, []int{2}},
 		{"fires on Shift's release only", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCHelp, 0}}, nil},
 		{"Shift alone", [][2]uint8{{CCShift, 127}, {CCShift, 0}}, nil},
-		{"Help alone", [][2]uint8{{CCHelp, 127}, {CCHelp, 0}}, nil},
+		{"Help alone", [][2]uint8{{CCHelp, 127}, {CCHelp, 0}}, []int{helpAlone}},
+		{"Help alone fires on Help's release only", [][2]uint8{{CCHelp, 127}}, nil},
+		{"Help + another button is not ours", [][2]uint8{{CCHelp, 127}, {CCUndo, 127}, {CCUndo, 0}, {CCHelp, 0}}, nil},
+		{"an encoder turned with Help held does not spoil it", [][2]uint8{{CCHelp, 127}, {71, 1}, {CCHelp, 0}}, []int{helpAlone}},
+		{"Shift pressed while Help is held", [][2]uint8{{CCHelp, 127}, {CCShift, 127}, {CCShift, 0}, {CCHelp, 0}}, nil},
+		{"Shift let go before Help: Shift + Help only", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCShift, 0}, {CCHelp, 0}}, []int{1}},
 		{"Shift + Help + another button is not ours", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCUndo, 127}, {CCShift, 0}}, nil},
 		{"an encoder turned with Shift does not spoil it", [][2]uint8{{CCShift, 127}, {71, 1}, {CCHelp, 127}, {CCShift, 0}}, []int{1}},
 		{"two gestures", [][2]uint8{{CCShift, 127}, {CCHelp, 127}, {CCShift, 0}, {CCShift, 127}, {CCHelp, 127}, {CCShift, 0}}, []int{1, 1}},
@@ -435,7 +502,7 @@ func TestHelpGesture(t *testing.T) {
 		var g helpGesture
 		var got []int
 		for _, m := range c.seq {
-			if n := g.cc(m[0], m[1]); n > 0 {
+			if n := g.cc(m[0], m[1]); n > 0 || n == helpAlone {
 				got = append(got, n)
 			}
 		}
@@ -443,6 +510,131 @@ func TestHelpGesture(t *testing.T) {
 			t.Errorf("%s: fired %v, want %v", c.name, got, c.want)
 		}
 	}
+}
+
+// Help held: the timer of its own press fires once, and the release is then
+// nothing; a release, Shift or another button first and it never fires.
+func TestHelpHold(t *testing.T) {
+	var g helpGesture
+	if g.cc(CCHelp, 127) != helpDown || !g.hold(g.gen) || g.hold(g.gen) || g.cc(CCHelp, 0) != 0 {
+		t.Error("held: want one hold, then a silent release")
+	}
+	g.cc(CCHelp, 127)
+	gen := g.gen
+	if g.cc(CCHelp, 0) != helpAlone || g.hold(gen) {
+		t.Error("let go first: want Help alone and no hold")
+	}
+	g.cc(CCHelp, 127)
+	gen = g.gen
+	g.cc(CCHelp, 0)
+	g.cc(CCHelp, 127) // a new press: the old timer is not its
+	if g.hold(gen) || !g.hold(g.gen) {
+		t.Error("an old press's timer fired on a new press")
+	}
+	g.cc(CCHelp, 0)
+	g.cc(CCHelp, 127)
+	g.cc(CCUndo, 127)
+	if g.hold(g.gen) {
+		t.Error("Help + another button: no hold")
+	}
+	g.cc(CCUndo, 0)
+	g.cc(CCHelp, 0)
+	g.cc(CCHelp, 127)
+	g.cc(CCShift, 127)
+	if g.hold(g.gen) {
+		t.Error("Shift pressed while Help is held: no hold")
+	}
+}
+
+// Help held is Shift + Help: Home from Live and from an app, nothing from
+// Home. Where Live had the buttons, its help is closed first.
+func TestLongHelp(t *testing.T) {
+	b := newBench()
+	b.SessionOpen("stacks", nil)
+	b.LongHelp(true) // from Live
+	if b.own != ownHome || b.io.heldTaps != 1 || b.io.covers < 1 {
+		t.Fatalf("held in Live: owner %s, taps %d, Home drawn first %d", b.own, b.io.heldTaps, b.io.covers)
+	}
+	b.LongHelp(false) // from Home: nothing
+	if b.own != ownHome {
+		t.Fatalf("held in Home: owner %s", b.own)
+	}
+	b.Open("stacks") //nolint:errcheck
+	b.events("stacks")
+	b.LongHelp(false)
+	if b.own != ownHome || b.io.heldTaps != 1 {
+		t.Fatalf("held in an app: owner %s, taps %d", b.own, b.io.heldTaps)
+	}
+	if ev := b.events("stacks"); !slices.Equal(ev, []string{"blur"}) {
+		t.Fatalf("stacks got %v, want blur", ev)
+	}
+	b.rules(t, "held in an app")
+	b.Open("stacks")         //nolint:errcheck
+	b.Input("stacks", false) //nolint:errcheck
+	b.LongHelp(true)
+	if b.own != ownHome || b.io.heldTaps != 2 {
+		t.Fatalf("held, screen only: owner %s, taps %d", b.own, b.io.heldTaps)
+	}
+	b.rules(t, "held, screen only")
+}
+
+// Help alone goes back to Live from Home and from an app, on its release;
+// in Live it is Live's own Help and push-manager does not take it.
+func TestHelpAloneToLive(t *testing.T) {
+	b := newBench()
+	saved := surface
+	surface = b.Surface
+	defer func() { surface = saved }()
+	gesture.reset()
+	feed := func(cc, val uint8) bool {
+		took := surfaceInputCC(cc, val)
+		for len(surfaceQ) > 0 {
+			(<-surfaceQ)()
+		}
+		return took
+	}
+	b.SessionOpen("stacks", nil)
+	if feed(CCHelp, 127) || feed(CCHelp, 0) || b.own != ownOutside {
+		t.Fatalf("Help in Live: owner %s, or push-manager took it", b.own)
+	}
+	b.Gesture(1) // Home
+	feed(CCHelp, 127)
+	if b.own != ownHome {
+		t.Fatalf("Help's press left Home: owner %s", b.own)
+	}
+	if !feed(CCHelp, 0) || b.own != ownOutside {
+		t.Fatalf("Help alone from Home: owner %s", b.own)
+	}
+	b.rules(t, "help from home")
+	b.Open("stacks") //nolint:errcheck
+	if b.own != ownApp {
+		t.Fatalf("open stacks: owner %s", b.own)
+	}
+	b.events("stacks")
+	feed(CCHelp, 127)
+	if !feed(CCHelp, 0) || b.own != ownOutside {
+		t.Fatalf("Help alone from an app: owner %s", b.own)
+	}
+	if b.io.helpTaps != 0 {
+		t.Fatalf("Live had no buttons, yet push-manager tapped its Help %d times", b.io.helpTaps)
+	}
+	if ev := b.events("stacks"); !slices.Equal(ev, []string{"blur"}) {
+		t.Fatalf("stacks got %v, want blur", ev)
+	}
+	b.rules(t, "help from stacks")
+
+	// screen only (Live has the buttons): back to Live as well
+	b.Open("stacks")         //nolint:errcheck
+	b.Input("stacks", false) //nolint:errcheck
+	feed(CCHelp, 127)
+	feed(CCHelp, 0)
+	if b.own != ownOutside {
+		t.Fatalf("Help with the screen only: owner %s, want outside", b.own)
+	}
+	if b.io.helpTaps != 1 {
+		t.Fatalf("Live saw Help and opened its help: %d taps to close it, want 1", b.io.helpTaps)
+	}
+	b.rules(t, "help, screen only")
 }
 
 // Home's screen: every page draws, and nothing but ASCII is ever typed.
@@ -459,7 +651,23 @@ func TestRenderHome(t *testing.T) {
 		}
 		pads, ccs := homeLEDs(homeView{Entries: es, Cursor: cur})
 		if len(pads) != 64 {
-			t.Fatalf("Home lights %d pads, want 64", len(pads))
+			t.Fatalf("Home sets %d pads, want all 64 (the dark ones too)", len(pads))
+		}
+		lit := 0
+		for n, c := range pads {
+			col, row := push3.PadCoord(n)
+			if c != 0 {
+				lit++
+				if row != homePadRow {
+					t.Fatalf("pad %d (row %d) is lit: only the top row is", n, row)
+				}
+			}
+			if row == homePadRow && col < 8 && cur/8*8+col < len(es) && c == 0 {
+				t.Fatalf("entry %d's top pad is dark", cur/8*8+col)
+			}
+		}
+		if page := min(8, len(es)-cur/8*8); lit != page {
+			t.Fatalf("%d pads lit, want %d (one per entry on the page)", lit, page)
 		}
 		for n, c := range pads {
 			if c == 1 { // "dim" is a button brightness; on a pad index 1 is red
@@ -534,7 +742,7 @@ func TestShiftAfterGesture(t *testing.T) {
 	saved := surface
 	surface = b.Surface
 	defer func() { surface = saved }()
-	gesture = helpGesture{}
+	gesture.reset()
 	feed := func(cc, val uint8) {
 		surfaceInputCC(cc, val)
 		for len(surfaceQ) > 0 {
@@ -562,4 +770,13 @@ func TestShiftAfterGesture(t *testing.T) {
 	if b.superstar() == "stacks" || !b.entries[1].Star {
 		t.Fatalf("STAR after Shift + Help: superstar %q, stacks starred %v", b.superstar(), b.entries[1].Star)
 	}
+}
+
+// reset clears the shared gesture between tests, under its lock: a timer
+// from an earlier test may still be running.
+func (g *helpGesture) reset() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.shift, g.spoiled, g.taps, g.alone = false, false, 0, false
+	g.gen++
 }
