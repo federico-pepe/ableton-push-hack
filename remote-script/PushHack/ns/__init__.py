@@ -1,6 +1,6 @@
-from . import transport
+from . import arrangement, browser, listen, notes, transport
 
-ALL = (transport,)
+ALL = (transport, browser, notes, listen, arrangement)
 
 
 def register_all(registry):

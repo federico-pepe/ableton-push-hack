@@ -10,7 +10,7 @@ between minor versions).
 ### Added
 
 - `core/alsaseq`: `Client.Unsubscribe` drops a subscription `Subscribe` made, so a hack can stop reading a port without closing its client. (`core/v0.5.1`.)
-- `PushHack` Remote Script, first part (`remote-script/PushHack/`): one script for all hacks that need Live. It listens on `127.0.0.1:7704` and on a Unix socket, speaks JSON lines, and has a `transport` namespace (play, stop, tempo, position, loop, punch) with push events through `subscribe`. The old Browser Bridge text commands for play, stop, tempo, beat and `ping` still work. Browser and arrangement commands, the installer and the update step come in later releases. `make test-remote-script` runs its tests. See `plans/2026-10-27-pushhack-shared-remote-script.md`.
+- `PushHack` Remote Script (`remote-script/PushHack/`): one script for all hacks that need Live, to replace `PushHackBrowser` and `PushHackArrangement`. It listens on `127.0.0.1:7704`, on `/tmp/push-hack.sock`, and on the old arrangement socket (`/tmp/push-hack-arrangement.sock`, or TCP 7720 on Windows). It speaks JSON lines, with `hello`, `subscribe` and change-only events. Namespaces so far: `transport`, `browser` (load preset, sample, URI or plugin; list plugins; dump), `notes` (scale), `listen` (the Stacks listen track) and `arrangement`. The old Browser Bridge text commands and the old arrangement messages still work, so existing hacks keep running. The installer and the update step come in a later release. `make test-remote-script` runs its tests. See `plans/2026-10-27-pushhack-shared-remote-script.md`.
 
 ## [0.1.15-alpha] - 2026-10-20
 

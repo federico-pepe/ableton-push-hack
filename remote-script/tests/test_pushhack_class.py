@@ -56,7 +56,7 @@ class PushHackClassTest(unittest.TestCase):
         server.open_unix = lambda *a: None
         self.cls._server = self.cls._hub = self.cls._active = None
         self.cls._started = False
-        self.cls._listener_makers = staticmethod(lambda: [("tcp", server.open_tcp)])
+        self.cls._listener_makers = staticmethod(lambda: [("tcp", server.open_tcp, None)])
 
     def tearDown(self):
         if self.cls._server:
@@ -67,7 +67,7 @@ class PushHackClassTest(unittest.TestCase):
 
     def test_tick_answers_a_client(self):
         surface = self.cls(object())
-        addr = self.cls._server._listeners[0].getsockname()
+        addr = self.cls._server._listeners[0][0].getsockname()
         c = socket.create_connection(addr)
         self.addCleanup(c.close)
         c.sendall(b'{"id":1,"ns":"transport","cmd":"get"}\n')

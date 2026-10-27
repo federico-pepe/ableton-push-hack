@@ -11,19 +11,23 @@ import socket
 from .protocol import MAX_LINE_BYTES
 
 UNIX_PATH = "/tmp/push-hack.sock"
+# The old PushHackArrangement endpoint, so the current arrangement hack and the
+# PTA module keep working until they move to the new protocol.
+ARRANGEMENT_UNIX_PATH = "/tmp/push-hack-arrangement.sock"
+ARRANGEMENT_TCP_PORT = 7720  # Windows: no AF_UNIX in Live's Python there
 TCP_HOST = "127.0.0.1"
 TCP_PORT = 7704          # fixed framework port: push-manager's Live bridge
-WINDOWS_PORT = 7720      # no AF_UNIX in Live's Python on Windows; outside 7701-7710
 MAX_OUT_BYTES = 8 * 1024 * 1024  # drop a client that cannot keep up
 
 
 class Client(object):
-    def __init__(self, sock):
+    def __init__(self, sock, tag=None):
         self.sock = sock
-        self.mode = None
+        self.mode = "json" if tag == "arrangement" else None
         self.inbuf = b""
         self.out = b""
         self.close_after_flush = False
+        self.tag = tag    # the listener's tag: "arrangement" = old protocol
 
 
 def open_tcp(host=TCP_HOST, port=TCP_PORT):
@@ -52,16 +56,18 @@ def open_unix(path=UNIX_PATH):
 
 
 class Server(object):
-    def __init__(self, listeners, log=None, on_drop=None):
-        self._listeners = list(listeners)
+    def __init__(self, listeners, log=None, on_drop=None, on_accept=None):
+        # Each listener is a socket, or (socket, tag).
+        self._listeners = [l if isinstance(l, tuple) else (l, None) for l in listeners]
         self._on_drop = on_drop
+        self._on_accept = on_accept
         self._log = log or (lambda msg: None)
         self.clients = []
 
     def poll(self):
         """Accept, read. Returns [(client, "line"|"legacy", bytes)]."""
         events = []
-        for ls in self._listeners:
+        for ls, tag in self._listeners:
             while True:
                 try:
                     conn, _ = ls.accept()
@@ -70,7 +76,10 @@ class Server(object):
                 except Exception:
                     break
                 conn.setblocking(False)
-                self.clients.append(Client(conn))
+                c = Client(conn, tag)
+                self.clients.append(c)
+                if self._on_accept:
+                    self._on_accept(c)
         for c in list(self.clients):
             try:
                 data = c.sock.recv(65536)
@@ -137,7 +146,7 @@ class Server(object):
     def close(self, unix_paths=()):
         for c in list(self.clients):
             self.drop(c)
-        for ls in self._listeners:
+        for ls, _ in self._listeners:
             try:
                 ls.close()
             except Exception:

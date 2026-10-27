@@ -169,8 +169,24 @@ class LegacyTest(HubCase):
         self.legacy("stop")
         self.assertFalse(self.song.is_playing)
 
-    def test_unsupported_replies_error_and_logs(self):
-        self.assertEqual(self.legacy("load:Bass.adv"), "ERROR")
+    def test_unknown_command_errors_and_logs(self):
+        self.assertEqual(self.legacy("frobnicate"), "ERROR")
+        self.assertTrue(self.logs)
+
+    def test_get_scale_json(self):
+        self.song.root_note = 2
+        self.song.scale_name = "Minor"
+        self.song.scale_intervals = [0, 2, 3, 5, 7, 8, 10]
+        self.assertEqual(json.loads(self.legacy("get_scale")),
+                         {"supported": True, "root": 2, "name": "Minor",
+                          "intervals": [0, 2, 3, 5, 7, 8, 10], "mode": True})
+
+    def test_get_scale_unsupported(self):
+        self.assertEqual(json.loads(self.legacy("get_scale")), {"supported": False})
+
+    def test_load_failure_still_answers_ok_and_logs(self):
+        # no Live here: the real browser import fails, as a missing item would
+        self.assertEqual(self.legacy("load:Bass.adv"), "OK")
         self.assertTrue(self.logs)
 
     def test_closes_after_reply(self):

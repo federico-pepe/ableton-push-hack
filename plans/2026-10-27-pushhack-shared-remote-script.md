@@ -1,6 +1,6 @@
 # PushHack: one shared Remote Script
 
-**Status: plan agreed 2026-10-27. Decisions D1 to D4 are settled (section 10). Phase 1 built and unit-tested off device (33 tests, Python 3.11 and 3.13). Not yet tested in Live or on the Push.**
+**Status: plan agreed 2026-10-27. Decisions D1 to D4 are settled (section 10). Phase 1 built and confirmed on the device (2026-10-27). Phase 2 built and unit-tested (74 tests, Python 3.11 and 3.13); device check pending.**
 
 ## 1. Goal
 
@@ -43,11 +43,13 @@ remote-script/PushHack/                   (the payload; `resources/remote-script
   ns/transport.py      play, stop, tempo, loop, punch, time signature, count-in
   ns/browser.py        load, load_uri, load_sample, load_plugin, list_plugins, dump
   ns/arrangement.py    snapshot, position, set_time, set_loop, bta
+  ns/listen.py         the Stacks listen track (from Browser Bridge 0.4)
+  errors.py            CommandError: a failure with a protocol error code
   ns/session.py        tracks, scenes, clip slots, launch, stop, capture
   ns/track.py          select, mute, solo, arm, color, volume, pan, sends, routing
   ns/device.py         selected device, banks, parameters, on/off, move
   ns/clip.py           loop, warp, gain, pitch, quantize, fixed length, convert
-  ns/notes.py          scale, root note, drum pads, selected drum pad
+  ns/notes.py          scale (phase 2); root note, drum pads, selected drum pad (phase 4)
   ns/meters.py         output levels per track
   ns/modes.py          what the user selected in the Live UI
 remote-script/tests/                      pure-Python tests with a fake `song`; no Live import, no real socket path (`make test-remote-script`)
@@ -81,7 +83,7 @@ One JSON object per line, both directions.
 ### 3.4 Legacy shim (kept for one release cycle)
 
 - Port 7704 accepts the old text commands: `ping`, `load:`, `load_uri:`, `load_plugin:`, `load_sample:`, `dump:`, `play`, `stop`, `get_tempo`, `get_beat`, `get_playing`, `list_plugins`. A line that does not start with `{` goes to the shim.
-- The arrangement socket path keeps working with its current `snapshot`, `pos`, `set_time`, `play_toggle`, `bta`, `loop_toggle`, `punch_in_toggle`, `punch_out_toggle`, `set_loop` messages (`t` field), so the current arrangement hack and the PTA module work before they move to the new protocol.
+- The arrangement socket path (`/tmp/push-hack-arrangement.sock`, TCP `7720` on Windows) is a separate listener tagged `arrangement`. A client on it gets the old stream without asking, and the new protocol is not used on it. It keeps working with its current `snapshot`, `pos`, `set_time`, `play_toggle`, `bta`, `loop_toggle`, `punch_in_toggle`, `punch_out_toggle`, `set_loop` messages (`t` field), so the current arrangement hack and the PTA module work before they move to the new protocol.
 - Remove the shim after both repos and push-manager use the new protocol.
 
 ## 4. Feature coverage from the Push 2 script

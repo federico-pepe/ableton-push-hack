@@ -130,6 +130,26 @@ class TcpServerTest(unittest.TestCase):
         self.assertEqual(sorted(d for _, _, d in ev), [b'{"a":1}', b'{"b":1}'])
 
 
+class TaggedListenerTest(unittest.TestCase):
+    def test_tagged_listener_clients_are_json_from_the_start(self):
+        ls = server.open_tcp("127.0.0.1", 0)
+        accepted = []
+        srv = server.Server([(ls, "arrangement")], on_accept=accepted.append)
+        c = socket.create_connection(ls.getsockname())
+        self.addCleanup(c.close)
+        end = time.time() + 2
+        while not accepted and time.time() < end:
+            srv.poll()
+            time.sleep(0.005)
+        self.assertEqual(accepted[0].tag, "arrangement")
+        self.assertEqual(accepted[0].mode, "json")
+        c.sendall(b"get_tempo")      # would be legacy on an untagged listener
+        c.sendall(b"\n")
+        ev = pump(srv)
+        self.assertEqual(ev[0][1], "line")
+        srv.close()
+
+
 @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "no unix sockets")
 class UnixServerTest(unittest.TestCase):
     def test_unix_socket_is_owner_only_and_replaces_stale_file(self):
