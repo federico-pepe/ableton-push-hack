@@ -89,6 +89,7 @@ The script does these steps:
 1. It reads `VERSION`. If you give a tag, the script stops when the tag is not `v` plus `VERSION`.
 2. It runs `make` in `hacks/push-manager` and `hacks/push-catalog`.
 3. It takes `hacks/push-display/push_hook.so` as committed. That file builds through Docker.
+   It adds the folder `remote-script/PushHack/`, unless `releasemeta.json` has `"include_remote_script": false`. Version 0.1.16-alpha leaves it out because the 0.1.15 updater cannot install a folder it does not know. Version 0.1.17-alpha and later include it.
 4. It writes `dist/push-hack-<version>.tar.gz`.
 5. It writes `dist/manifest.json`.
 

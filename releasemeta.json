@@ -1,3 +1,4 @@
 {
-  "needs_reinstall": false
+  "needs_reinstall": false,
+  "include_remote_script": false
 }
