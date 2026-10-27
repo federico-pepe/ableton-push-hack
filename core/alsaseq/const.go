@@ -16,11 +16,12 @@ const (
 	//   _IOR  = (2<<30) | (size<<16) | ('S'<<8) | nr
 	//   _IOW  = (1<<30) | (size<<16) | ('S'<<8) | nr
 	//   _IOWR = (3<<30) | (size<<16) | ('S'<<8) | nr
-	IoctlClientID      = uintptr(0x80045301) // _IOR('S',0x01, int32=4)
-	IoctlCreatePort    = uintptr(0xC0A85320) // _IOWR('S',0x20, portInfo=168)
-	IoctlSubscribePort = uintptr(0x40505330) // _IOW('S', 0x30, subscribe=80)
-	IoctlGetClientInfo = uintptr(0xC0BC5310) // _IOWR('S',0x10, clientInfo=188)
-	IoctlSetClientInfo = uintptr(0x40BC5311) // _IOW('S', 0x11, clientInfo=188)
+	IoctlClientID        = uintptr(0x80045301) // _IOR('S',0x01, int32=4)
+	IoctlCreatePort      = uintptr(0xC0A85320) // _IOWR('S',0x20, portInfo=168)
+	IoctlSubscribePort   = uintptr(0x40505330) // _IOW('S', 0x30, subscribe=80)
+	IoctlUnsubscribePort = uintptr(0x40505331) // _IOW('S', 0x31, subscribe=80)
+	IoctlGetClientInfo   = uintptr(0xC0BC5310) // _IOWR('S',0x10, clientInfo=188)
+	IoctlSetClientInfo   = uintptr(0x40BC5311) // _IOW('S', 0x11, clientInfo=188)
 
 	// snd_seq_client_info (188 bytes): 0: client (int32), 4: type (int32),
 	// 8: name[64], then filters/counters/reserved. Only name is written;
