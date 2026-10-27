@@ -1,6 +1,6 @@
 # PushHack: one shared Remote Script
 
-**Status: plan agreed 2026-10-27. Decisions D1 to D4 are settled (section 10). Phase 1 built and confirmed on the device (2026-10-27). Phase 2 built and confirmed on the device. Phase 3 built and unit-tested; the full update on a Push is not tested yet.**
+**Status: plan agreed 2026-10-27. Decisions D1 to D4 are settled (section 10). Phase 1 built and confirmed on the device (2026-10-27). Phase 2 built and confirmed on the device. Phase 3 built and confirmed on the device: a bench update that swaps the script folder, and a forced failure that rolls it back (2026-10-27). Phase 4 (the Push 2 feature namespaces) and Phase 5 (moving the other repos) are open; Phase 5 is done for automation, arrangement and the retired Browser Bridge, and still to merge.**
 
 ## 1. Goal
 
