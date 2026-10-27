@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- Browser Bridge is retired. Push Manager's Browser and Plugins tabs now need the PushHack Remote Script instead of the `browser-bridge` hack, and the web Browser button shows when PushHack is in the User Library. Browser Bridge is removed from the catalog, and Random Preset no longer lists it under `requires`. The old text commands still work on port 7704, so a hack that used them keeps working.
+
 ### Added
 
 - `core/alsaseq`: `Client.Unsubscribe` drops a subscription `Subscribe` made, so a hack can stop reading a port without closing its client. (`core/v0.5.1`.)

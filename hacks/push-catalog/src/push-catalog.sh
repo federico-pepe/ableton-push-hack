@@ -276,7 +276,7 @@ install_with_deps() {
 }
 
 # Assigns hacks/<id> a port: 7701-7710 is reserved for the framework
-# (push-manager 7701, push-catalog 7702, Browser Bridge's fixed Remote
+# (push-manager 7701, push-catalog 7702, PushHack's fixed Remote
 # Script socket 7704, the rest held for future framework-internal use), so
 # every catalog hack with a binary gets the lowest free integer >= 7711,
 # scanning every OTHER installed hack's hack.json for its currently

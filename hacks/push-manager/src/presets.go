@@ -1,4 +1,4 @@
-// presets.go — filesystem-scanned preset + sample database for the Browser Bridge.
+// presets.go — filesystem-scanned preset + sample database for the preset browser (loads go through the PushHack Remote Script).
 //
 // Browsing, searching and filtering must never touch Live (the Live API is
 // single-threaded on the audio engine). push-manager scans files on disk

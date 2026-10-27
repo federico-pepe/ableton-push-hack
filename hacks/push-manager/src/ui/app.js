@@ -1927,7 +1927,7 @@ async function plReload() {
     PL.error = '';
   } catch (e) {
     PL.list = [];
-    PL.error = 'Browser Bridge not answering (needs the plugin-aware version).';
+    PL.error = 'PushHack not answering (is it selected in Live, and is Live restarted?).';
   }
   plRender();
 }
@@ -1976,14 +1976,13 @@ async function brRefresh() {
   } catch(e) { toast('Refresh failed: '+e.message, 'error'); }
 }
 
-// Features gated on an optional hack being installed (e.g. the preset
-// Browser tab needs browser-bridge) — hide their button until the catalog
-// install shows up, same live-checked model as the Shadow UI's own tabs.
+// The preset Browser tab needs the PushHack Remote Script — hide its button
+// until the script is in the User Library, same live-checked model as the
+// Shadow UI's own tabs.
 async function refreshOptionalFeatures() {
-  let hacks = [];
-  try { hacks = await api('GET', '/api/hacks/installed'); } catch (e) { return; }
-  $('btn-browser').style.display =
-    hacks.some(h => h.id === 'browser-bridge') ? '' : 'none';
+  let script = null;
+  try { script = await api('GET', '/api/live/script'); } catch (e) { return; }
+  $('btn-browser').style.display = script.installed ? '' : 'none';
   loadUITabs();
 }
 

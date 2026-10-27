@@ -10,7 +10,7 @@ import (
 
 // hacks_nav.go — lets Push Manager's own UI know what else is installed, so
 // a feature whose dependency isn't deployed can hide itself instead of
-// erroring (e.g. the preset Browser tab needs browser-bridge), and so an
+// erroring (e.g. the preset Browser tab needs the PushHack Remote Script), and so an
 // external hack can put its own link in Push Manager's menu bar just by
 // declaring `web_ui` in its hack.json (see catalog/schema.md's "Web UI
 // navigation"). Same field the catalog's own cards read — no second hook to
@@ -47,7 +47,16 @@ func hackEnabled(id string) bool {
 // for optional hacks that aren't installed, e.g. browser-bridge's Shadow UI
 // tab and Push Manager's web Browser button, without needing a restart when
 // the hack is installed/removed via the catalog.
+// needsPushHack is the "requires" value for a feature that needs the PushHack
+// Remote Script (the preset and plugin tabs). It is not a hack folder: the
+// script lives in Live's User Library, so hackInstalled looks there.
+const needsPushHack = "pushhack"
+
 func hackInstalled(id string) bool {
+	if id == needsPushHack {
+		_, err := os.Stat(filepath.Join(remoteScriptsRoot, "PushHack", "__init__.py"))
+		return err == nil
+	}
 	_, err := os.Stat(filepath.Join(hacksDir, id, "hack.json"))
 	return err == nil
 }

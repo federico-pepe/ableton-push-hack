@@ -129,8 +129,14 @@ If this happens: hold down the power button on Push for a few seconds until it t
 ## Additional Set up
 Some hacks required additional set up to work properly. Please follow these instructions.
 
-### Browser Bridge Hack
-The **Browser Bridge** hack is not installed by default — install it from the Push Hack Catalog. For the setup steps and screenshots, see its own repo: [push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge).
+### PushHack Remote Script
+Push Manager's preset browser, plugin list, scale and tempo features, and several hacks, talk to Live through the **PushHack** Remote Script. It installs with Push Hack. You select it once in Live:
+
+1. On Push, open **Settings > MIDI** (or Live's **Preferences > Link, Tempo & MIDI**).
+2. In an empty slot under **Control Surface**, choose **PushHack**. Leave Input and Output set to None.
+3. Restart Live.
+
+The **System** page in Push Manager shows if PushHack is installed and running. It also lists the old **PushHackBrowser** and **PushHackArrangement** scripts if they are still there, with a Remove button for each. The old Browser Bridge hack is no longer needed.
 
 ### Automation Hack
 The **Automation** hack is not installed by default — install it from the Push Hack Catalog. For the setup steps and screenshots, see its own repo: [push-hack-automation](https://github.com/federico-pepe/push-hack-automation).

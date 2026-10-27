@@ -70,7 +70,7 @@ func TestLiveListenOlderBridge(t *testing.T) {
 	defer stop()
 	w := httptest.NewRecorder()
 	handleLiveListen(w, httptest.NewRequest(http.MethodGet, "/api/live/listen", nil))
-	if !strings.Contains(w.Body.String(), "update Browser Bridge to 0.4") {
+	if !strings.Contains(w.Body.String(), "install PushHack, or update it") {
 		t.Errorf("older script: %s", w.Body.String())
 	}
 }

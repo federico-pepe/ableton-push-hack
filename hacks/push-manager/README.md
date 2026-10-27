@@ -56,16 +56,16 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/midi/mapping` | Upsert one remap rule. Body: `{src_type,src_ch,src_num,relative,out_type,out_ch,out_num,out_min,out_max,name?}` (`src_type`/`out_type` = `cc`\|`note`). Keyed by `<src_type>:<src_ch>:<src_num>`. Persisted to `midi.json`. |
 | `DELETE` | `/api/midi/mapping[?key=cc:0:20]` | Delete one rule by key, or all rules if no `key`. |
 | `POST` | `/api/midi/mapping/config` | Set remap config. Body: `{enabled, require_intercept, out_client, out_port}`. `enabled` gates all remapping; `require_intercept` restricts it to when MIDI intercept is ON; `out_client`/`out_port` is the destination writable port (from `/api/midi/ports?writable=1`). |
-| `GET` | `/api/presets` | Browser Bridge preset index. Query params `filter` (category: `Instruments`/`Audio Effects`/`MIDI Effects`/`Drums`, empty=all) and `q` (case-insensitive name substring). Returns `{count, total, presets:[{name,path,category,is_rack}]}`. Filesystem-scanned (`src/presets.go`); never touches Live. |
+| `GET` | `/api/presets` | Preset index. Query params `filter` (category: `Instruments`/`Audio Effects`/`MIDI Effects`/`Drums`, empty=all) and `q` (case-insensitive name substring). Returns `{count, total, presets:[{name,path,category,is_rack}]}`. Filesystem-scanned (`src/presets.go`); never touches Live. |
 | `POST` | `/api/presets/refresh` | Rescan the preset index (after installing Packs). Returns `{ok, count}`. |
-| `POST` | `/api/live/load` | Load a preset onto Live's selected track. Body `{"name":"…","category":"Instruments"}`. Sends `load:<root>:<name>` to the PushHackBrowser Remote Script over `127.0.0.1:7704`. Returns `{ok}` or `{ok:false, error}`. Requires the Browser Bridge hack installed + activated in Live. With `"type":"plugin"` it loads a VST3 plugin: `name` is the plugin and the optional `preset` is one of its presets (sends `load_plugin:<plugin>[:<preset>]`). `{ok:true}` only means the script got the command. |
-| `GET` | `/api/live/plugins` | Plugins Live has scanned: `{ok, plugins:[{vendor,name,presets:[…]}]}`. Sends `list_plugins`. Needs a Browser Bridge version with plugin support. |
-| `GET` | `/api/live/tempo` | Returns the current Live song tempo. Sends `get_tempo` to the PushHackBrowser Remote Script and returns `{ok:true, bpm:124.0}`. Requires Browser Bridge activated in Live. Returns `{ok:false, error}` if the Remote Script is unreachable. |
-| `GET` | `/api/live/scale` | The Set's scale, the one Push's Scale button edits: `{ok:true, supported:true, root:9, name:"Minor", intervals:[0,2,3,5,7,8,10], mode:true}` (`root` 0-11 with 0 = C). Sends `get_scale` to PushHackBrowser (0.3 or later). `supported` is false on a Live without the scale API. |
+| `POST` | `/api/live/load` | Load a preset onto Live's selected track. Body `{"name":"…","category":"Instruments"}`. Sends `load:<root>:<name>` to the PushHack Remote Script over `127.0.0.1:7704`. Returns `{ok}` or `{ok:false, error}`. Requires the Browser Bridge hack installed + activated in Live. With `"type":"plugin"` it loads a VST3 plugin: `name` is the plugin and the optional `preset` is one of its presets (sends `load_plugin:<plugin>[:<preset>]`). `{ok:true}` only means the script got the command. |
+| `GET` | `/api/live/plugins` | Plugins Live has scanned: `{ok, plugins:[{vendor,name,presets:[…]}]}`. Sends `list_plugins`. Needs the PushHack Remote Script. |
+| `GET` | `/api/live/tempo` | Returns the current Live song tempo. Sends `get_tempo` to the PushHack Remote Script and returns `{ok:true, bpm:124.0}`. Requires the PushHack Remote Script active in Live. Returns `{ok:false, error}` if the Remote Script is unreachable. |
+| `GET` | `/api/live/scale` | The Set's scale, the one Push's Scale button edits: `{ok:true, supported:true, root:9, name:"Minor", intervals:[0,2,3,5,7,8,10], mode:true}` (`root` 0-11 with 0 = C). Sends `get_scale` to the PushHack Remote Script (0.3 or later). `supported` is false on a Live without the scale API. |
 | `GET`/`POST` | `/api/live/listen` | The listen track: a silent MIDI track whose input follows the selected track and whose output is a hack's MIDI port, so the hack gets the notes played on Push's pads. `POST {on:true, port:"Stacks Listen"}` makes or finds it (`listen_on`), `{on:false}` stops it (`listen_off`), `GET` reports it. Replies with Browser Bridge's JSON; on failure `ok:false`, `error` and the outputs Live offers. Needs Browser Bridge 0.4 or later. |
-| `GET` | `/api/live/playing` | Returns `{ok:true, playing:true\|false}` — whether Live's transport is currently running. Sends `get_playing` to PushHackBrowser. |
-| `POST` | `/api/live/play` | Starts Live's transport. Sends `play` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
-| `POST` | `/api/live/stop` | Stops Live's transport. Sends `stop` to PushHackBrowser (fire-and-forget). Returns `{ok:true}`. |
+| `GET` | `/api/live/playing` | Returns `{ok:true, playing:true\|false}` — whether Live's transport is currently running. Sends `get_playing` to the PushHack Remote Script. |
+| `POST` | `/api/live/play` | Starts Live's transport. Sends `play` to the PushHack Remote Script (fire-and-forget). Returns `{ok:true}`. |
+| `POST` | `/api/live/stop` | Stops Live's transport. Sends `stop` to the PushHack Remote Script (fire-and-forget). Returns `{ok:true}`. |
 | `GET` | `/api/presets/facets` | Distinct facet values for the Browser filter UI: `{categories, devices, sources, tags}`. |
 | `GET` | `/api/surface` | Push Hack Home: who owns the surface (`owner`: `outside`, `home` or `app`), the app that owns it, the last app, and Home's `entries` in order (`ID`, `Label`, `App`, `Color`, `Star`, `Super`, `Running`, `Status`...). A 404 here means a push-manager without Home. See [Push Hack Home](#push-hack-home-the-switcher). |
 | `GET` | `/api/surface/session?app=<id>&pass_cc=<cc,...>` | An app's session: server-sent events kept open while the app runs. Events: `ready`, `focus` (`{"input": true}`: the app owns the surface), `blur` (it does not), and a `: ping` comment every second. `pass_cc` are the buttons that still reach Live while the app owns the surface. 404 for an id that is not an installed, enabled hack with `surface` in its `hack.json`. A new session for the same app replaces the old one. |
@@ -237,8 +237,8 @@ gets used on a phone, next to the hardware.
 - Push 3 has 8 top buttons, so only the first 8 switched-on Shadow tabs are
   drawn. Anything past that is greyed out and labelled, rather than silently
   doing nothing.
-- An entry whose dependency is missing (the Browser tab needs
-  `browser-bridge`) shows as unavailable and is skipped on the hardware.
+- An entry whose dependency is missing (the Browser and Plugins tabs need the
+  PushHack Remote Script) shows as unavailable and is skipped on the hardware.
 - A hack the config has never seen — one just installed — is appended at the
   end with both switches on, so new things show up rather than going missing.
 - Turning every Shadow tab off leaves the last frame on screen. The Shadow UI
@@ -366,7 +366,7 @@ Preset browser backed by the filesystem index (`presets.go`), no Live access for
 - **Filters** — category, device, source (Core Library / pack / User Library), and a ★ Favourites toggle. Facet values come from `GET /api/presets/facets`. The category dropdown also offers each category's racks as a dedicated pick (**Instrument Racks**, **Audio Effect Racks**, **MIDI Effect Racks** — value `<cat>|rack`, sent as `filter=<cat>&rack=rack`); Drum Racks live under **Drums**.
 - **Tags** — free-form; click `+ tag` on a row to add, `✕` on a chip to remove (`POST /api/presets/meta`). Click a tag chip in the filter row to filter by it.
 - **Favourites** — ★ toggles per preset; persisted to `<hackdir>/preset_meta.json` and shared with the on-device Shadow UI Favourites filter.
-- **Load** — `POST /api/live/load {name,category}` → PushHackBrowser instantiates it onto Live's selected track (fire-and-forget; toast confirms send).
+- **Load** — `POST /api/live/load {name,category}` → PushHack instantiates it onto Live's selected track (fire-and-forget; toast confirms send).
 - **Plugins** — a list above the preset rows. Each scanned VST3 plugin has **Load** (default patch) and, if it has indexed `.vstpreset` files, a preset menu with **Load preset**. Data comes from `GET /api/live/plugins`. See `docs/vst3-on-push3.md`.
 - Rows capped at 300 (`BR_CAP`) with a "showing N of M" count.
 
