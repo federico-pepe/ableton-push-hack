@@ -324,8 +324,10 @@ func checkManifestFiles(m Manifest, targets, dirs map[string]string) error {
 			return fmt.Errorf("manifest has no entry for %q", p)
 		}
 	}
-	for prefix := range dirs {
-		if !seen[prefix+"/__init__.py"] {
+	// A release may carry a managed directory or not (0.1.16 does not). One
+	// that carries it must be a whole script: Live needs __init__.py.
+	for prefix, n := range inDir {
+		if n > 0 && !seen[prefix+"/__init__.py"] {
 			return fmt.Errorf("manifest has no %s/__init__.py", prefix)
 		}
 	}
@@ -589,6 +591,9 @@ func (a *Applier) install(m Manifest, files string) (Pending, error) {
 		}
 	}
 	for prefix, dest := range a.cfg.Dirs {
+		if !hasDirFiles(m, prefix) {
+			continue // this release does not carry it: leave the installed one alone
+		}
 		d, err := a.installDir(prefix, dest, files, m)
 		if err != nil {
 			a.rollback(p)
@@ -666,6 +671,15 @@ func (a *Applier) installDir(prefix, dest, files string, m Manifest) (*DirSwap, 
 		return nil, fmt.Errorf("replace %s: %v", prefix, err)
 	}
 	return d, nil
+}
+
+func hasDirFiles(m Manifest, prefix string) bool {
+	for _, f := range m.Files {
+		if strings.HasPrefix(f.Path, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // dirMatches: dir holds exactly these files with these hashes.

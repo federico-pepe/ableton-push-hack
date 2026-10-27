@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.16-alpha] - 2026-10-27
+
+This release teaches the update to install the PushHack Remote Script, but does not carry the script itself. The 0.1.15 update refuses a release that lists a folder it does not know. So 0.1.15 can update to this release, and the next release (0.1.17-alpha) brings the script. To get the script now, run `./scripts/install.sh`.
+
 ### Changed
 
 - Browser Bridge is retired. Push Manager's Browser and Plugins tabs now need the PushHack Remote Script instead of the `browser-bridge` hack, and the web Browser button shows when PushHack is in the User Library. Browser Bridge is removed from the catalog, and Random Preset no longer lists it under `requires`. The old text commands still work on port 7704, so a hack that used them keeps working.

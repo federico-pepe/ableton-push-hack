@@ -41,12 +41,18 @@ cp "$HOOK" "dist/${NAME}/push-display/push_hook.so"
 chmod +x "dist/${NAME}/push-manager/push-manager" "dist/${NAME}/push-catalog/push-catalog"
 
 # The PushHack Remote Script, without Python caches and Mac metadata. The
-# on-device update swaps this whole folder.
-mkdir -p "dist/${NAME}/remote-script"
-(cd remote-script && tar -cf - --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' --exclude='._*' PushHack) | tar -xf - -C "dist/${NAME}/remote-script"
-[[ -f "dist/${NAME}/remote-script/PushHack/__init__.py" ]] || { echo "error: remote-script/PushHack/__init__.py missing" >&2; exit 1; }
-SCRIPT_VERSION="$(sed -n 's/^SCRIPT_VERSION = "\(.*\)"/\1/p' remote-script/PushHack/protocol.py)"
-[[ -n "$SCRIPT_VERSION" ]] || { echo "error: SCRIPT_VERSION not found in protocol.py" >&2; exit 1; }
+# on-device update swaps this whole folder. releasemeta.json
+# "include_remote_script": false leaves it out of the release (0.1.16: the
+# 0.1.15 updater cannot install a folder it does not know).
+INCLUDE_SCRIPT="$(python3 -c 'import json; print(str(json.load(open("releasemeta.json")).get("include_remote_script", True)).lower())')"
+SCRIPT_VERSION=""
+if [[ "$INCLUDE_SCRIPT" == "true" ]]; then
+    mkdir -p "dist/${NAME}/remote-script"
+    (cd remote-script && tar -cf - --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' --exclude='._*' PushHack) | tar -xf - -C "dist/${NAME}/remote-script"
+    [[ -f "dist/${NAME}/remote-script/PushHack/__init__.py" ]] || { echo "error: remote-script/PushHack/__init__.py missing" >&2; exit 1; }
+    SCRIPT_VERSION="$(sed -n 's/^SCRIPT_VERSION = "\(.*\)"/\1/p' remote-script/PushHack/protocol.py)"
+    [[ -n "$SCRIPT_VERSION" ]] || { echo "error: SCRIPT_VERSION not found in protocol.py" >&2; exit 1; }
+fi
 
 # The hook's shared-memory version. push-manager compares it with the hook
 # already loaded in Push3 and refuses an update that would not match.
@@ -55,7 +61,7 @@ SHM_PROTOCOL="$(sed -n 's/^#define SHM_VERSION \([0-9]*\)u.*/\1/p' hacks/push-di
 
 # One line per file: "<sha256>  <path>". Python turns them into JSON.
 (cd "dist/${NAME}" && sha256 push-manager/push-manager push-catalog/push-catalog push-display/push_hook.so \
-    $(find remote-script -type f | LC_ALL=C sort)) > dist/files.txt
+    $([[ -d remote-script ]] && find remote-script -type f | LC_ALL=C sort)) > dist/files.txt
 python3 - "$VERSION" "$SHM_PROTOCOL" "dist/${NAME}" "$SCRIPT_VERSION" <<'PY'
 import json, os, sys, datetime
 version, shm, root, script = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
@@ -70,7 +76,7 @@ manifest = {
     "built_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "shm_protocol": shm,
     "needs_reinstall": bool(meta.get("needs_reinstall", False)),
-    "remote_script_version": script,
+    **({"remote_script_version": script} if script else {}),
     "files": files,
 }
 json.dump(manifest, open(os.path.join(root, "manifest.json"), "w"), indent=2)

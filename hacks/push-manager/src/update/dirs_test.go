@@ -174,3 +174,26 @@ func TestScriptFilesOutsideTheDirAreStillRefused(t *testing.T) {
 		t.Fatal("unknown path accepted")
 	}
 }
+
+// 0.1.16 carries no script. Its updater must leave an installed one alone, and
+// a release without the directory must not trip the __init__.py check.
+func TestScriptNotInReleaseLeavesInstalledOneAlone(t *testing.T) {
+	r, dest := scriptRel(t, nil)
+	os.MkdirAll(dest, 0o755)
+	os.WriteFile(filepath.Join(dest, "__init__.py"), []byte("installed"), 0o644)
+	os.WriteFile(filepath.Join(dest, "extra.py"), []byte("kept"), 0o644)
+	r.ready("0.1.11-alpha")
+	if err := r.app.Run(r.release); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, filepath.Join(dest, "__init__.py")) != "installed" || readFile(t, filepath.Join(dest, "extra.py")) != "kept" {
+		t.Fatal("an installed script was touched by a release that does not carry it")
+	}
+	p, _ := LoadPending(r.dir)
+	if p.ScriptChanged || len(p.Dirs) != 0 {
+		t.Fatalf("pending = %+v", p)
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, "remote-script.prev")); err == nil {
+		t.Fatal("a backup was made for nothing")
+	}
+}
