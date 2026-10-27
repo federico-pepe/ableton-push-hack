@@ -192,14 +192,9 @@ Each phase ends with docs and a `CHANGELOG.md` entry. A release that changes `pu
 - D3: **Public.** The arrangement namespace goes in this repo. No plug-in loader for now.
 - D4: Phase 4 scope as in section 4. The Push 2 hardware and UI parts stay out.
 
-## 11. Follow-up after this work: hardware settings in push-manager
+## 11. Hardware settings in push-manager (dropped)
 
-Not part of `PushHack`. The script has no MIDI port (Input and Output are None), so it cannot send these. Do it later in push-manager or `core/`, over the ALSA path that already drives the LEDs:
-
-- Display brightness and LED brightness.
-- Pad sensitivity, gain, dynamics, velocity curve, aftertouch mode.
-
-In Ableton's Push 2 script these are SysEx messages (`hardware_settings_component`, `pad_sensitivity`, `pad_velocity_curve`, `make_display_brightness_message`). The Push 3 SysEx format is not known. Capture it on the device first. There is no brightness control in the code today.
+Dropped on 2026-10-27: the owner does not need it. The idea was brightness (display and LED), pad sensitivity, velocity curve and aftertouch mode, sent as SysEx from push-manager. `PushHack` could not send them anyway (no MIDI port), and nothing here depends on them.
 
 ## 12. Follow-up: the automation hack reads BPM from the Remote Script
 
@@ -210,3 +205,7 @@ The automation hack takes the tempo from MIDI Clock today. Change it to read the
 - Released as `v0.1.16-alpha` (new updater, no script) and `v0.1.17-alpha` (with the script). The two-step did not work as planned: the update only offers the newest release, so a real 0.1.15 device is offered 0.1.17, and its updater refuses the unknown folder. Those devices need `install.sh` once. The release notes say so.
 - The test device already ran the new updater (a rebuilt push-manager still labelled 0.1.15), so its update to 0.1.17 did not exercise that case. It confirmed the real GitHub path: download, hash check, restart, and the script skipped as identical.
 - Lesson: when a new updater must reach older devices first, the newer release has to wait, or the older updater needs to offer an older release. Neither is possible here.
+
+## 14. live_bridge.go on the JSON protocol (2026-10-27)
+
+push-manager's `live_bridge.go` now uses `bridgeCall(ns, cmd, args)`: one JSON request per connection. A load waits for Live and returns the reason when it fails (before, the text protocol only acknowledged that the command was queued). The old text shim in `legacy.py` stays for hacks that still use it (an old Browser Bridge client). Remove it in a later release, once no hack depends on it.

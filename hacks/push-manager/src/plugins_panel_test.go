@@ -55,12 +55,3 @@ func TestPluginsPanelNavigation(t *testing.T) {
 		t.Fatalf("back did not restore the list: inPresets=%v cursor=%d scroll=%d", p.inPresets, p.cursor, p.scroll)
 	}
 }
-
-func TestPluginLoadRejectsColon(t *testing.T) {
-	if err := livePluginLoad("a:b", ""); err == nil {
-		t.Fatal("a ':' in a plugin name must be refused, it would split the command")
-	}
-	if err := livePluginLoad("a", "b:c"); err == nil {
-		t.Fatal("a ':' in a preset name must be refused")
-	}
-}
