@@ -1,0 +1,159 @@
+# PushHack Remote Script
+
+PushHack is one Remote Script for every hack that needs Live. It ships with Push Hack. Hacks talk
+to it over a local socket. It runs each request on Live's engine thread.
+
+Source: `remote-script/PushHack/`. Tests: `make test-remote-script`. Design and decisions:
+`plans/2026-10-27-pushhack-shared-remote-script.md`.
+
+## Set up
+
+Select **PushHack** in a control-surface slot in Live (Preferences, Input and Output: None) and
+restart Live. Push Manager's System page shows if it runs.
+
+## Connect
+
+| Where | Address |
+|---|---|
+| Push, macOS, Linux | Unix socket `/tmp/push-hack.sock` (owner only) |
+| Any system | TCP `127.0.0.1:7704` |
+
+One JSON object per line, both ways. A client may keep the connection open (to subscribe) or use
+one connection per request.
+
+```
+-> {"id":1,"ns":"transport","cmd":"get"}
+<- {"id":1,"ok":true,"data":{"playing":false,"tempo":120.0, ...}}
+-> {"id":2,"ns":"transport","cmd":"nope"}
+<- {"id":2,"ok":false,"error":"unknown_cmd"}
+```
+
+- `id` is yours; the reply repeats it. `ns` is the namespace. `cmd` is the command. Other keys are
+  the arguments.
+- A failed request gets `"ok":false` and a short `error` code. A bad line never drops the client.
+- Commands with no `ns` are built in: `hello`, `subscribe`, `unsubscribe`.
+
+### hello
+
+`{"id":1,"cmd":"hello"}` returns `protocol`, `script_version`, `namespaces` and `topics`. Check
+`protocol` (now 1) and that the namespaces or topics you need exist.
+
+### subscribe
+
+```
+-> {"id":2,"cmd":"subscribe","topics":["tempo","selection"]}
+<- {"id":2,"ok":true,"data":{"topics":["selection","tempo"]}}
+<- {"t":"event","topic":"tempo","data":{"tempo":120.0}}      (now, and on every change)
+```
+
+An event is sent when the value changes. A topic is not recomputed every tick: each has a minimum
+interval, and the script waits longer after a slow build, so a big Set costs Live little.
+
+### Old clients
+
+For now the script still answers the old Browser Bridge text commands on port 7704 (`ping`, `play`,
+`get_tempo`, `load:...` and so on), and the old arrangement stream on
+`/tmp/push-hack-arrangement.sock`. New code should use JSON.
+
+## References
+
+| What | How to name it |
+|---|---|
+| track | An index into the Set's tracks, `"return:N"`, `"master"` or `"selected"` |
+| scene | An index |
+| clip | `"track"` and `"scene"` (the session slot), or `"detail": true` for the clip in the detail view |
+| device | `"track"` and `"device"` (an index), or `"path"`: `[device, chain, device, ...]` to go into racks |
+
+Volume is the raw mixer value, 0 to 1 (0.85 is 0 dB). Pan is -1 to 1. Parameter values are raw
+(between `min` and `max`); `display` is Live's text for the value.
+
+## Error codes
+
+`bad_json`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
+Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`, `bad_param`,
+`param_disabled`, `bad_pad`, `bad_view`, `no_clip`, `slot_taken`, `too_big`, `cannot_arm`,
+`wrong_clip_kind`, `not_looping`, `not_a_drum_rack`, `not_a_simpler`, `not_found`, `not_loadable`,
+`nothing_to_undo`, `nothing_to_redo`, `no_cue`, `nothing_to_capture`.
+
+## Namespaces
+
+### transport
+`get` (playing, tempo, beat, signature, loop, punch, metronome, record, undo state), `play`, `stop`,
+`play_toggle`, `continue`, `set_tempo {v}`, `set_time {v}`, `set_loop {start, length}`,
+`set_loop_on {on}`, `set_punch_in {on}`, `set_punch_out {on}`,
+`set {metronome, record_mode, session_record, overdub, groove_amount, swing}`, `undo`, `redo`,
+`tap_tempo`, `jump_cue {to: "next"|"prev"}`, `capture_midi`.
+
+### track
+`list` (tracks, returns, master, selected), `get {track}`, `set {track, name, color, mute, solo, arm,
+volume, pan, send: {index, value}, monitoring, fold}`, `select {track}`, `stop {track}`,
+`create {kind: "midi"|"audio"|"return"}`.
+
+### session
+`get {track_offset, track_count, scene_offset, scene_count}`: a window of the clip grid. A slot is
+`0` (no clip) or `[color, name, state, length]` (state: 0 stopped, 1 playing, 2 queued, 3 recording).
+`fire_clip`, `stop_clip`, `fire_scene {scene, as_selected}`, `stop_all`, `create_clip {track, scene,
+length}`, `delete_clip`, `capture_scene`, `select_scene`, `select_clip_slot`, `create_scene`,
+`duplicate_scene`, `delete_scene`, `set_scene {scene, name, color, tempo}`.
+
+### device
+`list {track, path, chain}`, `params {track, device, offset, count}`, `set_param {track, device, index,
+value | norm}`, `set_active {on}`, `select`, `selected`, `delete`, `move {to_index, to_track}`,
+`chains`, `set_chain {chain, mute, solo, name}`.
+
+### clip
+`get`, `set {name, color, looping, muted, loop_start, loop_end, start_marker, end_marker,
+launch_mode, launch_quantization, legato, velocity_amount (MIDI), gain, pitch_coarse, pitch_fine,
+warping, warp_mode (audio)}`, `fire`, `stop`, `quantize {grid, amount}`, `crop`, `duplicate_loop`,
+`notes {from_pitch, pitch_span, from_time, time_span}`, `add_notes {notes: [{pitch, start, duration,
+velocity, mute}]}`, `remove_notes {same range}`, `convert_options`,
+`convert {kind: "harmony"|"melody"|"drums"|"simpler"|"drum_rack"}` (audio clips).
+
+### notes
+`scale`, `set_scale {root, name, mode}`, `drum_pads {track, device, filled}`, `set_drum_pad {note,
+mute, solo}`, `select_drum_pad {note}`, `pad_to_track {note}`, `slices` (Simpler), `slices_to_drum_rack`.
+
+### browser
+`load {name, scope}`, `load_sample {name}`, `load_uri {uri}`, `load_plugin {plugin, preset}`,
+`list_plugins`, `dump {root, depth}`. A load returns when Live has loaded the item, or why not.
+
+### listen
+`get`, `on {port}`, `off`: the silent MIDI track that follows the selected track (used by Stacks).
+
+### arrangement
+`snapshot`, `position`, `bta`, `loop_toggle`, `punch_in_toggle`, `punch_out_toggle`.
+
+### modes
+`get`, `focus {view}`, `show {view}`, `hide {view}`, `toggle_browse`, `set {follow_song, draw_mode}`.
+Views: `Browser`, `Arranger`, `Session`, `Detail`, `Detail/Clip`, `Detail/DeviceChain`.
+
+### meters
+`get`: output levels (left, right) for tracks, returns and master.
+
+### debug
+`dir {root: "Live"|"song"|"app", path}`: names of Live's Python API (read only). Use it to check that
+this Live has a property before you rely on it.
+
+## Topics
+
+| Topic | Data | Interval |
+|---|---|---|
+| `tempo` | `{tempo}` | every tick |
+| `transport` | the `transport.get` data | every tick |
+| `position`, `arrangement` | see `push-hack-arrangement` `docs/protocol.md` | every tick, about 1 s |
+| `scale` | the `notes.scale` data | 5 ticks |
+| `tracks` | the `track.list` data | 5 ticks |
+| `session` | the `session.get` data (24 tracks x 40 scenes) | 3 ticks |
+| `device` | the selected device and its parameters | 2 ticks |
+| `selection` | selected track, scene, device, detail clip, focused view | 2 ticks |
+| `meters` | the `meters.get` data | every tick |
+
+A tick is about 100 ms (Live calls the script about 10 times a second).
+
+## Limits and safety
+
+- A request that would change the Set (clips, notes, devices, tracks) is one Live can undo with
+  Live's own undo, but the script does not group them.
+- It does not delete tracks.
+- `session.get` asks for at most 2000 cells; `clip.notes` returns at most 2000 notes.
+- Every Live call runs on Live's engine thread. A hack must not call in a tight loop: use topics.

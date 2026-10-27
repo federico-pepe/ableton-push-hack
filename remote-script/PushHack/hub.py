@@ -2,6 +2,8 @@
 # No Live imports, no sockets: the caller passes send(client, text) and
 # get_song(). Everything runs on Live's engine thread.
 
+import time
+
 from . import legacy, protocol
 from .errors import CommandError
 from .registry import Registry
@@ -10,8 +12,10 @@ from .ns import arrangement
 
 
 class Hub(object):
-    def __init__(self, get_song, send, close=None, log=None):
+    def __init__(self, get_song, send, close=None, log=None, clock=None):
         self._get_song = get_song
+        self._clock = clock or time.time
+        self._tstate = {}   # topic -> [ticks seen, next recompute tick, last value]
         self._send = send
         self._close = close
         self._log = log or (lambda msg: None)
@@ -111,17 +115,33 @@ class Hub(object):
         for subs in self._subs.values():
             for t in subs:
                 if t not in current:
-                    try:
-                        current[t] = self.registry.topic_fn(t)(song)
-                    except Exception as e:
-                        self._log("PushHack: topic %s failed: %r" % (t, e))
-                        current[t] = None
+                    current[t] = self._topic_value(t, song)
         for client, subs in self._subs.items():
             for t in list(subs):
                 value = current.get(t)
                 if value is not None and value != subs[t]:
                     subs[t] = value
                     self._send(client, protocol.event(t, value))
+
+    # A topic is recomputed at most every `every` ticks, and after a slow
+    # build it waits (seconds x BUDGET_TICKS_PER_SEC) ticks, so building uses
+    # about 5% of the time at most. In between, subscribers see the last value.
+    BUDGET_TICKS_PER_SEC = 200
+
+    def _topic_value(self, t, song):
+        st = self._tstate.setdefault(t, [0, 0, None])
+        st[0] += 1
+        if st[2] is not None and st[0] < st[1]:
+            return st[2]
+        t0 = self._clock()
+        try:
+            st[2] = self.registry.topic_fn(t)(song)
+        except Exception as e:
+            self._log("PushHack: topic %s failed: %r" % (t, e))
+            st[2] = None
+        took = self._clock() - t0
+        st[1] = st[0] + max(self.registry.topic_every(t), int(took * self.BUDGET_TICKS_PER_SEC))
+        return st[2]
 
     def _tick_compat(self, song):
         msgs, self._compat_in = self._compat_in, []

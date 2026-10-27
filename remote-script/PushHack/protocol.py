@@ -9,7 +9,7 @@
 import json
 
 PROTOCOL = 1
-SCRIPT_VERSION = "0.2.0"
+SCRIPT_VERSION = "0.3.0"
 
 MAX_LINE_BYTES = 1024 * 1024
 

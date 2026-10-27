@@ -15,8 +15,11 @@ class Registry(object):
     def command(self, ns, name, fn):
         self._commands[(ns, name)] = fn
 
-    def topic(self, name, fn):
-        self._topics[name] = fn
+    def topic(self, name, fn, every=1):
+        """every: recompute at most once per this many ticks (about 10 per
+        second). The hub also waits longer after a slow build, so a big Set
+        never costs Live more than a few percent of the tick."""
+        self._topics[name] = (fn, max(1, int(every)))
 
     def on_tick(self, fn):
         """fn(song) runs once per Live tick, even with nobody connected."""
@@ -32,7 +35,11 @@ class Registry(object):
         return any(k[0] == ns for k in self._commands)
 
     def topic_fn(self, name):
-        return self._topics.get(name)
+        spec = self._topics.get(name)
+        return spec[0] if spec else None
+
+    def topic_every(self, name):
+        return self._topics[name][1]
 
     def namespaces(self):
         return sorted(set(k[0] for k in self._commands))
