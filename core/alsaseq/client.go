@@ -108,3 +108,20 @@ func (c *Client) FD() int { return c.fd }
 
 // Close closes the underlying fd.
 func (c *Client) Close() error { return syscall.Close(c.fd) }
+
+// Unsubscribe drops a subscription Subscribe made: src stops reaching our
+// port. Same struct as subscribe, the UNSUBSCRIBE ioctl. ENOENT when there
+// was none.
+func (c *Client) Unsubscribe(src Addr) error {
+	sub := make([]byte, SubSize)
+	sub[SubOffSenderClient] = src.Client
+	sub[SubOffSenderPort] = src.Port
+	sub[SubOffDestClient] = c.id
+	sub[SubOffDestPort] = c.port
+
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(c.fd),
+		IoctlUnsubscribePort, uintptr(unsafe.Pointer(&sub[0]))); errno != 0 {
+		return fmt.Errorf("UNSUBSCRIBE_PORT ioctl: %w", errno)
+	}
+	return nil
+}
