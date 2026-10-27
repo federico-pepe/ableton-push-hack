@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.17-alpha] - 2026-10-27
+
+This release carries the PushHack Remote Script. The update installs it into Live's User Library (the whole `Remote Scripts/PushHack` folder, with a rollback). Update to 0.1.16-alpha first if you are on 0.1.15-alpha: the 0.1.15 update cannot install a folder it does not know. Then select **PushHack** in a control-surface slot in Live and restart Live. See the notes of 0.1.16-alpha for what PushHack does.
+
 ## [0.1.16-alpha] - 2026-10-27
 
 This release teaches the update to install the PushHack Remote Script, but does not carry the script itself. The 0.1.15 update refuses a release that lists a folder it does not know. So 0.1.15 can update to this release, and the next release (0.1.17-alpha) brings the script. To get the script now, run `./scripts/install.sh`.
