@@ -87,3 +87,26 @@ func TestHackEnabled(t *testing.T) {
 		t.Error("a service with an rc.d symlink should read as enabled")
 	}
 }
+
+// The preset and plugin tabs need the PushHack Remote Script, which lives in
+// Live's User Library, not in a hack folder.
+func TestHackInstalledPushHackScript(t *testing.T) {
+	old := remoteScriptsRoot
+	remoteScriptsRoot = t.TempDir()
+	defer func() { remoteScriptsRoot = old }()
+
+	if hackInstalled(needsPushHack) {
+		t.Fatal("reported installed with an empty Remote Scripts folder")
+	}
+	// An old PushHackBrowser does not count.
+	os.MkdirAll(filepath.Join(remoteScriptsRoot, "PushHackBrowser"), 0o755)
+	os.WriteFile(filepath.Join(remoteScriptsRoot, "PushHackBrowser", "__init__.py"), []byte("x"), 0o644)
+	if hackInstalled(needsPushHack) {
+		t.Fatal("an old PushHackBrowser counted as PushHack")
+	}
+	os.MkdirAll(filepath.Join(remoteScriptsRoot, "PushHack"), 0o755)
+	os.WriteFile(filepath.Join(remoteScriptsRoot, "PushHack", "__init__.py"), []byte("x"), 0o644)
+	if !hackInstalled(needsPushHack) {
+		t.Fatal("PushHack in the User Library not seen")
+	}
+}

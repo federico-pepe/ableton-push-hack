@@ -73,7 +73,7 @@ func TestResolveUIEntries(t *testing.T) {
 		t.Errorf("shadow_ui label should win on the tab strip: %+v", auto)
 	}
 	if br := byID["browser"]; br.Available {
-		t.Error("browser tab should be unavailable without browser-bridge installed")
+		t.Error("browser tab should be unavailable without the PushHack Remote Script")
 	}
 
 	// The built-in CATALOG entry carries the menu-bar link itself, so the

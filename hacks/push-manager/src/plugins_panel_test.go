@@ -18,7 +18,7 @@ func TestPluginsReplyParse(t *testing.T) {
 	}
 	if len(r.Plugins) != 1 || r.Plugins[0].Name != "Surge XT" || r.Plugins[0].Vendor != "Surge Synth Team" ||
 		len(r.Plugins[0].Presets) != 1 || r.Plugins[0].Presets[0] != "Surge-Bass1" {
-		t.Fatalf("json tags out of sync with Browser Bridge list_plugins: %+v", r.Plugins)
+		t.Fatalf("json tags out of sync with PushHack list_plugins: %+v", r.Plugins)
 	}
 }
 

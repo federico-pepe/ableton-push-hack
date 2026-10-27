@@ -7,9 +7,14 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- Browser Bridge is retired. Push Manager's Browser and Plugins tabs now need the PushHack Remote Script instead of the `browser-bridge` hack, and the web Browser button shows when PushHack is in the User Library. Browser Bridge is removed from the catalog, and Random Preset no longer lists it under `requires`. The old text commands still work on port 7704, so a hack that used them keeps working.
+
 ### Added
 
 - `core/alsaseq`: `Client.Unsubscribe` drops a subscription `Subscribe` made, so a hack can stop reading a port without closing its client. (`core/v0.5.1`.)
+- `PushHack` Remote Script (`remote-script/PushHack/`): one script for all hacks that need Live, to replace `PushHackBrowser` and `PushHackArrangement`. It listens on `127.0.0.1:7704`, on `/tmp/push-hack.sock`, and on the old arrangement socket (`/tmp/push-hack-arrangement.sock`, or TCP 7720 on Windows). It speaks JSON lines, with `hello`, `subscribe` and change-only events. Namespaces so far: `transport`, `browser` (load preset, sample, URI or plugin; list plugins; dump), `notes` (scale), `listen` (the Stacks listen track) and `arrangement`. The old Browser Bridge text commands and the old arrangement messages still work, so existing hacks keep running. `install.sh` copies it to Live's User Library, `uninstall.sh` removes it, and the Push Hack update replaces the whole folder (with a rollback) and tells you to restart Live. Select `PushHack` in a control-surface slot once. The System page has a PushHack card: installed and running version, a restart hint, and a Remove button for an old `PushHackBrowser` or `PushHackArrangement` (`GET /api/live/script`, `POST /api/live/script/remove-old`). Nothing removes an old script by itself. `make test-remote-script` runs its tests. See `plans/2026-10-27-pushhack-shared-remote-script.md`.
 
 ## [0.1.15-alpha] - 2026-10-20
 

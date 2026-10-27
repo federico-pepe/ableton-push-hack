@@ -18,7 +18,7 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Linux VST3 instrument scanned and loaded | Works (Surge XT) |
 | Plugin plays from the pads | Works |
 | Preset made on a Mac, copied to Push | Works |
-| `.vstpreset` in the User Library, loaded through Browser Bridge | Works (Surge XT) |
+| `.vstpreset` in the User Library, loaded through PushHack | Works (Surge XT) |
 | Preset made by `make-vst3-preset.py` (no Mac) | Written, **not yet confirmed on the device** |
 | Parameters on the encoders, from a preset with a saved map (`.adg` made on a Mac) | Works |
 | Parameters on the encoders without a saved map | Does not work. Same on a Mac. `-_PluginAutoPopulateThreshold=16` did not help. |
@@ -313,12 +313,11 @@ in our test. You can make a `.vstpreset` in Live on a Mac (save the plugin's
 preset from the device).
 
 Push's browser does not list plugins, so Push cannot show the preset either.
-[Browser Bridge](https://github.com/federico-pepe/push-hack-browser-bridge)
-can load it: `load_plugin:Surge XT:Surge-Bass1` loads the plugin with that
+The PushHack Remote Script can load it: `load_plugin:Surge XT:Surge-Bass1` loads the plugin with that
 patch, and `list_plugins` lists plugins with their presets. Tested with Surge XT.
 
 push-manager has a **PLUGINS** tab in the Shadow UI and a Plugins list in the
-web Browser view. Both call Browser Bridge, so you do not need SSH to load a
+web Browser view. Both call PushHack, so you do not need SSH to load a
 plugin or a preset.
 
 ## Convert Surge XT patches (`.fxp`) to presets
@@ -344,7 +343,7 @@ Surge XT:
 
 `--folders` keeps the category folders (Basses, Pads ...). `--install push.local`
 copies the result to the User Library on Push instead. File names are
-`<Category> - <Patch>` because Browser Bridge finds a preset by name, and two
+`<Category> - <Patch>` because PushHack finds a preset by name, and two
 categories can have a patch with the same name. All 637 factory patches convert.
 Four of them (a bass, an FX, a pad and a polysynth) were loaded on Push and
 sounded right. The factory files are an older Surge format. Surge upgrades them
@@ -397,7 +396,7 @@ one patch from the plugin as a second template (here `Split.vstpreset`) and add
 This writes `Performances/` (64 files) and `Patches/` (128 files). A patch tone
 is converted like a performance tone (address, extra `0x00` byte, checksum). Two
 patches share a name with a performance ("Feedback Lead", "Stargate"). Those two
-files get a ` (patch)` suffix, because Browser Bridge loads a preset by name.
+files get a ` (patch)` suffix, because PushHack loads a preset by name.
 
 The patch manager data at the end of the state holds an MD5 of the loaded
 performance or patch: the MD5 of the dump's data bytes (each message cut to its
@@ -434,7 +433,7 @@ bits of each byte, with the alphabet `.A-Za-z0-9+`.
 Rebuilding the template's own cartridge and voice gives the template back byte
 for byte. 33 cartridges (1,056 voices) converted. Four voices (a piano, a
 harpsichord, pipes and a pad) were loaded on Push and sounded right. File names
-are `<Cartridge> - <slot> <voice>`, so they stay unique for Browser Bridge.
+are `<Cartridge> - <slot> <voice>`, so they stay unique for PushHack.
 
 ## Presets for another plugin
 

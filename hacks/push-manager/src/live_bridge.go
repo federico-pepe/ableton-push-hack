@@ -1,4 +1,4 @@
-// live_bridge.go — client to the PushHackBrowser Remote Script running inside
+// live_bridge.go — client to the PushHack Remote Script running inside
 // Live. push-manager runs on-device, so it reaches the script over localhost.
 // Used only to LOAD a preset (browse/search/filter are filesystem-based; see
 // presets.go). The Remote Script resolves name+category -> BrowserItem and calls
@@ -81,7 +81,7 @@ func livePlugins() ([]bridgePlugin, error) {
 	}
 	if err := json.Unmarshal([]byte(reply), &r); err != nil {
 		// An older script answers an unknown command with "OK" or "ERROR".
-		return nil, fmt.Errorf("list_plugins: unexpected reply %q (update Browser Bridge)", reply)
+		return nil, fmt.Errorf("list_plugins: unexpected reply %q (install PushHack, or update it)", reply)
 	}
 	return r.Plugins, nil
 }
@@ -117,7 +117,7 @@ func liveIsPlaying() (bool, error) {
 }
 
 // liveTempo asks the Remote Script for the current song tempo (BPM).
-// Requires PushHackBrowser ≥ 0.2 (get_tempo query command support).
+// Needs the PushHack Remote Script (or an old PushHackBrowser 0.2 or later).
 func liveTempo() (float64, error) {
 	reply, err := bridgeSend("get_tempo")
 	if err != nil {
@@ -131,7 +131,7 @@ func liveTempo() (float64, error) {
 }
 
 // LiveScale is the Set's scale -- the one Push's Scale button edits --
-// as PushHackBrowser's get_scale reports it.
+// as the PushHack Remote Script's get_scale reports it.
 type LiveScale struct {
 	Supported bool   `json:"supported"`
 	Root      int    `json:"root"` // 0-11, 0 = C
@@ -141,7 +141,7 @@ type LiveScale struct {
 }
 
 // liveScale asks the Remote Script for the Set's scale. Needs
-// PushHackBrowser >= 0.3 (get_scale); an older script answers "ERROR".
+// the PushHack Remote Script (an older PushHackBrowser answers "ERROR").
 func liveScale() (LiveScale, error) {
 	var sc LiveScale
 	reply, err := bridgeSend("get_scale")
@@ -149,7 +149,7 @@ func liveScale() (LiveScale, error) {
 		return sc, err
 	}
 	if err := json.Unmarshal([]byte(reply), &sc); err != nil {
-		return sc, fmt.Errorf("get_scale: unexpected reply %q (update Browser Bridge to 0.3)", reply)
+		return sc, fmt.Errorf("get_scale: unexpected reply %q (install PushHack, or update it)", reply)
 	}
 	if sc.Supported && (sc.Root < 0 || sc.Root > 11 || len(sc.Intervals) == 0) {
 		return sc, fmt.Errorf("get_scale: implausible scale %+v", sc)
@@ -212,13 +212,13 @@ func handleLivePlaying(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{"ok": true, "playing": playing})
 }
 
-// GET  /api/live/listen — the listen track's state (Browser Bridge get_listen).
+// GET  /api/live/listen — the listen track's state (PushHack get_listen).
 // POST /api/live/listen {"on": true, "port": "Stacks Listen"} — make or find
 // a silent MIDI track whose input follows the selected track and whose output
 // is that MIDI port (listen_on), or stop it ({"on": false}, listen_off). The
 // reply is the Remote Script's own JSON: on, track, input, channel, output,
 // monitoring, source -- and on failure ok:false, error and the outputs Live
-// offers. Needs PushHackBrowser 0.4 or later.
+// offers. Needs the PushHack Remote Script (or PushHackBrowser 0.4).
 func handleLiveListen(w http.ResponseWriter, r *http.Request) {
 	cmd := "get_listen"
 	if r.Method == http.MethodPost {
@@ -248,7 +248,7 @@ func handleLiveListen(w http.ResponseWriter, r *http.Request) {
 	var st map[string]interface{}
 	if err := json.Unmarshal([]byte(reply), &st); err != nil {
 		jsonResponse(w, map[string]interface{}{"ok": false,
-			"error": fmt.Sprintf("%s: unexpected reply %q (update Browser Bridge to 0.4)", cmd, reply)})
+			"error": fmt.Sprintf("%s: unexpected reply %q (install PushHack, or update it)", cmd, reply)})
 		return
 	}
 	jsonResponse(w, st)

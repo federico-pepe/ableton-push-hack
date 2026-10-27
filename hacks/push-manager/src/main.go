@@ -497,7 +497,7 @@ func main() {
 	uiTabsPath = filepath.Join(filepath.Dir(*configPath), "ui_tabs.json")
 	loadUITabs()
 
-	// Browser Bridge preset index — filesystem scan, off Live's audio thread.
+	// Preset index — filesystem scan, off Live's audio thread.
 	// Warm-load the cache for an instant UI, then rescan fresh in the background.
 	presetIndexPath = filepath.Join(filepath.Dir(*configPath), "presets.json")
 	presetMetaPath = filepath.Join(filepath.Dir(*configPath), "preset_meta.json")
@@ -575,6 +575,8 @@ func main() {
 	mux.HandleFunc("/api/live/tempo", handleLiveTempo)
 	mux.HandleFunc("/api/live/scale", handleLiveScale)
 	mux.HandleFunc("/api/live/listen", handleLiveListen)
+	mux.HandleFunc("/api/live/script", handleLiveScriptStatus)
+	mux.HandleFunc("/api/live/script/remove-old", handleLiveScriptRemoveOld)
 	mux.HandleFunc("/api/live/playing", handleLivePlaying)
 	mux.HandleFunc("/api/live/play", handleLivePlay)
 	mux.HandleFunc("/api/live/stop", handleLiveStop)

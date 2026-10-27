@@ -22,7 +22,7 @@ How the files are built (read from a .vstpreset that Live saved for Surge XT):
 
 With --folders the files keep the source's category folders (Basses/, Pads/ ...).
 Names are "<Category> - <Patch>" so two patches with the same name in
-different folders stay apart: Browser Bridge finds a preset by name.
+different folders stay apart: PushHack finds a preset by name.
 """
 import argparse
 import os

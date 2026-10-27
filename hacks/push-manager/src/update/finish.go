@@ -27,6 +27,9 @@ type Result struct {
 	From    string    `json:"from"`
 	Error   string    `json:"error"`
 	At      time.Time `json:"at"`
+	// ScriptChanged: the PushHack Remote Script was replaced. Live loads it
+	// at its next start; push-manager never restarts Live.
+	ScriptChanged bool `json:"script_changed"`
 }
 
 // FinishConfig sets up the helper. Hooks are for tests.
@@ -176,6 +179,7 @@ func (c *FinishConfig) waitHealthy(url, want, svc string) (string, error) {
 }
 
 func (c *FinishConfig) finishWith(p Pending, r Result) error {
+	r.ScriptChanged = r.OK && p.ScriptChanged
 	b, _ := json.MarshalIndent(r, "", "  ")
 	if err := os.WriteFile(filepath.Join(c.Dir, resultFile), b, 0o644); err != nil {
 		return err

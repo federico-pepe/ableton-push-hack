@@ -234,7 +234,7 @@ def main():
         n = 0
         for name, msg in patches(syx):
             base = safe(name)
-            if base in taken:  # same name as a performance: Browser Bridge loads by name
+            if base in taken:  # same name as a performance: PushHack loads by name
                 base += " (patch)"
             taken.add(base)
             data = ptpl.build_patch(to_state_message(msg, UPPER_TONE_LO), data_md5([msg]))

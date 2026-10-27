@@ -3,8 +3,8 @@
 // Push's own browser hides VST3 plugins, but Live still loads them. This tab
 // lists the plugins Live has scanned, and the preset files it has indexed for
 // each, then loads the pick onto the selected track. Everything goes through
-// Browser Bridge's list_plugins and load_plugin commands (see live_bridge.go),
-// so it needs the browser-bridge hack. Two levels: plugins, then one plugin's
+// the PushHack Remote Script's list_plugins and load_plugin commands (see
+// live_bridge.go), so it needs that script. Two levels: plugins, then one plugin's
 // presets (first row is the plugin's own default patch).
 package main
 
@@ -54,7 +54,7 @@ func (p *PluginsPanel) refresh() {
 	defer p.mu.Unlock()
 	p.lastRefresh = time.Now()
 	if err != nil {
-		p.status = "Browser Bridge offline or too old?"
+		p.status = "PushHack offline or too old?"
 		return
 	}
 	p.plugins = plugins
@@ -65,7 +65,7 @@ func (p *PluginsPanel) refresh() {
 		p.cursor, p.scroll = 0, 0
 	}
 	switch p.status {
-	case "loading...", "Browser Bridge offline or too old?":
+	case "loading...", "PushHack offline or too old?":
 		p.status = ""
 	}
 }

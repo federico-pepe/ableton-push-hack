@@ -241,7 +241,7 @@ type Scale struct {
 }
 
 // LiveScale reads the Set's scale (GET /api/live/scale). It needs the
-// Browser Bridge Remote Script (0.3 or later) active in Live; without it
+// PushHack Remote Script active in Live; without it
 // the error says why.
 func (c *Client) LiveScale() (Scale, error) {
 	var body struct {
@@ -270,7 +270,7 @@ func (c *Client) LiveScale() (Scale, error) {
 	return Scale{Supported: body.Supported, Root: body.Root, Name: body.Name, Intervals: body.Intervals, Mode: body.Mode}, nil
 }
 
-// Listen is the listen track's state, as Browser Bridge reports it.
+// Listen is the listen track's state, as PushHack reports it.
 type Listen struct {
 	OK         bool     `json:"ok"`
 	Error      string   `json:"error"`
@@ -287,7 +287,7 @@ type Listen struct {
 // LiveListen turns the listen track on or off: a silent MIDI track in the
 // Set whose input follows the selected track and whose output is port, so
 // a hack receives the notes played on Push's pads (POST /api/live/listen).
-// Needs Browser Bridge 0.4 or later active in Live. A reply with OK false
+// Needs the PushHack Remote Script active in Live. A reply with OK false
 // carries the reason in Error.
 func (c *Client) LiveListen(on bool, port string) (Listen, error) {
 	body, err := json.Marshal(map[string]any{"on": on, "port": port})

@@ -26,6 +26,11 @@ import (
 	"push-manager/update"
 )
 
+// remoteScriptsRoot is Live's Remote Scripts folder in the User Library. The
+// update swaps the one folder PushHack inside it and touches nothing else.
+// A variable only so tests can point it at a temp directory.
+var remoteScriptsRoot = "/data/Music/Ableton/User Library/Remote Scripts"
+
 const releaseDownloadPrefix = "https://github.com/federico-pepe/ableton-push-hack/releases/download/"
 
 var (
@@ -77,6 +82,7 @@ func startUpdateChecker(configPath string, mux *http.ServeMux) {
 			"push-catalog/push-catalog": filepath.Join(hacks, "push-catalog", "push-catalog"),
 			"push-display/push_hook.so": filepath.Join(hacks, "push-display", "push_hook.so"),
 		},
+		Dirs:            map[string]string{"remote-script/PushHack": filepath.Join(remoteScriptsRoot, "PushHack")},
 		ExecFiles:       map[string]bool{"push-manager/push-manager": true, "push-catalog/push-catalog": true},
 		AllowedPrefixes: prefixes,
 		Installed:       buildVersion,

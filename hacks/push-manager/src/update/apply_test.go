@@ -32,6 +32,7 @@ type rel struct {
 	dir       string // update dir
 	inst      string // install dir
 	targets   map[string]string
+	dirs      map[string]string // manifest dir -> installed dir
 	files     map[string][]byte // new contents by manifest path
 	tarEdit   func(name string, body []byte) (string, []byte, bool)
 	man       Manifest
@@ -108,7 +109,7 @@ func (r *rel) serve(version string) {
 		{Name: r.man.Tarball.Name, URL: r.srv.URL + "/" + r.man.Tarball.Name},
 	}}
 	r.app = NewApplier(ApplyConfig{
-		Dir: r.dir, Targets: r.targets, Installed: "0.1.10-alpha",
+		Dir: r.dir, Targets: r.targets, Dirs: r.dirs, Installed: "0.1.10-alpha",
 		ExecFiles:       map[string]bool{pMgr: true, pCat: true},
 		AllowedPrefixes: []string{r.srv.URL + "/"},
 		LoadedShm:       r.shm,

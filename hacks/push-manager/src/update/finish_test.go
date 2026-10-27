@@ -301,3 +301,33 @@ func TestFinishFailsFastWhenTheNewServiceCrashes(t *testing.T) {
 		t.Fatal("not rolled back")
 	}
 }
+
+func TestFinishReportsScriptChangeOnlyOnSuccess(t *testing.T) {
+	f := newFin(t)
+	p, _ := LoadPending(f.dir)
+	p.ScriptChanged = true
+	savePending(f.dir, p)
+	f.health = func(u string, n int) (string, error) {
+		if u == "mgr" {
+			return "0.1.11-alpha", nil
+		}
+		return "", nil
+	}
+	if err := Finish(f.cfg); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := LoadResult(f.dir); !r.OK || !r.ScriptChanged {
+		t.Fatalf("result = %+v", r)
+	}
+
+	f2 := newFin(t)
+	p, _ = LoadPending(f2.dir)
+	p.ScriptChanged = true
+	savePending(f2.dir, p)
+	f2.health = func(u string, n int) (string, error) { return "", errors.New("down") }
+	f2.cfg.HealthWait, f2.cfg.StableFor = time.Second, time.Second
+	_ = Finish(f2.cfg)
+	if r, _ := LoadResult(f2.dir); r.OK || r.ScriptChanged {
+		t.Fatalf("a failed update claims a script change: %+v", r)
+	}
+}

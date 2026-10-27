@@ -40,6 +40,8 @@ This page lists the shell scripts in `scripts/` and `hacks/push-display/`. Use t
 | `--dry-run` | Print the actions without doing them |
 | `--yes` | Skip the confirmation prompt |
 
+When it deploys `push-manager` (or all hacks), `install.sh` also copies `remote-script/PushHack` to `/data/Music/Ableton/User Library/Remote Scripts/PushHack`. You then pick `PushHack` in a control-surface slot in Live's Preferences (Input and Output: None) and restart Live. If it finds an old `PushHackBrowser` or `PushHackArrangement`, it warns and leaves it alone.
+
 `push-display` is handled by `./scripts/install.sh`. Its `service.initd` copies `push_hook.so`, patches the `LD_PRELOAD` line into Push3's init script, and restarts Push3. For a standalone re-deploy of `push-display`, use `deploy.sh` below.
 
 ## uninstall.sh
@@ -57,6 +59,8 @@ This page lists the shell scripts in `scripts/` and `hacks/push-display/`. Use t
 | `--hack <id>` | Remove only this hack |
 | `--purge` | Also delete the `/data/push-hack/` data directory |
 | `--yes` | Skip the confirmation prompt |
+
+`uninstall.sh` also removes the `PushHack` folder from Live's User Library (with `--hack push-manager`, or with no `--hack`). It leaves other Remote Scripts alone. Clear the `PushHack` slot in Live's Preferences afterward.
 
 ## hacks/push-display/deploy.sh
 
