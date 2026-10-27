@@ -1,137 +1,215 @@
 // live_bridge.go — client to the PushHack Remote Script running inside
 // Live. push-manager runs on-device, so it reaches the script over localhost.
-// Used only to LOAD a preset (browse/search/filter are filesystem-based; see
-// presets.go). The Remote Script resolves name+category -> BrowserItem and calls
-// browser.load_item() on Live's engine thread.
+// Browse/search/filter of presets are filesystem-based (presets.go); the script
+// resolves name+scope -> BrowserItem and loads it on Live's engine thread.
+//
+// Protocol: JSON lines (plans/2026-10-27-pushhack-shared-remote-script.md).
+// One request per connection: {"id":1,"ns":"transport","cmd":"get"} and one
+// reply: {"id":1,"ok":true,"data":{...}} or {"ok":false,"error":"code"}.
 
 package main
 
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 )
 
-const liveBridgeAddr = "127.0.0.1:7704"
+// liveBridgeAddr is a var so a test can use its own port.
+var liveBridgeAddr = "127.0.0.1:7704"
 
-// bridgeSend opens a one-shot connection, writes a single command line, and
-// returns the trimmed reply ("OK"). Short timeout so a missing/stuck script
-// never blocks the caller (the Shadow UI runs this in a goroutine).
-func bridgeSend(cmd string) (string, error) {
+const (
+	bridgeShortTimeout = 3 * time.Second
+	// A load walks Live's browser on the engine thread and answers when it is
+	// done, so it may take a while on a big library.
+	bridgeLoadTimeout = 25 * time.Second
+)
+
+var errOldScript = errors.New("the Remote Script does not answer like PushHack (install PushHack, or update it)")
+
+// bridgeErrText turns the script's error codes into words for a user.
+func bridgeErrText(code string) string {
+	switch code {
+	case "not_found":
+		return "no matching item in Live's browser"
+	case "not_loadable":
+		return "that browser item cannot be loaded"
+	case "unknown_ns", "unknown_cmd":
+		return "the Remote Script is too old (install PushHack, or update it)"
+	case "no_port":
+		return "a MIDI port name is needed"
+	case "no_such_root":
+		return "Live's browser has no such root"
+	case "failed":
+		return "Live refused (see Live's Log.txt)"
+	}
+	return code
+}
+
+// bridgeCall sends one request and returns the reply's data. ns "" is a
+// built-in command (hello). A short timeout keeps a missing or stuck script
+// from blocking the caller (the Shadow UI runs this in a goroutine).
+func bridgeCall(ns, cmd string, args map[string]any, timeout time.Duration) (json.RawMessage, error) {
+	req := map[string]any{"id": 1, "cmd": cmd}
+	if ns != "" {
+		req["ns"] = ns
+	}
+	for k, v := range args {
+		req[k] = v
+	}
+	b, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
 	conn, err := net.DialTimeout("tcp", liveBridgeAddr, 2*time.Second)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
-	if _, err := conn.Write([]byte(cmd)); err != nil {
-		return "", err
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if _, err := conn.Write(append(b, '\n')); err != nil {
+		return nil, err
 	}
-	line, err := bufio.NewReader(conn).ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" && err != nil {
-		return "", err
+	line, err := bufio.NewReader(conn).ReadBytes('\n')
+	if len(line) == 0 && err != nil {
+		return nil, err
 	}
-	return line, nil
+	var r struct {
+		OK    *bool           `json:"ok"`
+		Error string          `json:"error"`
+		Data  json.RawMessage `json:"data"`
+	}
+	// An old PushHackBrowser answers "OK" or "ERROR", not JSON.
+	if json.Unmarshal(line, &r) != nil || r.OK == nil {
+		return nil, errOldScript
+	}
+	if !*r.OK {
+		return nil, errors.New(bridgeErrText(r.Error))
+	}
+	return r.Data, nil
 }
 
-// liveLoad asks the Remote Script to load a preset by name onto the selected
-// track, scoped to the category's browser root when known (load:<root>:<name>),
-// falling back to an unscoped lookup (load:<name>).
+// bridgeHello asks the script who it is: its script version and protocol.
+func bridgeHello() (version string, protocol int, err error) {
+	data, err := bridgeCall("", "hello", nil, bridgeShortTimeout)
+	if err != nil {
+		return "", 0, err
+	}
+	var d struct {
+		Protocol      int    `json:"protocol"`
+		ScriptVersion string `json:"script_version"`
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		return "", 0, errOldScript
+	}
+	return d.ScriptVersion, d.Protocol, nil
+}
+
+// liveLoad asks the script to load a preset by name onto the selected track,
+// scoped to the category's browser root when known, else searching every root.
+// It returns when Live has loaded it, or why it could not.
 func liveLoad(name string, cat PresetCategory) error {
-	root := cat.browserRoot()
-	cmd := "load:" + name
-	if root != "" {
-		cmd = fmt.Sprintf("load:%s:%s", root, name)
+	args := map[string]any{"name": name}
+	if root := cat.browserRoot(); root != "" {
+		args["scope"] = root
 	}
-	_, err := bridgeSend(cmd)
+	_, err := bridgeCall("browser", "load", args, bridgeLoadTimeout)
 	return err
 }
 
-// liveSampleLoad asks the Remote Script to load an audio sample onto the
-// selected track. Live routes context-aware: Simpler on MIDI tracks, audio
-// clip on audio tracks, hot-swap replacement when hot-swap is active.
+// liveSampleLoad asks the script to load an audio sample onto the selected
+// track. Live routes context-aware: Simpler on MIDI tracks, audio clip on
+// audio tracks, hot-swap replacement when hot-swap is active.
 func liveSampleLoad(name string) error {
-	_, err := bridgeSend("load_sample:" + name)
+	_, err := bridgeCall("browser", "load_sample", map[string]any{"name": name}, bridgeLoadTimeout)
 	return err
 }
 
-// bridgePlugin is one entry of the Remote Script's list_plugins reply: a
-// scanned plugin and the preset files Live has indexed for it. Needs
-// PushHackBrowser with plugin support (load_plugin / list_plugins).
+// bridgePlugin is one entry of the script's list_plugins reply: a scanned
+// plugin and the preset files Live has indexed for it.
 type bridgePlugin struct {
 	Vendor  string   `json:"vendor"`
 	Name    string   `json:"name"`
 	Presets []string `json:"presets"`
 }
 
-// livePlugins asks the Remote Script which plugins Live has scanned.
+// livePlugins asks the script which plugins Live has scanned.
 func livePlugins() ([]bridgePlugin, error) {
-	reply, err := bridgeSend("list_plugins")
+	data, err := bridgeCall("browser", "list_plugins", nil, bridgeLoadTimeout)
 	if err != nil {
 		return nil, err
 	}
 	var r struct {
 		Plugins []bridgePlugin `json:"plugins"`
 	}
-	if err := json.Unmarshal([]byte(reply), &r); err != nil {
-		// An older script answers an unknown command with "OK" or "ERROR".
-		return nil, fmt.Errorf("list_plugins: unexpected reply %q (install PushHack, or update it)", reply)
+	if err := json.Unmarshal(data, &r); err != nil {
+		return nil, errOldScript
 	}
 	return r.Plugins, nil
 }
 
 // livePluginLoad loads a plugin onto the selected track, with one of its
-// presets when preset is non-empty, else with its default patch. The command
-// is colon-separated, so a colon in either name cannot be sent.
+// presets when preset is non-empty, else with its default patch. A name may
+// hold any character: the JSON protocol needs no separator.
 func livePluginLoad(plugin, preset string) error {
-	if strings.Contains(plugin, ":") || strings.Contains(preset, ":") {
-		return fmt.Errorf("a name with ':' cannot be loaded this way")
-	}
-	cmd := "load_plugin:" + plugin
+	args := map[string]any{"plugin": plugin}
 	if preset != "" {
-		cmd += ":" + preset
+		args["preset"] = preset
 	}
-	_, err := bridgeSend(cmd)
+	_, err := bridgeCall("browser", "load_plugin", args, bridgeLoadTimeout)
 	return err
 }
 
-// liveBridgeAlive reports whether the Remote Script is reachable (ping/pong).
+// liveBridgeAlive reports whether PushHack is reachable and answers hello.
 func liveBridgeAlive() bool {
-	reply, err := bridgeSend("ping")
-	return err == nil && reply != ""
+	_, _, err := bridgeHello()
+	return err == nil
 }
 
-// liveIsPlaying asks the Remote Script whether Live's transport is playing.
+// liveTransport is the transport state the script reports.
+type liveTransport struct {
+	Playing bool    `json:"playing"`
+	Tempo   float64 `json:"tempo"`
+	Beat    float64 `json:"beat"`
+}
+
+func liveTransportGet() (liveTransport, error) {
+	var t liveTransport
+	data, err := bridgeCall("transport", "get", nil, bridgeShortTimeout)
+	if err != nil {
+		return t, err
+	}
+	if err := json.Unmarshal(data, &t); err != nil {
+		return t, errOldScript
+	}
+	return t, nil
+}
+
+// liveIsPlaying asks the script whether Live's transport is playing.
 func liveIsPlaying() (bool, error) {
-	reply, err := bridgeSend("get_playing")
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(reply) == "1", nil
+	t, err := liveTransportGet()
+	return t.Playing, err
 }
 
-// liveTempo asks the Remote Script for the current song tempo (BPM).
-// Needs the PushHack Remote Script (or an old PushHackBrowser 0.2 or later).
+// liveTempo asks the script for the current song tempo (BPM).
 func liveTempo() (float64, error) {
-	reply, err := bridgeSend("get_tempo")
-	if err != nil {
-		return 0, err
-	}
-	bpm, err := strconv.ParseFloat(strings.TrimSpace(reply), 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse tempo %q: %w", reply, err)
-	}
-	return bpm, nil
+	t, err := liveTransportGet()
+	return t.Tempo, err
+}
+
+// liveBeat asks the script for the current song time in beats.
+func liveBeat() (float64, error) {
+	t, err := liveTransportGet()
+	return t.Beat, err
 }
 
 // LiveScale is the Set's scale -- the one Push's Scale button edits --
-// as the PushHack Remote Script's get_scale reports it.
+// as the PushHack Remote Script's notes.scale reports it.
 type LiveScale struct {
 	Supported bool   `json:"supported"`
 	Root      int    `json:"root"` // 0-11, 0 = C
@@ -140,48 +218,33 @@ type LiveScale struct {
 	Mode      bool   `json:"mode"`      // Scale Mode, Push's "In Key"
 }
 
-// liveScale asks the Remote Script for the Set's scale. Needs
-// the PushHack Remote Script (an older PushHackBrowser answers "ERROR").
+// liveScale asks the script for the Set's scale.
 func liveScale() (LiveScale, error) {
 	var sc LiveScale
-	reply, err := bridgeSend("get_scale")
+	data, err := bridgeCall("notes", "scale", nil, bridgeShortTimeout)
 	if err != nil {
 		return sc, err
 	}
-	if err := json.Unmarshal([]byte(reply), &sc); err != nil {
-		return sc, fmt.Errorf("get_scale: unexpected reply %q (install PushHack, or update it)", reply)
+	if err := json.Unmarshal(data, &sc); err != nil {
+		return sc, errOldScript
 	}
 	if sc.Supported && (sc.Root < 0 || sc.Root > 11 || len(sc.Intervals) == 0) {
-		return sc, fmt.Errorf("get_scale: implausible scale %+v", sc)
+		return sc, fmt.Errorf("scale: implausible scale %+v", sc)
 	}
 	return sc, nil
 }
 
-// liveBeat asks the Remote Script for the current song time in beats.
-func liveBeat() (float64, error) {
-	reply, err := bridgeSend("get_beat")
-	if err != nil {
-		return 0, err
-	}
-	beat, err := strconv.ParseFloat(strings.TrimSpace(reply), 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse beat %q: %w", reply, err)
-	}
-	return beat, nil
-}
-
 // livePlay starts Live's transport.
 func livePlay() error {
-	_, err := bridgeSend("play")
+	_, err := bridgeCall("transport", "play", nil, bridgeShortTimeout)
 	return err
 }
 
 // liveStop stops Live's transport.
 func liveStop() error {
-	_, err := bridgeSend("stop")
+	_, err := bridgeCall("transport", "stop", nil, bridgeShortTimeout)
 	return err
 }
-
 
 // GET /api/live/play
 func handleLivePlay(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +264,6 @@ func handleLiveStop(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{"ok": true})
 }
 
-
 // GET /api/live/playing — returns whether Live's transport is playing.
 func handleLivePlaying(w http.ResponseWriter, r *http.Request) {
 	playing, err := liveIsPlaying()
@@ -216,11 +278,11 @@ func handleLivePlaying(w http.ResponseWriter, r *http.Request) {
 // POST /api/live/listen {"on": true, "port": "Stacks Listen"} — make or find
 // a silent MIDI track whose input follows the selected track and whose output
 // is that MIDI port (listen_on), or stop it ({"on": false}, listen_off). The
-// reply is the Remote Script's own JSON: on, track, input, channel, output,
+// reply is the script's own JSON: on, track, input, channel, output,
 // monitoring, source -- and on failure ok:false, error and the outputs Live
-// offers. Needs the PushHack Remote Script (or PushHackBrowser 0.4).
+// offers. Needs the PushHack Remote Script.
 func handleLiveListen(w http.ResponseWriter, r *http.Request) {
-	cmd := "get_listen"
+	cmd, args := "get", map[string]any(nil)
 	if r.Method == http.MethodPost {
 		var body struct {
 			On   bool   `json:"on"`
@@ -232,23 +294,22 @@ func handleLiveListen(w http.ResponseWriter, r *http.Request) {
 		}
 		switch {
 		case !body.On:
-			cmd = "listen_off"
+			cmd = "off"
 		case body.Port == "" || strings.ContainsAny(body.Port, "\n\r"):
 			http.Error(w, "port: a MIDI port name is needed", http.StatusBadRequest)
 			return
 		default:
-			cmd = "listen_on:" + body.Port
+			cmd, args = "on", map[string]any{"port": body.Port}
 		}
 	}
-	reply, err := bridgeSend(cmd)
+	data, err := bridgeCall("listen", cmd, args, bridgeShortTimeout)
 	if err != nil {
 		jsonResponse(w, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
 	var st map[string]interface{}
-	if err := json.Unmarshal([]byte(reply), &st); err != nil {
-		jsonResponse(w, map[string]interface{}{"ok": false,
-			"error": fmt.Sprintf("%s: unexpected reply %q (install PushHack, or update it)", cmd, reply)})
+	if err := json.Unmarshal(data, &st); err != nil {
+		jsonResponse(w, map[string]interface{}{"ok": false, "error": errOldScript.Error()})
 		return
 	}
 	jsonResponse(w, st)

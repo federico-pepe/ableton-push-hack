@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- Push Manager talks to the PushHack Remote Script in JSON (`bridgeCall`), not the old text commands. A preset, sample or plugin load now waits for Live and reports why it failed (`no matching item in Live's browser`, `that browser item cannot be loaded`), instead of an enqueue ack. A plugin or preset name may now contain a colon.
+
 ## [0.1.17-alpha] - 2026-10-27
 
 This release carries the PushHack Remote Script. The update installs it into Live's User Library (the whole `Remote Scripts/PushHack` folder, with a rollback). Update to 0.1.16-alpha first if you are on 0.1.15-alpha: the 0.1.15 update cannot install a folder it does not know. Then select **PushHack** in a control-surface slot in Live and restart Live. See the notes of 0.1.16-alpha for what PushHack does.

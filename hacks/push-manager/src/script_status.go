@@ -16,26 +16,6 @@ import (
 	"push-manager/rscript"
 )
 
-// bridgeHello asks the running script who it is, over the bridge socket.
-func bridgeHello() (string, int, error) {
-	reply, err := bridgeSend(`{"id":1,"cmd":"hello"}` + "\n")
-	if err != nil {
-		return "", 0, err
-	}
-	var r struct {
-		OK   bool `json:"ok"`
-		Data struct {
-			Protocol      int    `json:"protocol"`
-			ScriptVersion string `json:"script_version"`
-		} `json:"data"`
-	}
-	// An old PushHackBrowser answers "OK", not JSON: that is not PushHack.
-	if err := json.Unmarshal([]byte(reply), &r); err != nil || !r.OK {
-		return "", 0, errors.New("not PushHack")
-	}
-	return r.Data.ScriptVersion, r.Data.Protocol, nil
-}
-
 func handleLiveScriptStatus(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, rscript.Read(remoteScriptsRoot, bridgeHello))
 }

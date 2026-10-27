@@ -8,55 +8,74 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
-// A fake Remote Script on the bridge's port: records the command, sends reply.
-func fakeBridge(t *testing.T, reply string) (got chan string, stop func()) {
-	ln, err := net.Listen("tcp", liveBridgeAddr)
+// fakeBridge is a fake Remote Script on a port of its own. reply gets each
+// request and returns the raw line to send back. The requests are recorded.
+func fakeBridge(t *testing.T, reply func(req map[string]any) string) (got chan map[string]any) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Skipf("bridge port busy: %v", err)
+		t.Fatal(err)
 	}
-	got = make(chan string, 4)
+	old := liveBridgeAddr
+	liveBridgeAddr = ln.Addr().String()
+	t.Cleanup(func() { ln.Close(); liveBridgeAddr = old })
+	got = make(chan map[string]any, 16)
 	go func() {
 		for {
 			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			buf := make([]byte, 512)
-			n, _ := c.Read(buf)
-			got <- string(buf[:n])
-			c.Write([]byte(reply + "\n"))
-			c.Close()
+			go func() {
+				defer c.Close()
+				c.SetDeadline(time.Now().Add(5 * time.Second))
+				line, err := bufio.NewReader(c).ReadBytes('\n')
+				if err != nil {
+					return
+				}
+				var req map[string]any
+				if json.Unmarshal(line, &req) != nil {
+					return
+				}
+				got <- req
+				c.Write([]byte(reply(req) + "\n"))
+			}()
 		}
 	}()
-	return got, func() { ln.Close() }
+	return got
+}
+
+func okData(data string) func(map[string]any) string {
+	return func(map[string]any) string { return `{"ok":true,"id":1,"data":` + data + `}` }
 }
 
 func TestLiveListenRelaysTheBridge(t *testing.T) {
-	got, stop := fakeBridge(t, `{"ok":true,"on":true,"track":true,"input":"1-Piano","channel":"Post FX","output":"Stacks Listen","monitoring":0,"source":"Piano"}`)
-	defer stop()
+	got := fakeBridge(t, okData(`{"ok":true,"on":true,"track":true,"input":"1-Piano","channel":"Post FX","output":"Stacks Listen","monitoring":0,"source":"Piano"}`))
 
 	w := httptest.NewRecorder()
 	handleLiveListen(w, httptest.NewRequest(http.MethodPost, "/api/live/listen", strings.NewReader(`{"on":true,"port":"Stacks Listen"}`)))
-	if cmd := <-got; cmd != "listen_on:Stacks Listen" {
-		t.Errorf("sent %q", cmd)
+	req := <-got
+	if req["ns"] != "listen" || req["cmd"] != "on" || req["port"] != "Stacks Listen" {
+		t.Errorf("sent %v", req)
 	}
 	var st map[string]any
-	json.NewDecoder(bufio.NewReader(w.Body)).Decode(&st)
+	json.NewDecoder(w.Body).Decode(&st)
 	if st["input"] != "1-Piano" || st["on"] != true {
 		t.Errorf("reply %v", st)
 	}
 
 	w = httptest.NewRecorder()
 	handleLiveListen(w, httptest.NewRequest(http.MethodPost, "/api/live/listen", strings.NewReader(`{"on":false}`)))
-	if cmd := <-got; cmd != "listen_off" {
-		t.Errorf("off sent %q", cmd)
+	if req := <-got; req["ns"] != "listen" || req["cmd"] != "off" {
+		t.Errorf("off sent %v", req)
 	}
 	w = httptest.NewRecorder()
 	handleLiveListen(w, httptest.NewRequest(http.MethodGet, "/api/live/listen", nil))
-	if cmd := <-got; cmd != "get_listen" {
-		t.Errorf("GET sent %q", cmd)
+	if req := <-got; req["ns"] != "listen" || req["cmd"] != "get" {
+		t.Errorf("GET sent %v", req)
 	}
 	w = httptest.NewRecorder()
 	handleLiveListen(w, httptest.NewRequest(http.MethodPost, "/api/live/listen", strings.NewReader(`{"on":true,"port":"a\nb"}`)))
@@ -66,8 +85,7 @@ func TestLiveListenRelaysTheBridge(t *testing.T) {
 }
 
 func TestLiveListenOlderBridge(t *testing.T) {
-	_, stop := fakeBridge(t, "ERROR")
-	defer stop()
+	fakeBridge(t, func(map[string]any) string { return "ERROR" })
 	w := httptest.NewRecorder()
 	handleLiveListen(w, httptest.NewRequest(http.MethodGet, "/api/live/listen", nil))
 	if !strings.Contains(w.Body.String(), "install PushHack, or update it") {
