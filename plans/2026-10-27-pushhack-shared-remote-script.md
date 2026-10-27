@@ -204,3 +204,9 @@ In Ableton's Push 2 script these are SysEx messages (`hardware_settings_componen
 ## 12. Follow-up: the automation hack reads BPM from the Remote Script
 
 The automation hack takes the tempo from MIDI Clock today. Change it to read the BPM from `PushHack` instead: a `transport` `get` for the first value, then a `subscribe` to the `transport` topic for changes. Reasons: MIDI Clock needs a MIDI route and a stable clock, and it gives a tempo only by averaging pulses; the Remote Script reads the exact `song.tempo` from Live. Do this after Phase 3, when `PushHack` installs with Push Hack, so the hack can depend on a minimum `protocol` number. Keep MIDI Clock as a fallback only if `hello` fails.
+
+## 13. Release (2026-10-27)
+
+- Released as `v0.1.16-alpha` (new updater, no script) and `v0.1.17-alpha` (with the script). The two-step did not work as planned: the update only offers the newest release, so a real 0.1.15 device is offered 0.1.17, and its updater refuses the unknown folder. Those devices need `install.sh` once. The release notes say so.
+- The test device already ran the new updater (a rebuilt push-manager still labelled 0.1.15), so its update to 0.1.17 did not exercise that case. It confirmed the real GitHub path: download, hash check, restart, and the script skipped as identical.
+- Lesson: when a new updater must reach older devices first, the newer release has to wait, or the older updater needs to offer an older release. Neither is possible here.
