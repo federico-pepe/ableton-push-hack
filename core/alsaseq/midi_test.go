@@ -73,6 +73,7 @@ func TestIoctlNumbers(t *testing.T) {
 		{"SET_CLIENT_INFO", IoctlSetClientInfo, ioc(w, 0x11, ClientInfoSize)},
 		{"CREATE_PORT", IoctlCreatePort, ioc(r|w, 0x20, PortInfoSize)},
 		{"SUBSCRIBE_PORT", IoctlSubscribePort, ioc(w, 0x30, SubSize)},
+		{"UNSUBSCRIBE_PORT", IoctlUnsubscribePort, ioc(w, 0x31, SubSize)},
 	}
 	for _, c := range cases {
 		if c.got != c.want {

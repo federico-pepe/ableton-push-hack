@@ -9,7 +9,7 @@ between minor versions).
 
 ### Added
 
-- `core/alsaseq`: `Client.Unsubscribe` drops a subscription `Subscribe` made, so a hack can stop reading a port without closing its client. (`core/v0.6.0` when tagged.)
+- `core/alsaseq`: `Client.Unsubscribe` drops a subscription `Subscribe` made, so a hack can stop reading a port without closing its client. (`core/v0.5.1`.)
 
 ## [0.1.15-alpha] - 2026-10-20
 
