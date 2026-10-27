@@ -117,6 +117,20 @@ class SubscribeTest(HubCase):
         self.assertEqual(len(ev), 1)
         self.assertEqual(ev[0]["data"]["tempo"], 100.0)
 
+    def test_tempo_topic_is_quiet_while_only_the_beat_moves(self):
+        self.ask(cmd="subscribe", topics=["tempo"])
+        self.sent = []
+        self.hub.tick()
+        self.assertEqual(self.events()[0]["data"], {"tempo": 120.0})
+        self.sent = []
+        self.song.current_song_time = 5.0
+        self.song.is_playing = True
+        self.hub.tick()
+        self.assertEqual(self.events(), [])
+        self.song.tempo = 90.5
+        self.hub.tick()
+        self.assertEqual(self.events()[0]["data"], {"tempo": 90.5})
+
     def test_unsubscribe_stops_events(self):
         self.ask(cmd="subscribe", topics=["transport"])
         self.ask(cmd="unsubscribe", topics=["transport"])

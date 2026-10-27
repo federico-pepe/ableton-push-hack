@@ -20,6 +20,10 @@ def snapshot(song):
     }
 
 
+def tempo(song):
+    return {"tempo": round(float(song.tempo), 4)}
+
+
 def _get(song, msg):
     return snapshot(song)
 
@@ -70,3 +74,5 @@ def register(reg):
     reg.command("transport", "set_punch_in", _flag("punch_in"))
     reg.command("transport", "set_punch_out", _flag("punch_out"))
     reg.topic("transport", snapshot)
+    # Only the tempo: "transport" changes ~10x/s while playing (the beat moves).
+    reg.topic("tempo", tempo)
