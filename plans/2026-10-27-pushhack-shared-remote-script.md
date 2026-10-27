@@ -1,6 +1,6 @@
 # PushHack: one shared Remote Script
 
-**Status: plan agreed 2026-10-27. Decisions D1 to D4 are settled (section 10). Phase 1 built and confirmed on the device (2026-10-27). Phase 2 built and unit-tested (74 tests, Python 3.11 and 3.13); device check pending.**
+**Status: plan agreed 2026-10-27. Decisions D1 to D4 are settled (section 10). Phase 1 built and confirmed on the device (2026-10-27). Phase 2 built and confirmed on the device. Phase 3 built and unit-tested; the full update on a Push is not tested yet.**
 
 ## 1. Goal
 
@@ -140,7 +140,7 @@ Plan assumes A until the owner decides.
 
 1. `scripts/package-release.sh` copies `resources/remote-scripts/PushHack/` into the release tarball and lists each file in `manifest.json` with its hash, like the binaries.
 2. `releasemeta.json` gets no change. A new Remote Script folder does not need `needs_reinstall`.
-3. `update/apply.go` swaps the folder: copy to `PushHack.new`, rename old to `PushHack.prev`, rename new into place. The health check stays "new push-manager answers with the target `hack_version`". The Remote Script is a data folder, so it has no health probe of its own. Restore `PushHack.prev` on failure.
+3. `update/apply.go` swaps the folder: copy to `PushHack.new`, rename old to `PushHack.prev`, rename new into place. The health check stays "new push-manager answers with the target `hack_version`". The Remote Script is a data folder, so it has no health probe of its own. Restore the old folder on failure. Built differently from the first draft: the old folder is kept in `/data/push-hack/update/remote-script.prev`, not as `PushHack.prev` next to the script, because Live lists every folder in `Remote Scripts`.
 4. `scripts/install.sh` installs the same folder for fresh installs. `scripts/uninstall.sh` removes it. `--purge` is not needed because the folder holds no user data.
 5. Live reads the script only at start. The System tab shows "restart Live to load PushHack vX". Push Hack never restarts Live.
 6. First use: the user selects `PushHack` in one control-surface slot (Input and Output = None). Docs and the post-install message say so. This cannot be automated.

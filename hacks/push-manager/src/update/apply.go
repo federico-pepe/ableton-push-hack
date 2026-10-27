@@ -65,10 +65,15 @@ type ManifestFile struct {
 
 // ApplyConfig sets up an Applier.
 type ApplyConfig struct {
-	Dir             string            // update dir, e.g. /data/push-hack/update
-	Targets         map[string]string // manifest path -> installed path
-	ExecFiles       map[string]bool   // manifest paths that must be executable
-	AllowedPrefixes []string          // a download URL must start with one of these
+	Dir     string            // update dir, e.g. /data/push-hack/update
+	Targets map[string]string // manifest path -> installed path
+	// Dirs maps a manifest directory to an installed directory, e.g.
+	// "remote-script/PushHack" -> Live's User Library. Its files are checked
+	// like any other, then the whole directory is swapped at once, so a
+	// removed file does not linger. The old one is kept in Dir/remote-script.prev.
+	Dirs            map[string]string
+	ExecFiles       map[string]bool // manifest paths that must be executable
+	AllowedPrefixes []string        // a download URL must start with one of these
 	Installed       string
 	Client          *http.Client
 	MaxTarball      int64
@@ -195,7 +200,7 @@ func (a *Applier) Run(rel Release) error {
 			return ErrHookMismatch
 		}
 	}
-	if err := checkManifestFiles(m, c.Targets); err != nil {
+	if err := checkManifestFiles(m, c.Targets, c.Dirs); err != nil {
 		return err
 	}
 	if m.Tarball.Size <= 0 || m.Tarball.Size > c.MaxTarball {
@@ -239,7 +244,8 @@ func (a *Applier) Run(rel Release) error {
 	}
 	p.Target, p.From, p.StartedAt = rel.Version, c.Installed, time.Now()
 	p.ManagerChanged = p.changed(c.Targets["push-manager/push-manager"])
-	if len(p.Swapped) == 0 {
+	p.ScriptChanged = len(p.Dirs) > 0
+	if len(p.Swapped) == 0 && len(p.Dirs) == 0 {
 		return fmt.Errorf("every file is already the one in %s: nothing to install", rel.Version)
 	}
 
@@ -297,23 +303,43 @@ func (a *Applier) watchHelper(done <-chan error, p Pending, version string) {
 
 // checkManifestFiles: every file must map to an install path, and the three
 // we run must be listed. A file we do not know is a release we do not trust.
-func checkManifestFiles(m Manifest, targets map[string]string) error {
+func checkManifestFiles(m Manifest, targets, dirs map[string]string) error {
 	seen := map[string]bool{}
+	inDir := map[string]int{}
 	for _, f := range m.Files {
-		if _, ok := targets[f.Path]; !ok {
-			return fmt.Errorf("manifest lists %q, which this version does not know", f.Path)
-		}
 		if len(f.SHA256) != 64 || f.Size <= 0 || seen[f.Path] {
 			return fmt.Errorf("manifest entry for %q is bad", f.Path)
 		}
 		seen[f.Path] = true
+		if prefix, ok := dirOf(f.Path, dirs); ok {
+			inDir[prefix]++
+			continue
+		}
+		if _, ok := targets[f.Path]; !ok {
+			return fmt.Errorf("manifest lists %q, which this version does not know", f.Path)
+		}
 	}
 	for p := range targets {
 		if !seen[p] {
 			return fmt.Errorf("manifest has no entry for %q", p)
 		}
 	}
+	for prefix := range dirs {
+		if !seen[prefix+"/__init__.py"] {
+			return fmt.Errorf("manifest has no %s/__init__.py", prefix)
+		}
+	}
 	return nil
+}
+
+// dirOf says which managed directory a manifest path belongs to.
+func dirOf(p string, dirs map[string]string) (string, bool) {
+	for prefix := range dirs {
+		if strings.HasPrefix(p, prefix+"/") {
+			return prefix, true
+		}
+	}
+	return "", false
 }
 
 func findAsset(rel Release, name string) (string, bool) {
@@ -480,7 +506,16 @@ type Pending struct {
 	ManagerChanged bool      `json:"manager_changed"`
 	CatalogChanged bool      `json:"catalog_changed"`
 	HookChanged    bool      `json:"hook_changed"`
+	ScriptChanged  bool      `json:"script_changed"` // Live loads it at its next start
 	Swapped        []Swapped `json:"swapped"`
+	Dirs           []DirSwap `json:"dirs"`
+}
+
+// DirSwap is one directory put in place. Prev holds the old one, if any.
+type DirSwap struct {
+	Dest    string `json:"dest"`
+	Prev    string `json:"prev"`
+	HadPrev bool   `json:"had_prev"`
 }
 
 func (p Pending) changed(dest string) bool {
@@ -498,6 +533,9 @@ func (p Pending) changed(dest string) bool {
 func (a *Applier) install(m Manifest, files string) (Pending, error) {
 	var p Pending
 	for _, mf := range m.Files {
+		if _, isDir := dirOf(mf.Path, a.cfg.Dirs); isDir {
+			continue // swapped as a whole, below
+		}
 		dest := a.cfg.Targets[mf.Path]
 		src := filepath.Join(files, filepath.FromSlash(mf.Path))
 		if _, err := os.Stat(filepath.Dir(dest)); err != nil {
@@ -550,7 +588,110 @@ func (a *Applier) install(m Manifest, files string) (Pending, error) {
 			p.HookChanged = true
 		}
 	}
+	for prefix, dest := range a.cfg.Dirs {
+		d, err := a.installDir(prefix, dest, files, m)
+		if err != nil {
+			a.rollback(p)
+			return p, err
+		}
+		if d != nil {
+			p.Dirs = append(p.Dirs, *d)
+		}
+	}
 	return p, nil
+}
+
+// installDir puts the staged directory at dest. The old one goes to
+// Dir/remote-script.prev, not next to dest: Live lists every folder with an
+// __init__.py in Remote Scripts, so a backup there would show in its menu.
+// It returns nil when nothing needs doing: the User Library is not on this
+// Push, or the installed copy is already the same.
+func (a *Applier) installDir(prefix, dest, files string, m Manifest) (*DirSwap, error) {
+	parent := filepath.Dir(dest)
+	if _, err := os.Stat(parent); err != nil {
+		if _, err := os.Stat(filepath.Dir(parent)); err != nil {
+			return nil, nil // no User Library here: not ours to create
+		}
+		if err := os.MkdirAll(parent, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	want := map[string]string{} // path relative to the directory -> sha256
+	for _, f := range m.Files {
+		if strings.HasPrefix(f.Path, prefix+"/") {
+			want[strings.TrimPrefix(f.Path, prefix+"/")] = strings.ToLower(f.SHA256)
+		}
+	}
+	if dirMatches(dest, want) {
+		return nil, nil
+	}
+	src := filepath.Join(files, filepath.FromSlash(prefix))
+	uid, gid := -1, -1
+	if st, err := os.Stat(parent); err == nil {
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+			uid, gid = int(sys.Uid), int(sys.Gid)
+		}
+	}
+	err := filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		mode := os.FileMode(0o644)
+		if info.IsDir() {
+			mode = 0o755
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			return err
+		}
+		if uid >= 0 {
+			_ = os.Chown(p, uid, gid) // best effort: only root can
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	d := &DirSwap{Dest: dest, Prev: filepath.Join(a.cfg.Dir, "remote-script.prev")}
+	if _, err := os.Stat(dest); err == nil {
+		d.HadPrev = true
+		_ = os.RemoveAll(d.Prev)
+		if err := os.Rename(dest, d.Prev); err != nil {
+			return nil, fmt.Errorf("keep old %s: %v (staging must be on the same disk as the install)", prefix, err)
+		}
+	}
+	if err := os.Rename(src, dest); err != nil {
+		if d.HadPrev {
+			_ = os.Rename(d.Prev, dest)
+		}
+		return nil, fmt.Errorf("replace %s: %v", prefix, err)
+	}
+	return d, nil
+}
+
+// dirMatches: dir holds exactly these files with these hashes.
+func dirMatches(dir string, want map[string]string) bool {
+	n := 0
+	ok := true
+	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, p)
+		sum, found := want[filepath.ToSlash(rel)]
+		if !found {
+			ok = false
+			return nil
+		}
+		if got, err := fileSHA(p); err != nil || got != sum {
+			ok = false
+		}
+		n++
+		return nil
+	})
+	return err == nil && ok && n == len(want)
 }
 
 // rollback puts the .prev files back. Best effort; used when a swap fails
@@ -558,6 +699,17 @@ func (a *Applier) install(m Manifest, files string) (Pending, error) {
 func (a *Applier) rollback(p Pending) { restoreFiles(p, a.cfg.Logf) }
 
 func restoreFiles(p Pending, logf func(string, ...any)) {
+	for _, d := range p.Dirs {
+		if err := os.RemoveAll(d.Dest); err != nil {
+			logf("rollback %s: %v", d.Dest, err)
+			continue
+		}
+		if d.HadPrev {
+			if err := os.Rename(d.Prev, d.Dest); err != nil {
+				logf("rollback %s: %v", d.Dest, err)
+			}
+		}
+	}
 	for _, s := range p.Swapped {
 		if !s.HadPrev {
 			continue

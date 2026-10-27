@@ -409,6 +409,7 @@ Start the install with **Update now**, the bar's **Update**, or UPDATE then OK o
 2. It compares the size and the SHA-256 of the tarball, and of each file in it, with the manifest. It refuses any file that the manifest does not list.
 3. It runs each new binary with `-version`. The binary must print the target version.
 4. It replaces the files that differ. It keeps each old file as `<file>.prev`, as a hard link, so a file never goes missing.
+   It also replaces the whole folder `remote-script/PushHack` (the PushHack Remote Script) in Live's User Library, in one step, so a file that a release drops does not stay behind. The old folder goes to `/data/push-hack/update/remote-script.prev`, not into the User Library, because Live lists every folder in `Remote Scripts`. If the folder is already the same, or the User Library is not on the Push, the step does nothing.
 5. It starts a detached helper. The helper is the old push-manager (`push-manager.prev -finish-update`), in its own session.
 6. The helper restarts push-catalog and then push-manager. For each one it stops the service, waits until the process is gone, and starts it.
 7. The helper waits for the new push-manager to answer `/api/status` with the target `hack_version`. It must still answer 5 seconds later.
@@ -416,7 +417,8 @@ Start the install with **Update now**, the bar's **Update**, or UPDATE then OK o
 
 **What the update changes**
 
-- Only `push-manager`, `push-catalog` and `push_hook.so`, under `/data/push-hack/hacks/`.
+- Only `push-manager`, `push-catalog` and `push_hook.so`, under `/data/push-hack/hacks/`, and the one folder `Remote Scripts/PushHack` in Live's User Library.
+- Live reads a Remote Script only when it starts. After an update that changes `PushHack`, restart Live to load the new one. Push Manager never restarts Live.
 - It never changes `/etc`, `hack.json`, a hack from the catalog, or Push3. A hack that is not installed is skipped.
 - If `manifest.json` has `needs_reinstall: true`, the update refuses and asks for `install.sh`.
 - If the `shm_protocol` of the release differs from the hook that Push3 has loaded, the update refuses until Push restarts.

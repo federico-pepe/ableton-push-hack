@@ -115,8 +115,14 @@ before it activates. `make splash` regenerates `src/splash_data.h`.
 For the shared-memory layout and display geometry, see
 [api-reference.md](api-reference.md).
 
-Browser Bridge (the `PushHackBrowser` MIDI Remote Script that push-manager's
-`live_bridge.go` talks to over TCP port 7704) lives outside this repo — see
+PushHack (the shared MIDI Remote Script, `remote-script/PushHack/`) gives every
+hack one way into Live: JSON lines over `127.0.0.1:7704` and `/tmp/push-hack.sock`.
+It replaces `PushHackBrowser` and `PushHackArrangement`, and still answers their
+old protocols for now. Design, protocol and namespaces:
+[plans/2026-10-27-pushhack-shared-remote-script.md](../plans/2026-10-27-pushhack-shared-remote-script.md).
+`install.sh` and the Push Hack update put it in Live's User Library; the user
+selects it once in a control-surface slot. Browser Bridge, the older script that
+push-manager's `live_bridge.go` talks to, lives outside this repo — see
 [federico-pepe/push-hack-browser-bridge](https://github.com/federico-pepe/push-hack-browser-bridge).
 It installs through Push Hack Catalog, like every other optional hack. See
 [catalog/catalog.json](../catalog/catalog.json) for the full list.

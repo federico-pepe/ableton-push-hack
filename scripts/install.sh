@@ -376,6 +376,40 @@ EOF
     fi
 }
 
+# ── PushHack Remote Script ────────────────────────────────────────────────────
+# One script for every hack that needs Live. It goes to Live's User Library; the
+# user still picks "PushHack" in a control-surface slot once and restarts Live.
+# An old PushHackBrowser or PushHackArrangement is only reported, never removed:
+# a hack that was not updated yet may still need it.
+install_remote_script() {
+    local src="${REPO_ROOT}/remote-script/PushHack"
+    if [[ ! -d "${src}" ]]; then
+        warn "remote-script/PushHack not found — skipping the Remote Script"
+        return 0
+    fi
+    local lib="${USER_DATA}/Music/Ableton/User Library/Remote Scripts"
+    echo ""
+    echo -e "${BOLD}── PushHack Remote Script ─────────────────────────────${NC}"
+    local stage
+    stage=$(mktemp -d)
+    (cd "${REPO_ROOT}/remote-script" && COPYFILE_DISABLE=1 tar -cf - \
+        --exclude='__pycache__' --exclude='*.pyc' --exclude='.DS_Store' --exclude='._*' PushHack) \
+        | tar -xf - -C "${stage}"
+    maybe push_exec "mkdir -p '${lib}' && rm -rf '${lib}/PushHack'"
+    maybe push_copy "${stage}/PushHack" "${lib}/PushHack"
+    rm -rf "${stage}"
+    success "Copied to ${lib}/PushHack"
+    if [[ "${DRY_RUN}" == false ]]; then
+        local old
+        for old in PushHackBrowser PushHackArrangement; do
+            if push_exec "test -d '${lib}/${old}'" 2>/dev/null; then
+                warn "Old Remote Script found: ${old}. Select PushHack in Live instead, then remove ${old}."
+            fi
+        done
+    fi
+    info "In Live: Preferences > Link, Tempo & MIDI > pick PushHack in a free control-surface slot (Input and Output: None), then restart Live."
+}
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 main() {
     print_banner
@@ -447,6 +481,10 @@ main() {
         fi
         deploy_hack "${hack_id}"
     done
+
+    if [[ -z "${SPECIFIC_HACK}" || "${SPECIFIC_HACK}" == "push-manager" ]]; then
+        install_remote_script
+    fi
 
     echo ""
     success "Installation complete!"

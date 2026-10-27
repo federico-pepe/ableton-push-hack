@@ -205,6 +205,7 @@ function showStats() {
 }
 function startStatsPolling() {
   loadUpdate();
+  loadScript();
   loadStats();
   loadUsbHidState();
   _statsTimer = setInterval(loadStats, 3000);
@@ -2135,6 +2136,52 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => { stopVideoStream(); stopDrawStream(); });
 
 
+// ── PushHack Remote Script ─────────────────────────────────────────────────
+let _scr = null;
+
+async function loadScript() {
+  try { _scr = await api('GET', '/api/live/script'); } catch (e) { return; }
+  renderScript();
+}
+
+function renderScript() {
+  const s = _scr;
+  if (!s) return;
+  $('scr-installed').textContent = s.installed ? 'yes' + (s.installed_version ? ' (' + s.installed_version + ')' : '') : 'no';
+  $('scr-running').textContent = s.running ? 'yes (' + s.running_version + ')' : 'no';
+  const msg = $('scr-msg');
+  msg.classList.remove('err');
+  if (!s.installed) msg.textContent = 'PushHack is not installed. Run install.sh, or install a Push Hack release that includes it.';
+  else if (s.needs_restart && s.running) msg.textContent = 'A newer PushHack is installed. Restart Live to load it.';
+  else if (!s.running) msg.textContent = 'In Live, choose PushHack in a control-surface slot (Preferences, Link/Tempo/MIDI; Input and Output: None), then restart Live.';
+  else msg.textContent = 'PushHack is running.';
+  const box = $('scr-old'), list = $('scr-old-list');
+  box.style.display = s.old_scripts.length ? '' : 'none';
+  list.textContent = '';
+  for (const name of s.old_scripts) {
+    const row = document.createElement('div');
+    row.className = 'upd-row';
+    const label = document.createElement('span');
+    label.textContent = name;
+    const btn = document.createElement('button');
+    btn.className = 'upd-btn';
+    btn.textContent = 'Remove';
+    btn.disabled = !s.installed;
+    btn.onclick = () => removeOldScript(name);
+    row.append(label, btn);
+    list.appendChild(row);
+  }
+}
+
+async function removeOldScript(name) {
+  if (!confirm('Remove ' + name + ' from the User Library?\n\nOnly do this when PushHack is selected in Live and no hack needs ' + name + ' any more. Live keeps it until you restart Live.')) return;
+  try {
+    _scr = await api('POST', '/api/live/script/remove-old', {name: name});
+    renderScript();
+    toast('Removed ' + name + '. Clear its slot in Live and restart Live.', 'success');
+  } catch (e) { toast('Could not remove: ' + e.message, 'error'); }
+}
+
 // ── Push Hack update ───────────────────────────────────────────────────────
 let _upd = null;
 
@@ -2257,4 +2304,5 @@ async function ackUpdateResult() {
 }
 
 loadUpdate();
+loadScript();
 setInterval(loadUpdate, 5 * 60 * 1000);

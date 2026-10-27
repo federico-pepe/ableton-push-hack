@@ -68,6 +68,17 @@ remove_hack() {
     success "Removed: ${hack_id}"
 }
 
+# ── PushHack Remote Script ────────────────────────────────────────────────────
+# Removes only the PushHack folder. Other Remote Scripts, and an old
+# PushHackBrowser or PushHackArrangement, are left alone.
+remove_remote_script() {
+    local dir="${USER_DATA}/Music/Ableton/User Library/Remote Scripts/PushHack"
+    if push_exec "test -d '${dir}'" 2>/dev/null; then
+        push_exec "rm -rf '${dir}'" 2>/dev/null || true
+        success "Removed PushHack Remote Script (clear its slot in Live's Preferences)"
+    fi
+}
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 main() {
     print_banner
@@ -94,6 +105,7 @@ main() {
     if [[ -n "${SPECIFIC_HACK}" ]]; then
         # Remove specific hack
         remove_hack "${SPECIFIC_HACK}"
+        [[ "${SPECIFIC_HACK}" == "push-manager" ]] && remove_remote_script
     else
         # Remove all push-hack services
         info "Scanning for installed push-hack services..."
@@ -113,6 +125,8 @@ main() {
         else
             warn "No push-hack services found on Push"
         fi
+
+        remove_remote_script
 
         # Clean up deploy.sh legacy backup (not a service, just a file)
         push_exec_root "rm -f /etc/init.d/push3.push-hack-bak" 2>/dev/null || true

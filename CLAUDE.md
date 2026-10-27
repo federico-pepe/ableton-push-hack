@@ -97,7 +97,7 @@ update, then reinstall after.** See `hacks/push-display/README.md`.
 
 push-manager can install a newer Push Hack release (`hacks/push-manager/src/update/`, flow in the push-manager README, "Push Hack update"). Rules that must not break:
 
-- It writes only `push-manager`, `push-catalog` and `push_hook.so` under `/data/push-hack/hacks/<id>/`, and its own files under `/data/push-hack/update/`. Never `/etc`, never a catalog hack, never `hack.json`. A change that needs `/etc` sets `needs_reinstall` in `releasemeta.json`.
+- It writes only `push-manager`, `push-catalog` and `push_hook.so` under `/data/push-hack/hacks/<id>/`, the one folder `Remote Scripts/PushHack` in Live's User Library (the PushHack Remote Script, swapped as a whole, old copy kept in `/data/push-hack/update/remote-script.prev`), and its own files under `/data/push-hack/update/`. Never `/etc`, never a catalog hack, never `hack.json`, never another folder in the User Library (an old `PushHackBrowser` is only reported, never removed, unless the user presses Remove). A change that needs `/etc` sets `needs_reinstall` in `releasemeta.json`.
 - It never restarts Push3 (that ends the Live session). A new `push_hook.so` loads at the next Push3 restart.
 - The helper runs from the old binary (`push-manager.prev`). The new binary is only trusted after it answers with the target `hack_version`.
 - A release must keep `-version` printing the release number, and `/api/status` returning `hack_version`. An update checks both.
