@@ -19,7 +19,7 @@ request; it returns a PNG of the current framebuffer with an
 chords,led,palette,mapping,mapping/config}` (`ports?writable=1` lists output
 destinations), `/api/presets`, `/api/presets/{refresh,facets,meta}`,
 `/api/live/load`, `/api/live/plugins`, `/api/live/tempo`, `/api/live/scale`, `/api/live/listen`, `/api/live/playing`, `/api/live/play`,
-`/api/live/stop`, `/api/hacks/installed`, `/api/ui/tabs` (GET and POST),
+`/api/live/stop`, `/api/live/script` (GET: is PushHack installed and running) and `/api/live/script/remove-old` (POST `{name}`: remove an old `PushHackBrowser` or `PushHackArrangement`), `/api/hacks/installed`, `/api/ui/tabs` (GET and POST),
 `/api/surface`, `/api/surface/{session,status,input,leave,open,star}`
 (Push Hack Home, below).
 
@@ -107,3 +107,7 @@ Home owns the surface.
 newest download. `total` is 0 when the server did not send a size. The
 values stay after a download ends, so read them only while an install runs.
 push-manager's CATALOG tab polls it to draw its download bar.
+
+## PushHack Remote Script
+
+Hacks reach Live through the PushHack Remote Script, not through push-manager's HTTP routes. Protocol, namespaces and topics: [pushhack-remote-script.md](pushhack-remote-script.md). push-manager's `/api/live/*` routes are a thin layer over it for the web UI and for hacks that prefer HTTP (`load`, `plugins`, `tempo`, `scale`, `listen`, `playing`, `play`, `stop`, `script`).

@@ -114,8 +114,24 @@ def slices(song, msg):
             "length": safe(lambda: int(sample.length), 0)}
 
 
-def slices_to_drum_rack(song, msg):
+SLICING = 2   # Simpler.playback_mode: 0 classic, 1 one-shot, 2 slicing
+
+
+def set_simpler(song, msg):
+    """Set a Simpler's `playback_mode` (0 classic, 1 one-shot, 2 slicing)."""
     dev = _simpler(song, msg)
+    mode = to_int(msg.get("playback_mode"))
+    if mode not in (0, 1, 2):
+        raise bad("bad_arg")
+    dev.playback_mode = mode
+    return {"playback_mode": mode}
+
+
+def slices_to_drum_rack(song, msg):
+    """Turn a sliced Simpler into a Drum Rack (it must be in slicing mode)."""
+    dev = _simpler(song, msg)
+    if safe(lambda: int(dev.playback_mode), -1) != SLICING:
+        raise bad("not_sliced")
     import Live
     Live.Conversions.sliced_simpler_to_drum_rack(song, dev)
 
@@ -128,5 +144,6 @@ def register(reg):
     reg.command("notes", "select_drum_pad", select_drum_pad)
     reg.command("notes", "pad_to_track", pad_to_track)
     reg.command("notes", "slices", slices)
+    reg.command("notes", "set_simpler", set_simpler)
     reg.command("notes", "slices_to_drum_rack", slices_to_drum_rack)
     reg.topic("scale", scale, every=5)

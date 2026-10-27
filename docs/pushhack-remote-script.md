@@ -72,7 +72,7 @@ Volume is the raw mixer value, 0 to 1 (0.85 is 0 dB). Pan is -1 to 1. Parameter 
 `bad_json`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
 Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`, `bad_param`,
 `param_disabled`, `bad_pad`, `bad_view`, `no_clip`, `slot_taken`, `too_big`, `cannot_arm`,
-`wrong_clip_kind`, `not_looping`, `not_a_drum_rack`, `not_a_simpler`, `not_found`, `not_loadable`,
+`wrong_clip_kind`, `not_looping`, `not_a_drum_rack`, `not_a_simpler`, `not_sliced`, `not_found`, `not_loadable`,
 `nothing_to_undo`, `nothing_to_redo`, `no_cue`, `nothing_to_capture`.
 
 ## Namespaces
@@ -107,11 +107,16 @@ launch_mode, launch_quantization, legato, velocity_amount (MIDI), gain, pitch_co
 warping, warp_mode (audio)}`, `fire`, `stop`, `quantize {grid, amount}`, `crop`, `duplicate_loop`,
 `notes {from_pitch, pitch_span, from_time, time_span}`, `add_notes {notes: [{pitch, start, duration,
 velocity, mute}]}`, `remove_notes {same range}`, `convert_options`,
-`convert {kind: "harmony"|"melody"|"drums"|"simpler"|"drum_rack"}` (audio clips).
+`convert {kind: "harmony"|"melody"|"drums"|"simpler"|"drum_rack"}` (audio clips). `harmony`, `melody` and
+`drums` make a new MIDI track with a MIDI clip; `simpler` and `drum_rack` make a new track with a Simpler or a
+Drum Rack. Track indexes after the source shift by one.
 
 ### notes
-`scale`, `set_scale {root, name, mode}`, `drum_pads {track, device, filled}`, `set_drum_pad {note,
-mute, solo}`, `select_drum_pad {note}`, `pad_to_track {note}`, `slices` (Simpler), `slices_to_drum_rack`.
+`scale`, `set_scale {root, name, mode}`, `drum_pads {track, device, filled}` (`filled: true` lists only
+pads that hold a chain), `set_drum_pad {note, mute, solo}`, `select_drum_pad {note}`,
+`pad_to_track {note}` (a new MIDI track with that pad's chain, inserted after the source track),
+`slices` (Simpler), `set_simpler {playback_mode: 0 classic | 1 one-shot | 2 slicing}`,
+`slices_to_drum_rack` (the Simpler must be in slicing mode; it becomes a Drum Rack on the same track).
 
 ### browser
 `load {name, scope}`, `load_sample {name}`, `load_uri {uri}`, `load_plugin {plugin, preset}`,
@@ -149,6 +154,16 @@ this Live has a property before you rely on it.
 | `meters` | the `meters.get` data | every tick |
 
 A tick is about 100 ms (Live calls the script about 10 times a second).
+
+## What was checked on a Push
+
+Script 0.3.0, Live 12.4.15b7. All reads, and these writes on a test Set: track name, volume and
+pan; a device loaded, a parameter set; a clip created, notes added, quantized and removed, a clip
+fired; the metronome; view focus; a drum kit loaded with its 16 pads and rack chains (read, mute,
+select, a pad moved to a track); a sample loaded into a Simpler, its slices read, slicing mode set and
+the Simpler converted to a Drum Rack; an audio clip converted with `harmony`, `melody`, `drums`,
+`simpler` and `drum_rack`. Not checked: Windows and macOS Live (the code is the same Python), and a very
+large Set (topics have a time budget for it).
 
 ## Limits and safety
 

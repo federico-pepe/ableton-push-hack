@@ -9,7 +9,7 @@ between minor versions).
 
 ### Added
 
-- PushHack Remote Script 0.3.0: the controls of Ableton's Push 2 script that make sense for a hack. New namespaces `track` (mixer, routing, mute/solo/arm, create), `session` (the clip grid, launch, scenes, capture), `device` (parameters, selected device, rack chains, select, delete, move), `clip` (properties, loop, notes add/remove/read, quantize, crop, audio-to-MIDI conversion), `modes` (selection and views), `meters` (levels), and `debug` (read Live's API names). `notes` gains drum pads, Simpler slices and `set_scale`. `transport` gains metronome, record, undo/redo, tap tempo and more. New topics `tracks`, `session`, `device`, `selection` and `meters`, with a minimum interval and a time budget so a big Set costs Live little. Reference: `docs/pushhack-remote-script.md`.
+- PushHack Remote Script 0.3.0: the controls of Ableton's Push 2 script that make sense for a hack. New namespaces `track` (mixer, routing, mute/solo/arm, create), `session` (the clip grid, launch, scenes, capture), `device` (parameters, selected device, rack chains, select, delete, move), `clip` (properties, loop, notes add/remove/read, quantize, crop, audio-to-MIDI conversion), `modes` (selection and views), `meters` (levels), and `debug` (read Live's API names). `notes` gains drum pads (with a `filled` filter), `pad_to_track`, Simpler slices, `set_simpler`, `slices_to_drum_rack` and `set_scale`. `transport` gains metronome, record, undo/redo, tap tempo and more. New topics `tracks`, `session`, `device`, `selection` and `meters`, with a minimum interval and a time budget so a big Set costs Live little. Reference: `docs/pushhack-remote-script.md`.
 
 ### Changed
 

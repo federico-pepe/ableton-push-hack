@@ -93,6 +93,9 @@ no-binary hacks. Two more optional `hack.json` fields cover the one real
 case that doesn't fit the binary+service model at all: an Ableton Live
 Remote Script, which must land in Live's own User Library, not
 `hacks/<id>/`, and needs no running service since it lives inside Live.
+Most hacks do not need one: the PushHack Remote Script ships with Push Hack
+and gives every hack access to Live (see `docs/pushhack-remote-script.md`).
+Do not ship a script that only does what PushHack already does.
 
 ```jsonc
 {

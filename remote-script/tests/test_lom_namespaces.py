@@ -362,6 +362,21 @@ class NotesAndModesTest(Base):
 
     def test_slices_need_a_simpler(self):
         self.fails("notes", "slices", "not_a_simpler", track=0, device=1)
+        self.fails("notes", "set_simpler", "not_a_simpler", track=0, device=1, playback_mode=2)
+
+    def test_simpler_modes_and_the_slicing_check(self):
+        simpler = Device("Simpler")
+        simpler.playback_mode = 0
+        simpler.sample = type("S", (), {"slices": [0, 100, 200], "length": 300})()
+        self.song.tracks[1].devices = [simpler]
+        d = self.ok("notes", "slices", track=1, device=0)
+        self.assertEqual((d["playback_mode"], d["slices"], d["length"]), (0, [0, 100, 200], 300))
+        self.fails("notes", "slices_to_drum_rack", "not_sliced", track=1, device=0)
+        self.fails("notes", "set_simpler", "bad_arg", track=1, device=0, playback_mode=7)
+        self.assertEqual(self.ok("notes", "set_simpler", track=1, device=0, playback_mode=2)["playback_mode"], 2)
+        self.assertEqual(simpler.playback_mode, 2)
+        # In slicing mode the request reaches Live.Conversions; without Live it fails cleanly.
+        self.fails("notes", "slices_to_drum_rack", "failed", track=1, device=0)
 
     def test_set_scale(self):
         self.ok("notes", "set_scale", root=2, name="Minor", mode=True)

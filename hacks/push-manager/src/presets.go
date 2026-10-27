@@ -3,7 +3,7 @@
 // Browsing, searching and filtering must never touch Live (the Live API is
 // single-threaded on the audio engine). push-manager scans files on disk
 // directly: fast, in-process, and safe during performance. Only LOAD goes
-// through the PushHackBrowser Remote Script (see live_bridge.go).
+// through the PushHack Remote Script (see live_bridge.go).
 //
 // Preset scan roots (Live 12, version-robust globs):
 //   <Core Library>/Devices  — device presets, category = subfolder
@@ -45,7 +45,7 @@ const (
 )
 
 // browserRoot maps a category to the Live browser root attribute used to scope
-// the load-time lookup in PushHackBrowser. Empty = no scoping (search all).
+// the load-time lookup in PushHack (browser.load scope). Empty = no scoping (search all).
 func (c PresetCategory) browserRoot() string {
 	switch c {
 	case CatInstruments:
