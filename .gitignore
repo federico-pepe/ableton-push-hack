@@ -25,6 +25,7 @@ hacks/*/src/keyboard-visualizer
 
 # Resources
 /resources/push-assets/*
+/resources/remote-scripts/*
 
 # Local-only discovery / research notes (not shipped)
 /discovery/
@@ -41,3 +42,6 @@ hacks/random-preset/random-preset
 # Third-party plugin binaries and firmware used for on-device tests (not ours to redistribute)
 resources/VST/
 dist/
+
+# Python
+__pycache__/
