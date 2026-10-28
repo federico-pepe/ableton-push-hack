@@ -23,6 +23,7 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"log"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -349,8 +350,8 @@ const splashDuration = 3 * time.Second
 func scheduleStartupSplash() {
 	startupSplashOnce.Do(func() {
 		time.Sleep(200 * time.Millisecond)
-		pixels := renderOSDFrame("Push Hack loaded...")
-		if err := shmWritePixels(pixels); err != nil {
+		const msg = "Push Hack loaded..."
+		if err := shmWritePixels(renderStarSplash(newStars(rand.New(rand.NewSource(1))), msg, buildVersion, 0)); err != nil {
 			log.Printf("startup splash: %v (push-display not loaded, skipping)", err)
 			return
 		}
@@ -359,7 +360,9 @@ func scheduleStartupSplash() {
 			return
 		}
 		log.Printf("startup splash: showing for %v", splashDuration)
-		time.Sleep(splashDuration)
+		if err := runStarSplash(msg, buildVersion, splashDuration); err != nil {
+			log.Printf("startup splash: %v", err)
+		}
 		if shm.CompareAndSetMode(ModeTakeover, ModePassthrough) {
 			log.Printf("startup splash: restored mode=passthrough")
 		}
