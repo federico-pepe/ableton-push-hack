@@ -552,6 +552,8 @@ func main() {
 	mux.HandleFunc("/api/display/direct", handleDisplayDirect)
 	mux.HandleFunc("/api/display/frame", handleDisplayFrame)
 	mux.HandleFunc("/api/display/screenshot", handleDisplayScreenshot)
+	mux.HandleFunc("/api/display/mirror", handleDisplayMirror)
+	mux.HandleFunc("/api/display/mirror/frame", handleDisplayMirrorFrame)
 	mux.HandleFunc("/api/midi/events", handleMidiEvents)
 	mux.HandleFunc("/api/midi/stream", handleMidiStream)
 	mux.HandleFunc("/api/midi/filter", handleMidiFilter)

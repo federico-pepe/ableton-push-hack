@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `GET /api/display/mirror`: a web page that shows what the Push screen shows now, with Live's own UI too. It draws single PNGs from `GET /api/display/mirror/frame` into a canvas. push-manager does no work for it while nobody watches, and it sends at most 15 pictures a second. It needs the new `push_hook.so`, which copies each outgoing frame into a new `mirror` shared-memory file. **Restart Push3 once** to load it; until then the routes return 503. The `framebuf` layout and `SHM_VERSION` are unchanged.
+
 ## [0.1.20-alpha] - 2026-10-28
 
 This release updates the PushHack Remote Script to 0.5.0: a hack can now read and set a track's input and output routing, and create a named track with its routing in one call (`track.ensure`). After the update, **restart Live** to load it.

@@ -168,6 +168,12 @@ frames from anyone but the owning app (`X-Push-Hack-App` header). Design:
 `plans/2026-10-17-push-hack-switcher.md`; behaviour: push-manager's README,
 "Push Hack Home".
 
+**Watching the screen:** `GET /api/display/mirror` (a canvas page; frames from
+`/api/display/mirror/frame`) shows what the panel really shows, Live's own UI
+included. Its source is the hook's `mirror` file: the hook is the only writer,
+push-manager maps it read-only. `/api/display/screenshot` reads `framebuf` and is
+stale in passthrough. Needs a Push3 restart to load a new `push_hook.so`.
+
 This means **display-owning hacks have a hard runtime dependency on
 push-manager + push-display also being installed and running** — declare it
 explicitly:

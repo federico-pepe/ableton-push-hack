@@ -33,8 +33,8 @@ its `start-stop-daemon` line (managed by install/uninstall). The env propagates 
 
 ## Shared memory (control surface for push-manager)
 
-Two world-writable (`0666`) files, created by the hook constructor on first load. push-manager mmaps them
-R/W. **Layouts must stay in sync between `src/push_hook.c` and `../push-manager/src/display.go`.**
+Three world-writable (`0666`) files, created by the hook constructor on first load. push-manager mmaps them
+R/W (`mirror`: read-only). **Layouts must stay in sync between `src/push_hook.c` and `../push-manager/src/display.go`.**
 
 `framebuf` — `/data/push-hack/hacks/push-display/framebuf` (655,376 bytes):
 
@@ -46,6 +46,22 @@ typedef struct __attribute__((packed)) {
     uint32_t frame_seq;      // incremented by push-manager on each frame write
     uint8_t  pixels[655360]; // raw BGR565 (960×160, stride 1024); hook applies XOR on copy
 } push_display_shm_t;        // total 655376 bytes
+```
+
+`mirror` — `/data/push-hack/hacks/push-display/mirror` (327,696 bytes). The hook copies the frame it
+sends to the screen here, after any bar or takeover change, so it holds what the panel shows in every mode.
+The hook is the only writer. push-manager maps it read-only and serves it as a live page on
+`GET /api/display/mirror`. The cost in the hook is one 320 KB `memcpy` per frame. If the file cannot be
+opened, the hook logs it once and the display path is unchanged.
+
+```c
+typedef struct __attribute__((packed)) {
+    uint32_t magic;          // 0x4D495252 ("MIRR")
+    uint32_t version;        // 1 (MIRROR_VERSION; separate from SHM_VERSION)
+    uint32_t seq;            // seqlock: odd while a frame is written, even when whole
+    uint32_t reserved;
+    uint8_t  pixels[327680]; // one frame, wire bytes (XOR still applied)
+} push_mirror_t;
 ```
 
 `midiflt` — `/data/push-hack/hacks/push-display/midiflt` (16 bytes):
