@@ -12,7 +12,7 @@
 //   D-pad center (CC91)               enter / select
 //   D-pad left (CC44)                 back
 //   Top button 1 (CC102)              Files panel
-//   Top button 2 (CC103)              Stats panel
+//   Top button 2 (CC103)              System panel
 //
 // Display layout (960×160):
 //   y=0..17    top strip  — panel tabs (18px)
@@ -41,6 +41,8 @@ import (
 	gtext "github.com/federico-pepe/ableton-push-hack/core/gfx/text"
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/widgets"
 	"github.com/federico-pepe/ableton-push-hack/core/push3"
+
+	"push-manager/rscript"
 )
 
 // ── Layout constants ──────────────────────────────────────────────────────────
@@ -162,7 +164,7 @@ var panelDefs = []struct {
 	new      func() Panel
 }{
 	{"files", "FILES", "", func() Panel { return newFilePanel() }},
-	{"stats", "STATS", "", func() Panel { return newStatsPanel() }},
+	{"stats", "SYSTEM", "", func() Panel { return newStatsPanel() }},
 	{"midi", "MIDI", "", func() Panel { return newMidiPanel() }},
 	{"browser", "BROWSER", needsPushHack, func() Panel { return newBrowserPanel() }},
 	{"plugins", "PLUGINS", needsPushHack, func() Panel { return newPluginsPanel() }},
@@ -1006,77 +1008,112 @@ func (fp *FilePanel) Render(img *image.NRGBA) {
 	}, suiContentY, suiW, fileRowH, suiContentBot)
 }
 
-// ── StatsPanel ────────────────────────────────────────────────────────────────
+// ── StatsPanel (the SYSTEM tab) ───────────────────────────────────────────────
 
-// StatsPanel shows system statistics. Stats are refreshed at most every 3s
-// (collectStats samples CPU over 250ms, so we avoid calling it every frame).
+// StatsPanel is the SYSTEM tab: the same facts as the web System page, in two
+// columns. Data refreshes in the background at most every 3s (collectStats
+// samples CPU over 250ms and the script check may wait on Live), so Render
+// never blocks the frame loop.
 type StatsPanel struct {
 	mu        sync.Mutex
 	cache     SystemStats
+	script    rscript.State
+	loaded    bool
+	busy      bool
 	lastFetch time.Time
 }
 
 func newStatsPanel() *StatsPanel              { return &StatsPanel{} }
-func (sp *StatsPanel) Label() string          { return "STATS" }
+func (sp *StatsPanel) Label() string          { return "SYSTEM" }
 func (sp *StatsPanel) HandleCC(cc, val uint8) {} // no navigation
 func (sp *StatsPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	return [8]widgets.SoftButton{}, ""
 }
-func (sp *StatsPanel) BotLEDColors() [8]uint8 { return [8]uint8{} } // no actions on Stats
+func (sp *StatsPanel) BotLEDColors() [8]uint8 { return [8]uint8{} } // no actions on System
 
-func (sp *StatsPanel) getStats() SystemStats {
+// snapshot returns the cached data and starts a refresh when it is stale.
+func (sp *StatsPanel) snapshot() (SystemStats, rscript.State, bool) {
 	sp.mu.Lock()
-	if time.Since(sp.lastFetch) < 3*time.Second {
-		s := sp.cache
-		sp.mu.Unlock()
-		return s
+	defer sp.mu.Unlock()
+	if !sp.busy && time.Since(sp.lastFetch) >= 3*time.Second {
+		sp.busy = true
+		go func() {
+			fresh := collectStats("/data")
+			scr := rscript.Read(remoteScriptsRoot, bridgeHello)
+			sp.mu.Lock()
+			sp.cache, sp.script, sp.loaded = fresh, scr, true
+			sp.lastFetch = time.Now()
+			sp.busy = false
+			sp.mu.Unlock()
+		}()
 	}
-	sp.mu.Unlock()
-	// Fetch outside lock (250ms blocking call)
-	fresh := collectStats("/data")
-	sp.mu.Lock()
-	sp.cache = fresh
-	sp.lastFetch = time.Now()
-	sp.mu.Unlock()
-	return fresh
+	return sp.cache, sp.script, sp.loaded
 }
 
-func (sp *StatsPanel) Render(img *image.NRGBA) {
-	stats := sp.getStats()
+type sysLine struct{ label, value string }
 
-	type line struct {
-		label string
-		value string
+// scriptLine says what state the PushHack Remote Script is in.
+func scriptLine(st rscript.State) string {
+	switch {
+	case st.Running && st.NeedsRestart:
+		return "v" + st.RunningVersion + " running, restart Live to update"
+	case st.Running:
+		return "v" + st.RunningVersion + " running"
+	case st.Installed:
+		return "installed, not running in Live"
 	}
-	lines := []line{
-		{"CPU", fmt.Sprintf("%.1f%%", stats.CPUPercent)},
+	return "not installed"
+}
+
+func (sp *StatsPanel) lines() (left, right []sysLine) {
+	stats, scr, loaded := sp.snapshot()
+	if !loaded {
+		return []sysLine{{"System", "reading..."}}, nil
 	}
+	left = append(left, sysLine{"CPU", fmt.Sprintf("%.1f%%", stats.CPUPercent)})
 	if stats.Memory != nil {
 		usedMB := float64(stats.Memory.Used) / 1024 / 1024
 		totalMB := float64(stats.Memory.Total) / 1024 / 1024
-		lines = append(lines, line{"RAM", fmt.Sprintf("%.0f / %.0f MB", usedMB, totalMB)})
+		left = append(left, sysLine{"Memory", fmt.Sprintf("%.0f / %.0f MB", usedMB, totalMB)})
 	}
 	if stats.Disk != nil {
 		usedGB := float64(stats.Disk.Used) / 1024 / 1024 / 1024
 		totalGB := float64(stats.Disk.Total) / 1024 / 1024 / 1024
-		lines = append(lines, line{"Disk", fmt.Sprintf("%.1f / %.1f GB", usedGB, totalGB)})
+		left = append(left, sysLine{"Storage", fmt.Sprintf("%.1f / %.1f GB", usedGB, totalGB)})
+	}
+	if stats.Battery != nil {
+		left = append(left, sysLine{"Battery", fmt.Sprintf("%d%% %s", stats.Battery.Percent, stats.Battery.Status)})
 	}
 	uptime := time.Duration(stats.UptimeSeconds * float64(time.Second))
-	h := int(uptime.Hours())
-	m := int(uptime.Minutes()) % 60
-	lines = append(lines, line{"Uptime", fmt.Sprintf("%dh %02dm", h, m)})
-	if len(stats.IPAddresses) > 0 {
-		lines = append(lines, line{"IP", stats.IPAddresses[0]})
+	left = append(left, sysLine{"Uptime", fmt.Sprintf("%dh %02dm", int(uptime.Hours()), int(uptime.Minutes())%60)})
+
+	right = append(right, sysLine{"Push Hack", "v" + buildVersion})
+	right = append(right, sysLine{"Script", scriptLine(scr)})
+	for _, ip := range stats.IPAddresses {
+		right = append(right, sysLine{"Network", ip})
 	}
 	if stats.HotspotPassword != "" {
-		lines = append(lines, line{"Hotspot", stats.HotspotPassword})
+		right = append(right, sysLine{"Hotspot PW", stats.HotspotPassword})
 	}
+	return left, right
+}
 
-	rows := make([]widgets.KVRow, len(lines))
-	for i, l := range lines {
-		rows[i] = widgets.KVRow{Label: l.label, Value: l.value, ValueCol: widgets.Default.White}
+func (sp *StatsPanel) Render(img *image.NRGBA) {
+	const rowH, labelW, colW = 16, 84, suiW / 2
+	left, right := sp.lines()
+	for ci, col := range [][]sysLine{left, right} {
+		x := ci * colW
+		y := suiContentY + 4
+		for _, l := range col {
+			if y+rowH > suiContentBot {
+				break
+			}
+			gtext.Draw(img, x+8, y+rowH-4, l.label, widgets.Default.Gray)
+			gtext.Draw(img, x+8+labelW, y+rowH-4, gtext.Truncate(l.value, (colW-labelW-16)/7), widgets.Default.White)
+			gfx.FillRect(img, x+4, y+rowH-1, colW-12, 1, widgets.Default.DarkGray)
+			y += rowH
+		}
 	}
-	widgets.DrawKVRows(img, widgets.Default, suiContentY+6, suiW, 20, 80, suiContentBot, rows)
 }
 
 // ── MidiPanel ─────────────────────────────────────────────────────────────────
