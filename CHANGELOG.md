@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Fixed
+
+- `./scripts/install.sh --dry-run` no longer stops services on the Push. The stop commands ran for real, even in a dry run (it stopped push-manager); they now print as `[dry-run]` like the other commands.
+
 ## [0.1.18-alpha] - 2026-10-28
 
 This release updates the PushHack Remote Script to 0.3.0. After the update, **restart Live** to load it. Push Manager's System page says when a restart is needed.
