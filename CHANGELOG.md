@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.19-alpha] - 2026-10-28
+
+This release updates the PushHack Remote Script to 0.4.0, which removes the old text protocol and the old arrangement socket. After the update, **restart Live** to load it. It needs Push Manager 0.1.18-alpha or later (this release has it) and, for the arrangement hack, 0.0.9-alpha or later.
+
 ### Changed
 
 - PushHack Remote Script 0.4.0 removes the old protocols: the Browser Bridge text commands on port 7704 and the old arrangement socket (`/tmp/push-hack-arrangement.sock`, TCP 7720). A client whose first byte is not `{` now gets `{"ok":false,"error":"old_protocol"}` and is closed. Push Manager, automation, the arrangement hack and the PTA module already use the JSON protocol. An older arrangement hack (before 0.0.9-alpha) or an older Push Manager (before 0.1.18-alpha) needs updating first.
