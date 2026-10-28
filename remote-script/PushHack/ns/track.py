@@ -210,16 +210,9 @@ def _find(items, name):
     return None
 
 
-def set_routing(song, msg):
-    """Set any of input_type, input_channel, output_type, output_channel, by
-    display name. The type is set before the channel, because the channels Live
-    offers depend on the type. A name Live does not offer fails with
-    `bad_routing` and the valid names in `data.options`."""
-    t = track_of(song, msg.get("track"))
-    kind = kind_of(song, t)
-    keys = [k for k in ("input_type", "input_channel", "output_type", "output_channel") if k in msg]
-    if not keys:
-        raise bad("no_changes")
+def _apply_routing(t, kind, msg):
+    """Apply the routing keys of msg to track t. Returns the names changed.
+    A channel may be a name or a list of names: the first one Live offers wins."""
     changed = []
     for side in ("input", "output"):
         wanted_type, wanted_chan = msg.get("%s_type" % side), msg.get("%s_channel" % side)
@@ -233,13 +226,75 @@ def set_routing(song, msg):
             items = _available(t, side, what + "s")
             if items is None:
                 raise bad("bad_arg")
-            pick = _find(items, wanted)
+            candidates = wanted if isinstance(wanted, list) else [wanted]
+            pick = None
+            for name in candidates:
+                pick = _find(items, name)
+                if pick is not None:
+                    break
             if pick is None:
-                raise CommandError("bad_routing", {"side": side, "what": what, "want": str(wanted),
+                raise CommandError("bad_routing", {"side": side, "what": what,
+                                                   "want": [str(c) for c in candidates],
                                                    "options": _names(items), "changed": changed})
             setattr(t, "%s_routing_%s" % (side, what), pick)
             changed.append("%s_%s" % (side, what))
+    return changed
+
+
+ROUTING_KEYS = ("input_type", "input_channel", "output_type", "output_channel")
+
+
+def set_routing(song, msg):
+    """Set any of input_type, input_channel, output_type, output_channel, by
+    display name. The type is set before the channel, because the channels Live
+    offers depend on the type. A name Live does not offer fails with
+    `bad_routing` and the valid names in `data.options`. A channel may be a list
+    of names: the first one Live offers is used."""
+    t = track_of(song, msg.get("track"))
+    if not any(k in msg for k in ROUTING_KEYS):
+        raise bad("no_changes")
+    changed = _apply_routing(t, kind_of(song, t), msg)
     return {"changed": changed, "routing": routing(song, {"track": msg.get("track")})}
+
+
+def ensure(song, msg):
+    """Find the audio or MIDI track called `name`, or create it, and set its
+    routing and monitoring. Safe to call again: a track that exists is not
+    created twice. Takes `kind` ("audio" or "midi"), `name`, any of the routing
+    keys (see set_routing) and `monitoring` (0 In, 1 Auto, 2 Off). Returns the
+    track's reference, whether it was created, and its routing.
+
+    Setting a Set's tracks from a hack changes the user's Set: call this on the
+    user's say-so, not silently on every start."""
+    kind = msg.get("kind")
+    name = msg.get("name")
+    if kind not in ("audio", "midi") or not isinstance(name, str) or not name.strip() or len(name) > 64:
+        raise bad("bad_arg")
+    tracks = list(song.tracks)
+    found = None
+    for t in tracks:
+        if safe(lambda: t.name) == name and not safe(lambda: t.is_foldable, False):
+            found = t
+            break
+    created = False
+    if found is None:
+        (song.create_audio_track if kind == "audio" else song.create_midi_track)(-1)
+        found = list(song.tracks)[-1]
+        found.name = name
+        created = True
+    elif kind == "audio" and safe(lambda: found.has_midi_input, False) or \
+            kind == "midi" and not safe(lambda: found.has_midi_input, False):
+        raise bad("wrong_track_kind")   # a track of that name exists, but it is the other kind
+    ref = ref_of(song, found)
+    changed = _apply_routing(found, kind_of(song, found), msg)
+    if "monitoring" in msg:
+        v = to_int(msg["monitoring"])
+        if v not in (0, 1, 2):
+            raise bad("bad_arg")
+        found.current_monitoring_state = v
+        changed.append("monitoring")
+    return {"track": ref, "created": created, "changed": changed,
+            "routing": routing(song, {"track": ref})}
 
 
 def select(song, msg):
@@ -284,6 +339,7 @@ def register(reg):
     reg.command("track", "set", set_)
     reg.command("track", "routing", routing)
     reg.command("track", "set_routing", set_routing)
+    reg.command("track", "ensure", ensure)
     reg.command("track", "select", select)
     reg.command("track", "stop", stop)
     reg.command("track", "create", create)
