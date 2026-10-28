@@ -161,6 +161,16 @@ this Live has a property before you rely on it.
 
 A tick is about 100 ms (Live calls the script about 10 times a second).
 
+## Example: Braids
+
+[push-hack-braids](https://github.com/federico-pepe/push-hack-braids) uses the script in three ways. Its web page
+has a button that calls `track.ensure` twice: once for an audio track named "Braids" (`input_type` `Ext. In`, the
+`input_channel` the virtual card uses, `output_type` `Main`, `monitoring` 0) and once for a MIDI track named "Braids
+MIDI" (`output_type` `Braids MIDI In`, a port the hack itself opens). If Live offers exactly one stereo pair on
+`Ext. In`, it takes that pair and sets its own channel offset to match. It subscribes to `tracks` and `meters` and
+shows the meter of the "Braids" track as its Volume fader. The one thing the script cannot do for it is enable the
+Push Hack Virtual Audio card in Push's audio preferences.
+
 ## What was checked on a Push
 
 Script 0.3.0, Live 12.4.15b7. All reads, and these writes on a test Set: track name, volume and
