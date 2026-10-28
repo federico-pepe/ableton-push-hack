@@ -60,6 +60,10 @@ display exclusively through `core/pmclient`'s HTTP calls. Don't mmap the
 framebuf from a second process; that single-writer discipline is what keeps
 the shm protocol from racing.
 
+`core/display.Mirror` is the read side of the hook's separate `mirror` file (the
+frame really sent to the screen): `PROT_READ`, never created here, seqlock `Read`.
+Only push-manager uses it, to serve `GET /api/display/mirror`.
+
 ## Testing
 
 ```bash
