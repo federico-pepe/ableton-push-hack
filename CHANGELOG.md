@@ -7,6 +7,11 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- The startup splash now shows a starfield flying past "Push Hack loaded...", with the Push Hack version in small text at the bottom. The text stays the same as before.
+- Opening and closing the Shadow UI (the MIDI intercept chord and Shift + Set) no longer shows the "PUSH HACK" on-screen message first. The Shadow UI opens and closes at once.
+
 ## [0.1.19-alpha] - 2026-10-28
 
 This release updates the PushHack Remote Script to 0.4.0, which removes the old text protocol and the old arrangement socket. After the update, **restart Live** to load it. It needs Push Manager 0.1.18-alpha or later (this release has it) and, for the arrangement hack, 0.0.9-alpha or later.

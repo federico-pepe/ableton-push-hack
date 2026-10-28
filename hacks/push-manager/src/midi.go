@@ -1216,42 +1216,10 @@ func initMidiChords() {
 					Decoded: decoded,
 				})
 				if newState {
-					// Intercept ON: clear LEDs immediately, show OSD for 2s,
-					// then start shadow UI via OnComplete — avoids framebuf race.
 					go clearAllLEDs(CCSettings)
-					sent := false
-					select {
-					case osdCh <- OSDRequest{
-						Lines: []OSDLine{
-							{Text: "PUSH HACK", Scale: 3},
-							{Text: "Shadow UI ON", Scale: 1},
-							{Text: "MIDI INTERCEPT ON", Scale: 1},
-						},
-						Duration:   750 * time.Millisecond,
-						OnComplete: shadowUIStart,
-					}:
-						sent = true
-					default:
-						log.Printf("osd: channel full, dropping intercept-ON OSD")
-					}
-					if !sent {
-						shadowUIStart()
-					}
+					shadowUIStart()
 				} else {
-					// Intercept OFF: stop shadow UI, then show brief OSD.
 					shadowUIStop()
-					select {
-					case osdCh <- OSDRequest{
-						Lines: []OSDLine{
-							{Text: "PUSH HACK", Scale: 3},
-							{Text: "Shadow UI OFF", Scale: 1},
-							{Text: "MIDI INTERCEPT OFF", Scale: 1},
-						},
-						Duration: 750 * time.Millisecond,
-					}:
-					default:
-						log.Printf("osd: channel full, dropping OSD request")
-					}
 				}
 			},
 		},
@@ -1269,45 +1237,15 @@ func initMidiChords() {
 					}
 					log.Printf("midi chord: browser_open → intercept off")
 					shadowUIStop()
-					select {
-					case osdCh <- OSDRequest{
-						Lines: []OSDLine{
-							{Text: "PUSH HACK", Scale: 3},
-							{Text: "Shadow UI OFF", Scale: 1},
-							{Text: "MIDI INTERCEPT OFF", Scale: 1},
-						},
-						Duration: 750 * time.Millisecond,
-					}:
-					default:
-						log.Printf("osd: channel full, dropping OSD request")
-					}
 					return
 				}
-				// Turn intercept ON, clear LEDs, show OSD, then start the shadow
-				// UI on the Browse tab via OnComplete (avoids the framebuf race).
 				if data != nil {
 					data[4] = 1
 				}
 				log.Printf("midi chord: browser_open → intercept on, Browse tab")
 				go clearAllLEDs(CCSettings)
-				openBrowse := func() {
-					shadowUIStart()
-					shadowUISwitchToBrowse()
-				}
-				select {
-				case osdCh <- OSDRequest{
-					Lines: []OSDLine{
-						{Text: "PUSH HACK", Scale: 3},
-						{Text: "Browser", Scale: 1},
-						{Text: "Shift + Set", Scale: 1},
-					},
-					Duration:   750 * time.Millisecond,
-					OnComplete: openBrowse,
-				}:
-				default:
-					log.Printf("osd: channel full, opening Browse without OSD")
-					openBrowse()
-				}
+				shadowUIStart()
+				shadowUISwitchToBrowse()
 			},
 		},
 	}
