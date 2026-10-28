@@ -51,9 +51,9 @@ interval, and the script waits longer after a slow build, so a big Set costs Liv
 
 ### Old clients
 
-For now the script still answers the old Browser Bridge text commands on port 7704 (`ping`, `play`,
-`get_tempo`, `load:...` and so on), and the old arrangement stream on
-`/tmp/push-hack-arrangement.sock`. New code should use JSON.
+The old Browser Bridge text commands (`ping`, `get_tempo`, `load:...`) and the old arrangement socket
+`/tmp/push-hack-arrangement.sock` were removed in script 0.4.0. A client whose first byte is not `{` gets one
+line, `{"ok":false,"error":"old_protocol"}`, and the script closes the connection. Use the JSON protocol.
 
 ## References
 
@@ -69,7 +69,7 @@ Volume is the raw mixer value, 0 to 1 (0.85 is 0 dB). Pan is -1 to 1. Parameter 
 
 ## Error codes
 
-`bad_json`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
+`bad_json`, `old_protocol`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
 Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`, `bad_param`,
 `param_disabled`, `bad_pad`, `bad_view`, `no_clip`, `slot_taken`, `too_big`, `cannot_arm`,
 `wrong_clip_kind`, `not_looping`, `not_a_drum_rack`, `not_a_simpler`, `not_sliced`, `not_found`, `not_loadable`,

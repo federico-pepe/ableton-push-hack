@@ -64,25 +64,16 @@ class TcpServerTest(unittest.TestCase):
         ev = pump(self.srv)
         self.assertEqual(ev[0][2], b'{"c":3}')
 
-    def test_legacy_without_newline_replies_then_closes(self):
+    def test_old_text_client_gets_an_error_and_is_closed(self):
         c = self.connect()
-        c.sendall(b"get_tempo")
-        (client, kind, data), = pump(self.srv)
-        self.assertEqual((kind, data), ("legacy", b"get_tempo"))
-        self.srv.send(client, "120.0000")
-        self.srv.close_after_flush(client)
-        self.srv.flush()
-        self.assertEqual(read_all(c), b"120.0000\n")
+        c.sendall(b"get_tempo")      # the old Browser Bridge, no newline
+        for _ in range(100):           # accept, read, answer and hang up
+            self.assertEqual(self.srv.poll(), [])   # never reaches the hub
+            self.srv.flush()
+            time.sleep(0.005)
         self.assertEqual(self.srv.clients, [])
         self.assertEqual(len(self.drops), 1)
-
-    def test_legacy_extra_data_ignored(self):
-        c = self.connect()
-        c.sendall(b"ping")
-        pump(self.srv)
-        c.sendall(b"play")
-        time.sleep(0.05)
-        self.assertEqual(self.srv.poll(), [])
+        self.assertEqual(read_all(c), b'{"ok":false,"error":"old_protocol"}\n')
 
     def test_disconnect_drops_client(self):
         c = self.connect()
@@ -128,26 +119,6 @@ class TcpServerTest(unittest.TestCase):
         b.sendall(b'{"b":1}\n')
         ev = pump(self.srv, 2)
         self.assertEqual(sorted(d for _, _, d in ev), [b'{"a":1}', b'{"b":1}'])
-
-
-class TaggedListenerTest(unittest.TestCase):
-    def test_tagged_listener_clients_are_json_from_the_start(self):
-        ls = server.open_tcp("127.0.0.1", 0)
-        accepted = []
-        srv = server.Server([(ls, "arrangement")], on_accept=accepted.append)
-        c = socket.create_connection(ls.getsockname())
-        self.addCleanup(c.close)
-        end = time.time() + 2
-        while not accepted and time.time() < end:
-            srv.poll()
-            time.sleep(0.005)
-        self.assertEqual(accepted[0].tag, "arrangement")
-        self.assertEqual(accepted[0].mode, "json")
-        c.sendall(b"get_tempo")      # would be legacy on an untagged listener
-        c.sendall(b"\n")
-        ev = pump(srv)
-        self.assertEqual(ev[0][1], "line")
-        srv.close()
 
 
 @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "no unix sockets")

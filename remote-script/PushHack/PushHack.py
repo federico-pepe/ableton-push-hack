@@ -61,9 +61,9 @@ class PushHack(ControlSurface):
         if cls._started:
             return
         listeners = []
-        for name, make, tag in cls._listener_makers():
+        for name, make in cls._listener_makers():
             try:
-                listeners.append((make(), tag))
+                listeners.append(make())
                 cls._active_log("PushHack: listening on %s" % name)
             except Exception as e:
                 # Port or path taken (an old script still enabled?). Run on.
@@ -73,21 +73,15 @@ class PushHack(ControlSurface):
                        close=lambda c: cls._server.close_after_flush(c),
                        log=cls._active_log)
         cls._server = srv.Server(listeners, log=cls._active_log,
-                                 on_drop=cls._hub.drop_client,
-                                 on_accept=cls._hub.on_connect)
+                                 on_drop=cls._hub.drop_client)
 
     @staticmethod
     def _listener_makers():
-        # (name, open, tag). The tag "arrangement" marks the old PushHackArrangement
-        # endpoint: same socket path (TCP 7720 on Windows), old protocol.
-        makers = [("tcp %s:%d" % (srv.TCP_HOST, srv.TCP_PORT), srv.open_tcp, None)]
+        # (name, open). TCP on every system; a Unix socket where Python has one
+        # (not Live's Python on Windows).
+        makers = [("tcp %s:%d" % (srv.TCP_HOST, srv.TCP_PORT), srv.open_tcp)]
         if hasattr(__import__("socket"), "AF_UNIX"):
-            makers.append(("unix %s" % srv.UNIX_PATH, srv.open_unix, None))
-            makers.append(("unix %s" % srv.ARRANGEMENT_UNIX_PATH,
-                           lambda: srv.open_unix(srv.ARRANGEMENT_UNIX_PATH), "arrangement"))
-        else:
-            makers.append(("tcp %s:%d" % (srv.TCP_HOST, srv.ARRANGEMENT_TCP_PORT),
-                           lambda: srv.open_tcp(srv.TCP_HOST, srv.ARRANGEMENT_TCP_PORT), "arrangement"))
+            makers.append(("unix %s" % srv.UNIX_PATH, srv.open_unix))
         return makers
 
     # ---- Live tick ----
@@ -96,11 +90,8 @@ class PushHack(ControlSurface):
         if PushHack._active is not self or PushHack._server is None:
             return
         try:
-            for client, kind, data in PushHack._server.poll():
-                if kind == "legacy":
-                    PushHack._hub.on_legacy(client, data.decode("utf-8", "replace"))
-                else:
-                    PushHack._hub.on_line(client, data)
+            for client, _, data in PushHack._server.poll():
+                PushHack._hub.on_line(client, data)
             PushHack._hub.tick()
             PushHack._server.flush()
         except Exception as e:

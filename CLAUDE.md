@@ -218,8 +218,9 @@ One Live Remote Script serves every hack (`remote-script/PushHack/`; reference:
 - A release carries the script in its manifest (`releasemeta.json`
   `include_remote_script`, default true). A device on 0.1.15-alpha cannot update to a
   release that carries it; it needs `install.sh` once.
-- The old text commands (`legacy.py`) and the old arrangement socket stay for older
-  hacks. Remove them once nothing uses them.
+- There is one protocol: JSON lines. The old text commands and the old arrangement
+  socket were removed in script 0.4.0 (a text client gets `old_protocol`). Do not add
+  them back.
 - Tracks are never deleted by the script. Hardware settings (brightness, pad curves)
   are out of scope.
 

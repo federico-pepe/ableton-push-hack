@@ -4,11 +4,10 @@
 
 import time
 
-from . import legacy, protocol
+from . import protocol
 from .errors import CommandError
 from .registry import Registry
 from . import ns as namespaces
-from .ns import arrangement
 
 
 class Hub(object):
@@ -23,29 +22,9 @@ class Hub(object):
         self.registry.log = self._log
         namespaces.register_all(self.registry)
         self._subs = {}    # client -> {topic: last sent data (None = not sent yet)}
-        self._compat = {}  # old arrangement clients -> {"snapshot": last, "pos": last}
-        self._compat_in = []
 
     # ---- input ----
-    def on_legacy(self, client, text):
-        """One bare text command (old Browser Bridge client)."""
-        reply = legacy.handle(self.registry, self._get_song(), text, self._log)
-        self._send(client, reply)
-        if self._close:
-            self._close(client)
-
-    def on_connect(self, client):
-        if getattr(client, "tag", None) == "arrangement":
-            # Old arrangement protocol: streams to every client, asks for nothing.
-            self._compat[client] = {"snapshot": None, "pos": None}
-            self.registry.arrangement.invalidate()
-
     def on_line(self, client, line):
-        if client in self._compat:
-            msg = protocol.decode(line)
-            if msg is not None:
-                self._compat_in.append(msg)
-            return
         msg = protocol.decode(line)
         if msg is None:
             self._send(client, protocol.err(None, "bad_json"))
@@ -101,14 +80,13 @@ class Hub(object):
 
     # ---- output ----
     def tick(self):
-        """Run tick hooks, serve old arrangement clients, push changed topics."""
+        """Run tick hooks and push changed topics."""
         song = self._get_song()
         for fn in self.registry.tick_fns():
             try:
                 fn(song)
             except Exception as e:
                 self._log("PushHack: tick hook failed: %r" % (e,))
-        self._tick_compat(song)
         if not self._subs:
             return
         current = {}
@@ -143,34 +121,5 @@ class Hub(object):
         st[1] = st[0] + max(self.registry.topic_every(t), int(took * self.BUDGET_TICKS_PER_SEC))
         return st[2]
 
-    def _tick_compat(self, song):
-        msgs, self._compat_in = self._compat_in, []
-        if msgs:
-            try:
-                arrangement.apply_compat(song, msgs)
-            except Exception as e:
-                self._log("PushHack: arrangement command failed: %r" % (e,))
-        if not self._compat:
-            return
-        feed = self.registry.arrangement
-        try:
-            snap = feed.snapshot(song)
-            pos = feed.position(song)
-        except Exception as e:
-            self._log("PushHack: arrangement update failed: %r" % (e,))
-            return
-        for client, last in self._compat.items():
-            if snap != last["snapshot"]:
-                last["snapshot"] = snap
-                d = dict(snap)
-                d["t"] = "snapshot"
-                self._send(client, protocol.encode(d))
-            if pos != last["pos"]:
-                last["pos"] = pos
-                d = dict(pos)
-                d["t"] = "pos"
-                self._send(client, protocol.encode(d))
-
     def drop_client(self, client):
         self._subs.pop(client, None)
-        self._compat.pop(client, None)

@@ -117,8 +117,7 @@ For the shared-memory layout and display geometry, see
 
 PushHack (the shared MIDI Remote Script, `remote-script/PushHack/`) gives every
 hack one way into Live: JSON lines over `127.0.0.1:7704` and `/tmp/push-hack.sock`.
-It replaces `PushHackBrowser` and `PushHackArrangement`, and still answers their
-old protocols for now. Protocol, namespaces and topics: [pushhack-remote-script.md](pushhack-remote-script.md). Design and decisions:
+It replaces `PushHackBrowser` and `PushHackArrangement`; their old protocols were removed in script 0.4.0. Protocol, namespaces and topics: [pushhack-remote-script.md](pushhack-remote-script.md). Design and decisions:
 [plans/2026-10-27-pushhack-shared-remote-script.md](../plans/2026-10-27-pushhack-shared-remote-script.md).
 `install.sh` and the Push Hack update put it in Live's User Library; the user
 selects it once in a control-surface slot. The old Browser Bridge hack

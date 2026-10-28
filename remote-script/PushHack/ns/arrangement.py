@@ -7,8 +7,6 @@
 # which is cheap and sent when it changes, so a loop toggle or a knob turn
 # shows up almost at once.
 
-from . import transport
-
 SNAPSHOT_EVERY_TICKS = 10         # update_display runs ~10x/s -> ~1 build/s
 BUILD_BUDGET_TICKS_PER_SEC = 200  # wait (build seconds x 200) ticks: <= ~5% of the time
 
@@ -86,9 +84,6 @@ class Feed(object):
         self._next = 0
         self._cache = None
 
-    def invalidate(self):
-        self._next = 0
-
     def snapshot(self, song):
         self._tick += 1
         if self._cache is None or self._tick >= self._next:
@@ -129,38 +124,11 @@ def _toggle(attr):
     return fn
 
 
-# Old arrangement protocol: {"t": kind, ...}. Only the last of these matters
-# when several arrive in one tick (jog wheel, loop knobs).
-COALESCED = ("set_time", "set_loop")
-
-COMPAT = {
-    "set_time": transport._set_time,
-    "play_toggle": transport._play_toggle,
-    "set_loop": transport._set_loop,
-    "bta": _bta,
-    "loop_toggle": _toggle("loop"),
-    "punch_in_toggle": _toggle("punch_in"),
-    "punch_out_toggle": _toggle("punch_out"),
-}
-
-
-def apply_compat(song, msgs):
-    """Apply old-protocol messages: coalesced kinds only once, last one wins."""
-    latest = {}
-    rest = []
-    for m in msgs:
-        kind = m.get("t")
-        if kind in COALESCED:
-            latest[kind] = m
-        else:
-            rest.append(m)
-    n = 0
-    for m in rest + list(latest.values()):
-        fn = COMPAT.get(m.get("t"))
-        if fn is not None:
-            fn(song, m)
-            n += 1
-    return n
+# The arrangement hack's commands that are not in transport: Back to
+# Arrangement and the loop/punch toggles.
+def _toggles():
+    return {"loop_toggle": _toggle("loop"), "punch_in_toggle": _toggle("punch_in"),
+            "punch_out_toggle": _toggle("punch_out")}
 
 
 def register(reg):
@@ -168,9 +136,7 @@ def register(reg):
     reg.command("arrangement", "snapshot", lambda song, msg: build_snapshot(song))
     reg.command("arrangement", "position", lambda song, msg: feed.position(song))
     reg.command("arrangement", "bta", _bta)
-    reg.command("arrangement", "loop_toggle", COMPAT["loop_toggle"])
-    reg.command("arrangement", "punch_in_toggle", COMPAT["punch_in_toggle"])
-    reg.command("arrangement", "punch_out_toggle", COMPAT["punch_out_toggle"])
+    for name, fn in _toggles().items():
+        reg.command("arrangement", name, fn)
     reg.topic("arrangement", feed.snapshot)
     reg.topic("position", feed.position)
-    reg.arrangement = feed

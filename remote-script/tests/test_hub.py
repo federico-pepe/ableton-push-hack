@@ -160,53 +160,5 @@ class SubscribeTest(HubCase):
         self.assertEqual(len(self.events()), 1)
 
 
-class LegacyTest(HubCase):
-    def legacy(self, text):
-        self.sent = []
-        self.hub.on_legacy("L", text)
-        return self.sent[0][1]
-
-    def test_queries(self):
-        self.assertEqual(self.legacy("get_tempo"), "120.0000")
-        self.assertEqual(self.legacy("get_beat"), "0.000000")
-        self.assertEqual(self.legacy("get_playing"), "0")
-        self.song.is_playing = True
-        self.assertEqual(self.legacy("get_playing"), "1")
-
-    def test_ping_and_empty(self):
-        self.assertEqual(self.legacy("ping"), "OK")
-        self.assertEqual(self.legacy(""), "OK")
-
-    def test_play_stop(self):
-        self.assertEqual(self.legacy("play"), "OK")
-        self.assertTrue(self.song.is_playing)
-        self.legacy("stop")
-        self.assertFalse(self.song.is_playing)
-
-    def test_unknown_command_errors_and_logs(self):
-        self.assertEqual(self.legacy("frobnicate"), "ERROR")
-        self.assertTrue(self.logs)
-
-    def test_get_scale_json(self):
-        self.song.root_note = 2
-        self.song.scale_name = "Minor"
-        self.song.scale_intervals = [0, 2, 3, 5, 7, 8, 10]
-        self.assertEqual(json.loads(self.legacy("get_scale")),
-                         {"supported": True, "root": 2, "name": "Minor",
-                          "intervals": [0, 2, 3, 5, 7, 8, 10], "mode": True})
-
-    def test_get_scale_unsupported(self):
-        self.assertEqual(json.loads(self.legacy("get_scale")), {"supported": False})
-
-    def test_load_failure_still_answers_ok_and_logs(self):
-        # no Live here: the real browser import fails, as a missing item would
-        self.assertEqual(self.legacy("load:Bass.adv"), "OK")
-        self.assertTrue(self.logs)
-
-    def test_closes_after_reply(self):
-        self.legacy("ping")
-        self.assertEqual(self.closed, ["L"])
-
-
 if __name__ == "__main__":
     unittest.main()

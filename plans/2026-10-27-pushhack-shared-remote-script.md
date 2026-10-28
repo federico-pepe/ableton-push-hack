@@ -213,3 +213,7 @@ push-manager's `live_bridge.go` now uses `bridgeCall(ns, cmd, args)`: one JSON r
 ## 15. Phase 4 built (2026-10-27)
 
 Script 0.3.0 adds `track`, `session`, `device`, `clip`, `modes`, `meters`, `debug`, and extends `notes` and `transport`. 113 off-device tests. Checked on a Push (Live 12.4.15b7): the reads of every namespace, and writes on a test Set (track name, volume and pan; a device loaded, a parameter set and put back; a clip created, notes added, quantized and removed; a clip fired; the metronome; view focus). Later the same day, also checked on a device: all five audio-to-MIDI conversions (`harmony`, `melody`, `drums`, `simpler`, `drum_rack`), rack chains and paths on a drum kit (16 pads), `pad_to_track`, and Simpler slices with `set_simpler` and `slices_to_drum_rack` (which needs slicing mode: `not_sliced` otherwise). Found and fixed: `filled` for drum pads, the `not_sliced` code, `set_simpler`. `docs/pushhack-remote-script.md` is the reference for hack authors.
+
+## 16. The old protocols are gone (2026-10-28)
+
+Script 0.4.0 removes `legacy.py`, the tagged listener for the old arrangement socket, and the compat stream in the hub (`apply_compat`, `Feed.invalidate`). A first byte other than `{` gets `old_protocol` and the connection is closed, so an old client fails at once. Checked first: nothing in the Push repos still used the text commands or the old socket (automation and PTA use port 7704 with JSON). 97 tests (the legacy and compat ones are gone).
