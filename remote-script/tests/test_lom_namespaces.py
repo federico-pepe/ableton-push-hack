@@ -86,6 +86,89 @@ class TrackTest(Base):
         self.assertEqual(d["tracks"], 4)
         self.fails("track", "create", "bad_arg", kind="video")
 
+    def test_routing_lists_current_and_available_by_name(self):
+        d = self.ok("track", "routing", track=2)           # the audio track
+        self.assertEqual(d["input"]["type"], "Ext. In")
+        self.assertEqual(d["input"]["channel"], "1")
+        self.assertEqual(d["input"]["channels"], ["1", "2", "1/2", "3/4"])
+        self.assertEqual(d["output"]["types"], ["Main", "Ext. Out", "Sends Only"])
+        self.assertEqual(set(self.ok("track", "routing", track="master")), {"output"})
+        self.assertEqual(set(self.ok("track", "routing", track="return:0")), {"output"})
+
+    def test_set_routing_type_then_channel(self):
+        d = self.ok("track", "set_routing", track=2, input_type="Ext. In", input_channel="1/2",
+                    output_type="Ext. Out", output_channel="3/4")
+        self.assertEqual(d["changed"], ["input_type", "input_channel", "output_type", "output_channel"])
+        t = self.song.tracks[2]
+        self.assertEqual((t.input_routing_type.display_name, t.input_routing_channel.display_name), ("Ext. In", "1/2"))
+        self.assertEqual((t.output_routing_type.display_name, t.output_routing_channel.display_name), ("Ext. Out", "3/4"))
+        self.assertEqual(d["routing"]["output"]["channel"], "3/4")
+
+    def test_channels_follow_the_type(self):
+        # "1/2" is only offered under Ext. In: ask for both in one call.
+        self.ok("track", "set_routing", track=2, input_type="Resampling")
+        self.assertEqual(self.ok("track", "routing", track=2)["input"]["channels"], [])
+        self.ok("track", "set_routing", track=2, input_type="Ext. In", input_channel="3/4")
+        self.assertEqual(self.song.tracks[2].input_routing_channel.display_name, "3/4")
+
+    def test_names_match_ignoring_case_but_must_exist(self):
+        self.ok("track", "set_routing", track=2, output_type="ext. out")
+        self.assertEqual(self.song.tracks[2].output_routing_type.display_name, "Ext. Out")
+        r = self.call("track", "set_routing", track=2, input_type="Nope")
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["error"], "bad_routing")
+        self.assertEqual(r["data"]["side"], "input")
+        self.assertIn("Ext. In", r["data"]["options"])
+
+    def test_a_bad_channel_reports_what_was_already_changed(self):
+        r = self.call("track", "set_routing", track=2, input_type="Resampling", input_channel="1/2")
+        self.assertEqual(r["error"], "bad_routing")
+        self.assertEqual(r["data"]["changed"], ["input_type"])
+        self.assertEqual(r["data"]["options"], [])
+        self.assertEqual(self.song.tracks[2].input_routing_type.display_name, "Resampling")
+
+    def test_set_routing_refusals(self):
+        self.fails("track", "set_routing", "no_changes", track=2)
+        self.fails("track", "set_routing", "bad_arg", track="master", input_type="Ext. In")
+        self.fails("track", "set_routing", "bad_arg", track="return:0", input_channel="1")
+        self.fails("track", "set_routing", "bad_track", track=9, input_type="Ext. In")
+        self.ok("track", "set_routing", track="master", output_type="Ext. Out")
+
+    def test_ensure_creates_once_and_sets_routing_and_monitoring(self):
+        d = self.ok("track", "ensure", kind="audio", name="Braids", input_type="Ext. In",
+                    input_channel=["9/10", "3/4"], output_type="Main", monitoring=0)
+        self.assertTrue(d["created"])
+        t = self.song.tracks[d["track"]]
+        self.assertEqual(t.name, "Braids")
+        self.assertEqual((t.input_routing_type.display_name, t.input_routing_channel.display_name), ("Ext. In", "3/4"))
+        self.assertEqual(t.current_monitoring_state, 0)
+        self.assertEqual(d["changed"], ["input_type", "input_channel", "output_type", "monitoring"])
+        n = len(self.song.tracks)
+        d2 = self.ok("track", "ensure", kind="audio", name="Braids", input_type="Ext. In", input_channel="1/2")
+        self.assertFalse(d2["created"])
+        self.assertEqual(d2["track"], d["track"])
+        self.assertEqual(len(self.song.tracks), n)                     # no second track
+        self.assertEqual(self.song.tracks[d["track"]].input_routing_channel.display_name, "1/2")
+
+    def test_ensure_midi_track_and_refusals(self):
+        d = self.ok("track", "ensure", kind="midi", name="Synth in", output_type="Ext. Out")
+        self.assertTrue(d["created"])
+        self.assertEqual(self.song.tracks[d["track"]].output_routing_type.display_name, "Ext. Out")
+        self.fails("track", "ensure", "wrong_track_kind", kind="audio", name="Synth in")
+        self.fails("track", "ensure", "bad_arg", kind="video", name="x")
+        self.fails("track", "ensure", "bad_arg", kind="audio", name="")
+        self.fails("track", "ensure", "bad_arg", kind="audio", name="x" * 65)
+        self.fails("track", "ensure", "bad_arg", kind="audio")
+        r = self.call("track", "ensure", kind="audio", name="Bad", input_type="Nope")
+        self.assertEqual(r["error"], "bad_routing")
+        self.fails("track", "ensure", "bad_arg", kind="audio", name="Mon", monitoring=7)
+
+    def test_a_channel_list_with_no_match_reports_every_candidate(self):
+        r = self.call("track", "set_routing", track=2, input_type="Ext. In", input_channel=["7/8", "9/10"])
+        self.assertEqual(r["error"], "bad_routing")
+        self.assertEqual(r["data"]["want"], ["7/8", "9/10"])
+        self.assertIn("1/2", r["data"]["options"])
+
     def test_meters_topic_and_get(self):
         self.song.tracks[0].output_meter_left = 0.456
         d = self.ok("meters", "get")

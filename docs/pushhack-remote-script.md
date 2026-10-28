@@ -69,7 +69,9 @@ Volume is the raw mixer value, 0 to 1 (0.85 is 0 dB). Pan is -1 to 1. Parameter 
 
 ## Error codes
 
-`bad_json`, `old_protocol`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
+An error reply may carry `data` with detail (for example the valid names for `bad_routing`).
+
+`bad_json`, `old_protocol`, `bad_routing`, `wrong_track_kind`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
 Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`, `bad_param`,
 `param_disabled`, `bad_pad`, `bad_view`, `no_clip`, `slot_taken`, `too_big`, `cannot_arm`,
 `wrong_clip_kind`, `not_looping`, `not_a_drum_rack`, `not_a_simpler`, `not_sliced`, `not_found`, `not_loadable`,
@@ -87,7 +89,11 @@ Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`
 ### track
 `list` (tracks, returns, master, selected), `get {track}`, `set {track, name, color, mute, solo, arm,
 volume, pan, send: {index, value}, monitoring, fold}`, `select {track}`, `stop {track}`,
-`create {kind: "midi"|"audio"|"return"}`.
+`create {kind: "midi"|"audio"|"return"}`, `routing {track}` (the current input and output type and channel, and the names Live offers), `set_routing {track, input_type, input_channel, output_type, output_channel}`.
+
+Routing is set by display name ("Ext. In", "1/2", "Main"; case does not matter). The type is set before the channel, because the channels Live offers depend on the type. A name Live does not offer fails with `bad_routing`, and `data` has `side`, `what`, `want`, `options` (the valid names) and `changed` (what was already set). Master and return tracks have output only. A channel may be a list of names: the first one Live offers is used (for a hack that does not know which pair the user enabled).
+
+`ensure {kind: "audio"|"midi", name, <routing keys>, monitoring}` finds the track called `name`, or creates it, and sets its routing and monitoring (monitoring: 0 In, 1 Auto, 2 Off). It returns `{track, created, changed, routing}`. Calling it again does not create a second track. If a track of that name exists but is the other kind, it fails with `wrong_track_kind`. If the routing fails after the track was created, the new track stays and the next call finds it. This changes the user's Set: call it because the user asked for it, not silently on every start.
 
 ### session
 `get {track_offset, track_count, scene_offset, scene_count}`: a window of the clip grid. A slot is
@@ -154,6 +160,16 @@ this Live has a property before you rely on it.
 | `meters` | the `meters.get` data | every tick |
 
 A tick is about 100 ms (Live calls the script about 10 times a second).
+
+## Example: Braids
+
+[push-hack-braids](https://github.com/federico-pepe/push-hack-braids) uses the script in three ways. Its web page
+has a button that calls `track.ensure` twice: once for an audio track named "Braids" (`input_type` `Ext. In`, the
+`input_channel` the virtual card uses, `output_type` `Main`, `monitoring` 0) and once for a MIDI track named "Braids
+MIDI" (`output_type` `Braids MIDI In`, a port the hack itself opens). If Live offers exactly one stereo pair on
+`Ext. In`, it takes that pair and sets its own channel offset to match. It subscribes to `tracks` and `meters` and
+shows the meter of the "Braids" track as its Volume fader. The one thing the script cannot do for it is enable the
+Push Hack Virtual Audio card in Push's audio preferences.
 
 ## What was checked on a Push
 

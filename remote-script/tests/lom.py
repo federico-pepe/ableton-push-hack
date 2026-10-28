@@ -119,6 +119,50 @@ class Pad(object):
         self.note, self.name, self.mute, self.solo, self.chains = note, name, False, False, [object()]
 
 
+class Name(object):
+    def __init__(self, display_name):
+        self.display_name = display_name
+
+
+class Routing(object):
+    """Routing as Live has it: the channels offered depend on the type."""
+
+    def __init__(self, options):
+        self._options = options                # {type name: [channel names]}
+        self._type = Name(next(iter(options)))
+        self._chan = Name(options[self._type.display_name][0]) if options[self._type.display_name] else Name("")
+
+    @property
+    def types(self):
+        return [Name(n) for n in self._options]
+
+    @property
+    def channels(self):
+        return [Name(n) for n in self._options[self._type.display_name]]
+
+    def set_type(self, rt):
+        assert rt.display_name in self._options
+        self._type = Name(rt.display_name)
+        ch = self._options[rt.display_name]
+        self._chan = Name(ch[0] if ch else "")
+
+    def set_channel(self, rc):
+        assert rc.display_name in self._options[self._type.display_name]
+        self._chan = Name(rc.display_name)
+
+
+def audio_in():
+    return {"Ext. In": ["1", "2", "1/2", "3/4"], "Resampling": [], "No Input": []}
+
+
+def midi_in():
+    return {"All Ins": ["All Channels", "Ch. 1"], "Computer Keyboard": ["All Channels"], "No Input": []}
+
+
+def outs():
+    return {"Main": ["Track In"], "Ext. Out": ["1/2", "3/4"], "Sends Only": []}
+
+
 class Track(object):
     def __init__(self, name, midi=True, slots=4):
         self.name, self.color = name, 0xFF0000
@@ -136,17 +180,22 @@ class Track(object):
         self.devices = []
         self.playing_slot_index = self.fired_slot_index = -1
         self.output_meter_left = self.output_meter_right = 0.0
-        self.input_routing_type = type("R", (), {"display_name": "All Ins"})()
-        self.input_routing_channel = type("R", (), {"display_name": "All"})()
-        self.output_routing_type = type("R", (), {"display_name": "Master"})()
-        self.output_routing_channel = type("R", (), {"display_name": "Track In"})()
-        self.available_input_routing_types = [self.input_routing_type]
-        self.available_output_routing_types = [self.output_routing_type]
+        self._in = Routing(midi_in() if midi else audio_in())
+        self._out = Routing(outs())
         self.view = type("V", (), {"selected_device": None})()
         self.calls = []
 
     def stop_all_clips(self): self.calls.append("stop_all_clips")
     def delete_device(self, i): del self.devices[i]
+
+    available_input_routing_types = property(lambda self: self._in.types)
+    available_input_routing_channels = property(lambda self: self._in.channels)
+    input_routing_type = property(lambda self: self._in._type, lambda self, v: self._in.set_type(v))
+    input_routing_channel = property(lambda self: self._in._chan, lambda self, v: self._in.set_channel(v))
+    available_output_routing_types = property(lambda self: self._out.types)
+    available_output_routing_channels = property(lambda self: self._out.channels)
+    output_routing_type = property(lambda self: self._out._type, lambda self, v: self._out.set_type(v))
+    output_routing_channel = property(lambda self: self._out._chan, lambda self, v: self._out.set_channel(v))
 
 
 class MasterTrack(object):
@@ -155,11 +204,15 @@ class MasterTrack(object):
         self.mixer_device = Mixer(0)
         self.devices = []
         self.output_meter_left = self.output_meter_right = 0.0
-        self.output_routing_type = type("R", (), {"display_name": "Ext"})()
-        self.output_routing_channel = type("R", (), {"display_name": "1/2"})()
-        self.available_output_routing_types = []
+        self._out = Routing({"Ext. Out": ["1/2", "3/4"]})
         self.mute = self.solo = False
         self.view = type("V", (), {"selected_device": None})()
+
+
+MasterTrack.available_output_routing_types = property(lambda self: self._out.types)
+MasterTrack.available_output_routing_channels = property(lambda self: self._out.channels)
+MasterTrack.output_routing_type = property(lambda self: self._out._type, lambda self, v: self._out.set_type(v))
+MasterTrack.output_routing_channel = property(lambda self: self._out._chan, lambda self, v: self._out.set_channel(v))
 
 
 class View(object):

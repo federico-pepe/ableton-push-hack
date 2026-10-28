@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- PushHack Remote Script 0.5.0: `track.routing` reads a track's input and output routing (current and available, by name), and `track.set_routing` sets them (`input_type`, `input_channel`, `output_type`, `output_channel`). A hack can now assign a track's audio or MIDI input and output itself. A name Live does not offer returns `bad_routing` with the valid names. `track.ensure` finds or creates a named audio or MIDI track and sets its routing and monitoring in one call, so a hack (Braids, for example) can prepare its own track. A channel can be a list of names; the first one Live offers is used. Error replies can now carry a `data` detail.
+
 ### Changed
 
 - The Shadow UI tab "Stats" is now "System". It shows two columns: CPU, memory, storage, battery and uptime on the left; Push Hack version, PushHack Remote Script state, network addresses and hotspot password on the right. The values refresh in the background, so the screen no longer stalls while it reads them.
