@@ -46,7 +46,7 @@ class Hub(object):
         try:
             data = fn(self._get_song(), msg)
         except CommandError as e:
-            self._send(client, protocol.err(req_id, e.code))
+            self._send(client, protocol.err(req_id, e.code, e.data))
             return
         except Exception as e:
             self._log("PushHack: %s.%s failed: %r" % (ns, cmd, e))

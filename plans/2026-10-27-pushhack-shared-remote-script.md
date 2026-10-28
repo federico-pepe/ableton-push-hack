@@ -217,3 +217,7 @@ Script 0.3.0 adds `track`, `session`, `device`, `clip`, `modes`, `meters`, `debu
 ## 16. The old protocols are gone (2026-10-28)
 
 Script 0.4.0 removes `legacy.py`, the tagged listener for the old arrangement socket, and the compat stream in the hub (`apply_compat`, `Feed.invalidate`). A first byte other than `{` gets `old_protocol` and the connection is closed, so an old client fails at once. Checked first: nothing in the Push repos still used the text commands or the old socket (automation and PTA use port 7704 with JSON). 97 tests (the legacy and compat ones are gone).
+
+## 17. Track routing (2026-10-28)
+
+Script 0.5.0 adds `track.routing` and `track.set_routing` so a hack can set a track's input and output by name (idea: Braids creates its audio track and assigns the input itself, instead of guiding the user). The type is set before the channel; a missing name returns `bad_routing` with the valid names. Next, after checking what Live offers on a Push with the audio-loopback card: a `track.ensure_audio_input` command that finds or creates a named track and sets its routing and monitoring in one call. What the script cannot do: enable an audio device in Push's audio preferences (not reachable from Live's object model).

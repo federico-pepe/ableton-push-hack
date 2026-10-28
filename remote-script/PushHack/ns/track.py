@@ -165,6 +165,83 @@ def set_(song, msg):
     return {"changed": done}
 
 
+# ---- routing ----
+# A routing type (and a channel) is an object with a display_name. Live lists
+# the types a track may use; the channels listed depend on the type chosen. A
+# client names them by display name ("Ext. In", "1/2", "Main"). Return and
+# master tracks have no input.
+
+def _sides(kind):
+    return ("output",) if kind in ("master", "return") else ("input", "output")
+
+
+def _available(t, side, what):
+    return safe(lambda: list(getattr(t, "available_%s_routing_%s" % (side, what))), None)
+
+
+def routing(song, msg):
+    """Current and available input and output routing, by name."""
+    t = track_of(song, msg.get("track"))
+    out = {}
+    for side in _sides(kind_of(song, t)):
+        types = _available(t, side, "types")
+        if types is None:
+            continue
+        cur_type = safe(lambda: getattr(t, "%s_routing_type" % side))
+        cur_chan = safe(lambda: getattr(t, "%s_routing_channel" % side))
+        out[side] = {
+            "type": safe(lambda: cur_type.display_name, ""),
+            "channel": safe(lambda: cur_chan.display_name, ""),
+            "types": _names(types),
+            "channels": _names(_available(t, side, "channels") or []),
+        }
+    return out
+
+
+def _find(items, name):
+    """The item whose display name is `name`: exact first, then ignoring case."""
+    for x in items:
+        if safe(lambda: x.display_name) == name:
+            return x
+    low = str(name).lower()
+    for x in items:
+        if str(safe(lambda: x.display_name, "")).lower() == low:
+            return x
+    return None
+
+
+def set_routing(song, msg):
+    """Set any of input_type, input_channel, output_type, output_channel, by
+    display name. The type is set before the channel, because the channels Live
+    offers depend on the type. A name Live does not offer fails with
+    `bad_routing` and the valid names in `data.options`."""
+    t = track_of(song, msg.get("track"))
+    kind = kind_of(song, t)
+    keys = [k for k in ("input_type", "input_channel", "output_type", "output_channel") if k in msg]
+    if not keys:
+        raise bad("no_changes")
+    changed = []
+    for side in ("input", "output"):
+        wanted_type, wanted_chan = msg.get("%s_type" % side), msg.get("%s_channel" % side)
+        if wanted_type is None and wanted_chan is None:
+            continue
+        if side not in _sides(kind):
+            raise bad("bad_arg")
+        for what, wanted in (("type", wanted_type), ("channel", wanted_chan)):
+            if wanted is None:
+                continue
+            items = _available(t, side, what + "s")
+            if items is None:
+                raise bad("bad_arg")
+            pick = _find(items, wanted)
+            if pick is None:
+                raise CommandError("bad_routing", {"side": side, "what": what, "want": str(wanted),
+                                                   "options": _names(items), "changed": changed})
+            setattr(t, "%s_routing_%s" % (side, what), pick)
+            changed.append("%s_%s" % (side, what))
+    return {"changed": changed, "routing": routing(song, {"track": msg.get("track")})}
+
+
 def select(song, msg):
     song.view.selected_track = track_of(song, msg.get("track"))
 
@@ -205,6 +282,8 @@ def register(reg):
     reg.command("track", "list", list_)
     reg.command("track", "get", get)
     reg.command("track", "set", set_)
+    reg.command("track", "routing", routing)
+    reg.command("track", "set_routing", set_routing)
     reg.command("track", "select", select)
     reg.command("track", "stop", stop)
     reg.command("track", "create", create)

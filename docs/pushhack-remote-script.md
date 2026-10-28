@@ -69,7 +69,9 @@ Volume is the raw mixer value, 0 to 1 (0.85 is 0 dB). Pan is -1 to 1. Parameter 
 
 ## Error codes
 
-`bad_json`, `old_protocol`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
+An error reply may carry `data` with detail (for example the valid names for `bad_routing`).
+
+`bad_json`, `old_protocol`, `bad_routing`, `no_cmd`, `unknown_ns`, `unknown_cmd`, `unknown_topic`, `failed` (Live refused; see
 Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`, `bad_param`,
 `param_disabled`, `bad_pad`, `bad_view`, `no_clip`, `slot_taken`, `too_big`, `cannot_arm`,
 `wrong_clip_kind`, `not_looping`, `not_a_drum_rack`, `not_a_simpler`, `not_sliced`, `not_found`, `not_loadable`,
@@ -87,7 +89,9 @@ Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`
 ### track
 `list` (tracks, returns, master, selected), `get {track}`, `set {track, name, color, mute, solo, arm,
 volume, pan, send: {index, value}, monitoring, fold}`, `select {track}`, `stop {track}`,
-`create {kind: "midi"|"audio"|"return"}`.
+`create {kind: "midi"|"audio"|"return"}`, `routing {track}` (the current input and output type and channel, and the names Live offers), `set_routing {track, input_type, input_channel, output_type, output_channel}`.
+
+Routing is set by display name ("Ext. In", "1/2", "Main"; case does not matter). The type is set before the channel, because the channels Live offers depend on the type. A name Live does not offer fails with `bad_routing`, and `data` has `side`, `what`, `want`, `options` (the valid names) and `changed` (what was already set). Master and return tracks have output only.
 
 ### session
 `get {track_offset, track_count, scene_offset, scene_count}`: a window of the clip grid. A slot is

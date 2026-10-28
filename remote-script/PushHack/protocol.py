@@ -9,7 +9,7 @@
 import json
 
 PROTOCOL = 1
-SCRIPT_VERSION = "0.4.0"
+SCRIPT_VERSION = "0.5.0"
 
 MAX_LINE_BYTES = 1024 * 1024
 
@@ -38,10 +38,12 @@ def ok(req_id, data=None):
     return encode(r)
 
 
-def err(req_id, code):
+def err(req_id, code, data=None):
     r = {"ok": False, "error": code}
     if req_id is not None:
         r["id"] = req_id
+    if data is not None:
+        r["data"] = data
     return encode(r)
 
 
