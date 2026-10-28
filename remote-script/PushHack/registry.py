@@ -10,7 +10,6 @@ class Registry(object):
         self._topics = {}
         self._ticks = []
         self.log = lambda msg: None   # the hub points this at Live's log
-        self.arrangement = None       # set by ns.arrangement: the compat feed
 
     def command(self, ns, name, fn):
         self._commands[(ns, name)] = fn

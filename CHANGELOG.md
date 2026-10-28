@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Changed
+
+- PushHack Remote Script 0.4.0 removes the old protocols: the Browser Bridge text commands on port 7704 and the old arrangement socket (`/tmp/push-hack-arrangement.sock`, TCP 7720). A client whose first byte is not `{` now gets `{"ok":false,"error":"old_protocol"}` and is closed. Push Manager, automation, the arrangement hack and the PTA module already use the JSON protocol. An older arrangement hack (before 0.0.9-alpha) or an older Push Manager (before 0.1.18-alpha) needs updating first.
+
 ### Fixed
 
 - `./scripts/install.sh --dry-run` no longer stops services on the Push. The stop commands ran for real, even in a dry run (it stopped push-manager); they now print as `[dry-run]` like the other commands.

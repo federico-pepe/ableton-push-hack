@@ -1,9 +1,8 @@
 # Non-blocking sockets for all clients. No Live imports.
 #
-# A client's first chunk picks its mode:
-#   starts with "{"  -> json: persistent, one JSON object per line
-#   anything else     -> legacy: old Browser Bridge text, one command per
-#                        connection, closed after the reply (it sends no "\n")
+# One JSON object per line, both ways. A client whose first byte is not "{" is
+# an old text-protocol client (the Browser Bridge of before PushHack): it gets
+# one error line and is closed, so it fails at once instead of waiting.
 
 import os
 import socket
@@ -11,23 +10,20 @@ import socket
 from .protocol import MAX_LINE_BYTES
 
 UNIX_PATH = "/tmp/push-hack.sock"
-# The old PushHackArrangement endpoint, so the current arrangement hack and the
-# PTA module keep working until they move to the new protocol.
-ARRANGEMENT_UNIX_PATH = "/tmp/push-hack-arrangement.sock"
-ARRANGEMENT_TCP_PORT = 7720  # Windows: no AF_UNIX in Live's Python there
+
 TCP_HOST = "127.0.0.1"
 TCP_PORT = 7704          # fixed framework port: push-manager's Live bridge
 MAX_OUT_BYTES = 8 * 1024 * 1024  # drop a client that cannot keep up
+OLD_PROTOCOL_REPLY = '{"ok":false,"error":"old_protocol"}'
 
 
 class Client(object):
-    def __init__(self, sock, tag=None):
+    def __init__(self, sock):
         self.sock = sock
-        self.mode = "json" if tag == "arrangement" else None
         self.inbuf = b""
         self.out = b""
         self.close_after_flush = False
-        self.tag = tag    # the listener's tag: "arrangement" = old protocol
+        self.checked = False   # has the first chunk been looked at
 
 
 def open_tcp(host=TCP_HOST, port=TCP_PORT):
@@ -56,18 +52,16 @@ def open_unix(path=UNIX_PATH):
 
 
 class Server(object):
-    def __init__(self, listeners, log=None, on_drop=None, on_accept=None):
-        # Each listener is a socket, or (socket, tag).
-        self._listeners = [l if isinstance(l, tuple) else (l, None) for l in listeners]
+    def __init__(self, listeners, log=None, on_drop=None):
+        self._listeners = list(listeners)
         self._on_drop = on_drop
-        self._on_accept = on_accept
         self._log = log or (lambda msg: None)
         self.clients = []
 
     def poll(self):
-        """Accept, read. Returns [(client, "line"|"legacy", bytes)]."""
+        """Accept, read. Returns [(client, "line", bytes)]."""
         events = []
-        for ls, tag in self._listeners:
+        for ls in self._listeners:
             while True:
                 try:
                     conn, _ = ls.accept()
@@ -76,10 +70,8 @@ class Server(object):
                 except Exception:
                     break
                 conn.setblocking(False)
-                c = Client(conn, tag)
+                c = Client(conn)
                 self.clients.append(c)
-                if self._on_accept:
-                    self._on_accept(c)
         for c in list(self.clients):
             try:
                 data = c.sock.recv(65536)
@@ -95,13 +87,15 @@ class Server(object):
         return events
 
     def _feed(self, c, data, events):
-        if c.mode is None:
-            c.mode = "json" if data.lstrip()[:1] == b"{" else "legacy"
-            if c.mode == "legacy":
-                events.append((c, "legacy", data))
+        if not c.checked:
+            c.checked = True
+            if data.lstrip()[:1] != b"{":
+                # An old text-protocol client. Tell it at once and hang up.
+                self.send(c, OLD_PROTOCOL_REPLY)
+                self.close_after_flush(c)
                 return
-        if c.mode == "legacy":
-            return  # one command per connection; ignore the rest
+        if c.close_after_flush:
+            return
         c.inbuf += data
         if len(c.inbuf) > MAX_LINE_BYTES and b"\n" not in c.inbuf:
             self.drop(c)
@@ -146,7 +140,7 @@ class Server(object):
     def close(self, unix_paths=()):
         for c in list(self.clients):
             self.drop(c)
-        for ls, _ in self._listeners:
+        for ls in self._listeners:
             try:
                 ls.close()
             except Exception:

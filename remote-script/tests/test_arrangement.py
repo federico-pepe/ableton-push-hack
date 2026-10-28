@@ -76,97 +76,46 @@ class FeedTest(unittest.TestCase):
         feed.snapshot(ArrSong())       # took 0.5 s -> wait 100 ticks
         self.assertEqual(feed._next - feed._tick, 100)
 
-    def test_invalidate_forces_a_rebuild(self):
-        feed = arr.Feed(clock=lambda: 0.0)
-        song = ArrSong()
-        a = feed.snapshot(song)
-        song.tempo = 99.0
-        self.assertEqual(feed.snapshot(song), a)      # cached
-        feed.invalidate()
-        self.assertEqual(feed.snapshot(song)["tempo"], 99.0)
-
-
-class CompatCommandsTest(unittest.TestCase):
-    def test_coalesced_only_last_applies(self):
-        song = ArrSong()
-        n = arr.apply_compat(song, [
-            {"t": "set_time", "v": 1}, {"t": "set_time", "v": 9},
-            {"t": "set_loop", "start": 2, "length": 3}, {"t": "set_loop", "start": 8, "length": 16},
-            {"t": "play_toggle"}])
-        self.assertEqual(n, 3)
-        self.assertEqual(song.current_song_time, 9.0)
-        self.assertEqual((song.loop_start, song.loop_length), (8.0, 16.0))
-        self.assertTrue(song.is_playing)
-
-    def test_toggles_and_bta_and_unknown(self):
-        song = ArrSong()
-        arr.apply_compat(song, [{"t": "loop_toggle"}, {"t": "punch_in_toggle"},
-                                {"t": "punch_out_toggle"}, {"t": "bta"}, {"t": "zzz"}, {}])
-        self.assertTrue(song.loop and song.punch_in and song.punch_out)
-        self.assertEqual(song.back_to_arranger, 0)
-
-
-class HubCompatTest(unittest.TestCase):
-    class Client(object):
-        tag = "arrangement"
-
+class ArrangementCommandsTest(unittest.TestCase):
     def setUp(self):
         self.song = ArrSong()
         self.sent = []
         self.hub = Hub(lambda: self.song, lambda c, t: self.sent.append(json.loads(t)))
-        self.client = self.Client()
-        self.hub.on_connect(self.client)
 
-    def test_connect_streams_snapshot_then_pos_without_asking(self):
-        self.hub.tick()
-        self.assertEqual([m["t"] for m in self.sent], ["snapshot", "pos"])
+    def call(self, cmd, **kw):
+        self.sent = []
+        msg = {"id": 1, "ns": "arrangement", "cmd": cmd}
+        msg.update(kw)
+        self.hub.on_line("c", json.dumps(msg).encode())
+        return self.sent[0]
 
-    def test_only_changes_after_that(self):
-        self.hub.tick()
+    def test_snapshot_and_position_commands(self):
+        d = self.call("snapshot")["data"]
+        self.assertEqual(d["locators"][0]["name"], "Drop")
+        self.assertIn("time", self.call("position")["data"])
+
+    def test_toggles_and_bta(self):
+        for cmd in ("loop_toggle", "punch_in_toggle", "punch_out_toggle", "bta"):
+            self.assertTrue(self.call(cmd)["ok"])
+        self.assertTrue(self.song.loop and self.song.punch_in and self.song.punch_out)
+        self.assertEqual(self.song.back_to_arranger, 0)
+        self.call("loop_toggle")
+        self.assertFalse(self.song.loop)
+
+    def test_topics_stream_snapshot_and_position_when_subscribed(self):
+        self.hub.on_line("c", b'{"cmd":"subscribe","topics":["arrangement","position"]}')
         self.sent = []
         self.hub.tick()
-        self.assertEqual(self.sent, [])
+        topics = sorted(m["topic"] for m in self.sent if m.get("t") == "event")
+        self.assertEqual(topics, ["arrangement", "position"])
+        self.sent = []
+        self.hub.tick()
+        self.assertEqual([m for m in self.sent if m.get("t") == "event"], [])
         self.song.current_song_time = 7.0
         self.hub.tick()
-        self.assertEqual([m["t"] for m in self.sent], ["pos"])
-        self.assertEqual(self.sent[0]["time"], 7.0)
-
-    def test_commands_apply_on_the_next_tick_coalesced(self):
-        for v in (1, 2, 3):
-            self.hub.on_line(self.client, json.dumps({"t": "set_time", "v": v}).encode())
-        self.assertEqual(self.song.current_song_time, 0.0)
-        self.hub.tick()
-        self.assertEqual(self.song.current_song_time, 3.0)
-
-    def test_new_protocol_client_is_not_streamed_to(self):
-        self.sent = []
-        other = object()
-        self.hub.on_connect(other)
-        self.hub.on_line(other, b'{"id":1,"cmd":"hello"}')
-        self.assertTrue(self.sent[0]["ok"])
-
-    def test_new_client_gets_a_fresh_snapshot(self):
-        self.hub.tick()
-        self.song.tempo = 77.0
-        second = self.Client()
-        self.hub.on_connect(second)
-        self.sent = []
-        self.hub.tick()
-        snaps = [m for m in self.sent if m["t"] == "snapshot"]
-        self.assertEqual(snaps[0]["tempo"], 77.0)
-
-    def test_dropped_client_gets_nothing(self):
-        self.hub.drop_client(self.client)
-        self.hub.tick()
-        self.assertEqual(self.sent, [])
-
-    def test_new_protocol_commands(self):
-        self.sent = []
-        other = object()
-        self.hub.on_line(other, b'{"id":5,"ns":"arrangement","cmd":"snapshot"}')
-        self.assertEqual(self.sent[0]["data"]["locators"][0]["name"], "Drop")
-        self.hub.on_line(other, b'{"id":6,"ns":"arrangement","cmd":"loop_toggle"}')
-        self.assertTrue(self.song.loop)
+        ev = [m for m in self.sent if m.get("t") == "event"]
+        self.assertEqual([m["topic"] for m in ev], ["position"])
+        self.assertEqual(ev[0]["data"]["time"], 7.0)
 
 
 if __name__ == "__main__":
