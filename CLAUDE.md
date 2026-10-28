@@ -14,7 +14,7 @@ Shared facts for all Push repos (repo map, git identity, `core/` pinning, cross-
 
 ## Project
 
-`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Only three hacks are core — built from this repo, installed directly via `install.sh`: Push Manager (web file browser + display control, port 7701), Push Display (LD_PRELOAD display hook), Push Hack Catalog (on-device installer for community hacks, port 7702). Everything else is optional: each hack lives in its own repo and installs through Push Hack Catalog. The full list of community hacks is in [catalog/catalog.json](catalog/catalog.json). Push-catalog assigns each one a port dynamically at install time — see "Ports" below.
+`push-hack` — extensible hack framework for Ableton Push 3 (Intel Linux, runs full Ableton Live). Deploys via SSH. Never modifies system partition. Only three hacks are core — built from this repo, installed directly via `install.sh`: Push Manager (web file browser + display control, port 7701), Push Display (LD_PRELOAD display hook), Push Hack Catalog (on-device installer for community hacks, port 7702). A fourth part, the **PushHack Remote Script** (`remote-script/PushHack/`), is also core: the one script every hack uses to reach Live. Everything else is optional: each hack lives in its own repo and installs through Push Hack Catalog. The full list of community hacks is in [catalog/catalog.json](catalog/catalog.json). Push-catalog assigns each one a port dynamically at install time — see "Ports" below.
 
 `core/` is a shared Go module — extracted per `discovery/push-core-refactor.md` to kill the ALSA/HTTP/SSE triplication that had silently diverged across hacks. push-manager uses it via `require`+`replace ../../../core`. Every hack in its own repo, and `push-tethered-app`, pins a tagged version (`core/vX.Y.Z`, currently `v0.3.0`) with **no** `replace`. A `core/` change reaches them only after you tag a new `core/vX.Y.Z` and bump each consumer's pin. See [core/README.md](core/README.md).
 
@@ -197,12 +197,38 @@ Hack Harmony (`core/harmony`, spec in
   explicit, off-by-default setting for it (Stacks: "plays when
   closed"). Parked stays the default.
 
+## PushHack Remote Script
+
+One Live Remote Script serves every hack (`remote-script/PushHack/`; reference:
+[docs/pushhack-remote-script.md](docs/pushhack-remote-script.md); design:
+`plans/2026-10-27-pushhack-shared-remote-script.md`). Rules:
+
+- A hack that needs Live (tempo, clips, devices, selection, loading presets)
+  talks to PushHack. **Never ship a Remote Script of your own.** Use topics, not a
+  polling loop: every call runs on Live's engine thread.
+- Pure Python outside `PushHack.py`: no `import Live` at module top level, so
+  `make test-remote-script` runs on any computer (Python 3.11 is what Live uses).
+  Import Live inside the function that needs it.
+- A test must never open `/tmp/push-hack.sock`, port 7704 or the old arrangement
+  socket on a computer where Live runs: the script deletes an existing socket file
+  before it binds. Give tests their own path or port.
+- Bump `SCRIPT_VERSION` in `protocol.py` when the script changes. Check a new
+  namespace on a Push with real Live (`debug.dir` lists what this Live has) before
+  you call it done: Live needs a restart to load a changed script.
+- A release carries the script in its manifest (`releasemeta.json`
+  `include_remote_script`, default true). A device on 0.1.15-alpha cannot update to a
+  release that carries it; it needs `install.sh` once.
+- The old text commands (`legacy.py`) and the old arrangement socket stay for older
+  hacks. Remove them once nothing uses them.
+- Tracks are never deleted by the script. Hardware settings (brightness, pad curves)
+  are out of scope.
+
 ## Adding a New Hack
 
 New optional hacks live in their **own repo** (`push-hack-<id>`), not in
 `hacks/`. `hacks/` holds only the three core hacks.
 
-1. New repo with `hack.json`, `Makefile` (`GOOS=linux GOARCH=amd64`), `src/`
+1. New repo with `hack.json`, `Makefile` (`GOOS=linux GOARCH=amd64`), `src/`. A hack that needs Live uses the PushHack Remote Script (see above); it does not bring its own.
 2. `src/go.mod` pins `core` to the newest `core/vX.Y.Z` tag — no `replace`
 3. Test on device: `make build`, `scp` binary + `hack.json` to `/data/push-hack/hacks/<id>/`, run it over SSH (pattern: `push-hack-arrangement/scripts/deploy.sh`)
 4. Publish: `v*` tag release workflow + entry in `catalog/catalog.json` (see `catalog/PUBLISHING.md`)
@@ -219,8 +245,8 @@ install` overwrites it with a dynamically assigned one on every install
 ### Ports
 
 - 7701 = push-manager, 7702 = push-catalog. Fixed, never reassigned.
-- 7701–7710 is reserved for the framework as a block (also covers Browser
-  Bridge's fixed `127.0.0.1:7704` Remote Script socket). Do not assign a
+- 7701–7710 is reserved for the framework as a block (also covers
+  PushHack's fixed `127.0.0.1:7704` Remote Script socket). Do not assign a
   hack a port in this range.
 - 7711+ is for catalog hacks. `push-catalog install` assigns these
   automatically — do not hardcode a port in a hack's own `hack.json`.
@@ -259,6 +285,7 @@ Framework and API (`docs/`):
 - `docs/architecture.md` — framework layer, hack structure convention, `core/` shared library, per-hack file layout, deployed directory layout, Push 3 hardware/OS facts
 - `docs/api-reference.md` — HTTP routes for push-manager and push-catalog, the RemotePanel contract, the push-display shared-memory protocol
 - `docs/vst3-on-push3.md` — load Linux VST3 plugins in Live on Push 3 (scan flag, preset generator `scripts/VST/make-vst3-preset.py`)
+- `docs/pushhack-remote-script.md` — PushHack Remote Script: how a hack connects to Live (JSON over `127.0.0.1:7704` or `/tmp/push-hack.sock`), references, every namespace and topic, error codes
 - `docs/harmony-sync.md` — Push Hack Harmony: how one hack tells others what it plays over MIDI (ports, the SysEx message, timing), and how a follower uses it
 - `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, `package-release.sh`, and `hacks/push-display/deploy.sh`
 - `plans/2026-10-20-push-hack-self-update.md` — design, decisions, and device results for the Push Hack self-update

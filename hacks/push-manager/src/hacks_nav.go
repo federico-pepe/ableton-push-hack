@@ -44,7 +44,7 @@ func hackEnabled(id string) bool {
 
 // hackInstalled reports whether a hack with the given id has been deployed
 // (its hack.json exists), checked live rather than cached — used to hide UI
-// for optional hacks that aren't installed, e.g. browser-bridge's Shadow UI
+// for optional hacks that aren't installed, e.g. a catalog hack's Shadow UI
 // tab and Push Manager's web Browser button, without needing a restart when
 // the hack is installed/removed via the catalog.
 // needsPushHack is the "requires" value for a feature that needs the PushHack

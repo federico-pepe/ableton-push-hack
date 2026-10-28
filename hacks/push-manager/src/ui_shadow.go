@@ -1323,9 +1323,9 @@ func (mp *MidiPanel) Render(img *image.NRGBA) {
 
 // ── BrowserPanel ────────────────────────────────────────────────────────────
 //
-// Preset browser for the Browser Bridge. Browse/search/filter are served from
+// Preset browser (loads go through the PushHack Remote Script). Browse/search/filter are served from
 // the filesystem-scanned index (presets.go) — no Live access. LOAD sends the
-// preset name+category to the PushHackBrowser Remote Script (live_bridge.go),
+// preset name+category to the PushHack Remote Script (live_bridge.go),
 // which instantiates it onto Live's selected track.
 
 // browserFilter is one entry in the Bot3 (FILTER) cycle.

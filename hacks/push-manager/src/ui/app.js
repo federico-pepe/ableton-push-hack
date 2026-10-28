@@ -1915,7 +1915,7 @@ async function brLoad(name, category, type) {
 }
 
 // ── Plugins (VST3) ─────────────────────────────────────────────────────────
-// Push's own browser hides plugins; Browser Bridge lists and loads them. Each
+// Push's own browser hides plugins; PushHack lists and loads them. Each
 // plugin loads with its default patch, or with one of its indexed presets.
 let PL = { list: [], error: '' };
 

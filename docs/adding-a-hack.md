@@ -119,3 +119,7 @@ To get a newer `core` version later, run this command in `src/`:
 ```bash
 go get github.com/federico-pepe/ableton-push-hack/core@vX.Y.Z && go mod tidy
 ```
+
+## Talking to Live
+
+A hack that needs Live (tempo, clips, devices, the selection) uses the PushHack Remote Script. It ships with Push Hack. Connect to `127.0.0.1:7704`, send `hello`, then ask for data or subscribe to topics. Do not ship your own Remote Script. See [pushhack-remote-script.md](pushhack-remote-script.md).

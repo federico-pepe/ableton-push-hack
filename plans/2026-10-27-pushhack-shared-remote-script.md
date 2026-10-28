@@ -209,3 +209,7 @@ The automation hack takes the tempo from MIDI Clock today. Change it to read the
 ## 14. live_bridge.go on the JSON protocol (2026-10-27)
 
 push-manager's `live_bridge.go` now uses `bridgeCall(ns, cmd, args)`: one JSON request per connection. A load waits for Live and returns the reason when it fails (before, the text protocol only acknowledged that the command was queued). The old text shim in `legacy.py` stays for hacks that still use it (an old Browser Bridge client). Remove it in a later release, once no hack depends on it.
+
+## 15. Phase 4 built (2026-10-27)
+
+Script 0.3.0 adds `track`, `session`, `device`, `clip`, `modes`, `meters`, `debug`, and extends `notes` and `transport`. 113 off-device tests. Checked on a Push (Live 12.4.15b7): the reads of every namespace, and writes on a test Set (track name, volume and pan; a device loaded, a parameter set and put back; a clip created, notes added, quantized and removed; a clip fired; the metronome; view focus). Later the same day, also checked on a device: all five audio-to-MIDI conversions (`harmony`, `melody`, `drums`, `simpler`, `drum_rack`), rack chains and paths on a drum kit (16 pads), `pad_to_track`, and Simpler slices with `set_simpler` and `slices_to_drum_rack` (which needs slicing mode: `not_sliced` otherwise). Found and fixed: `filled` for drum pads, the `not_sliced` code, `set_simpler`. `docs/pushhack-remote-script.md` is the reference for hack authors.

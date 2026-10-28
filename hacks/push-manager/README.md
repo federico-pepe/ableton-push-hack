@@ -63,6 +63,8 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `GET` | `/api/live/tempo` | Returns the current Live song tempo. Sends `transport.get` to the PushHack Remote Script and returns `{ok:true, bpm:124.0}`. Requires the PushHack Remote Script active in Live. Returns `{ok:false, error}` if the Remote Script is unreachable. |
 | `GET` | `/api/live/scale` | The Set's scale, the one Push's Scale button edits: `{ok:true, supported:true, root:9, name:"Minor", intervals:[0,2,3,5,7,8,10], mode:true}` (`root` 0-11 with 0 = C). Sends `get_scale` to the PushHack Remote Script (0.3 or later). `supported` is false on a Live without the scale API. |
 | `GET`/`POST` | `/api/live/listen` | The listen track: a silent MIDI track whose input follows the selected track and whose output is a hack's MIDI port, so the hack gets the notes played on Push's pads. `POST {on:true, port:"Stacks Listen"}` makes or finds it (`listen_on`), `{on:false}` stops it (`listen_off`), `GET` reports it. Replies with Browser Bridge's JSON; on failure `ok:false`, `error` and the outputs Live offers. Needs Browser Bridge 0.4 or later. |
+| `GET` | `/api/live/script` | The PushHack Remote Script: `{installed, installed_version, running, running_version, protocol, needs_restart, old_scripts}`. `needs_restart` is true when the installed files differ from what Live runs. `old_scripts` lists an old `PushHackBrowser` or `PushHackArrangement` still in the User Library. |
+| `POST` | `/api/live/script/remove-old` | Remove one old script. Body `{"name":"PushHackBrowser"}` (only that name or `PushHackArrangement`). Refused (409) until PushHack is installed. Returns the same state. |
 | `GET` | `/api/live/playing` | Returns `{ok:true, playing:true\|false}` — whether Live's transport is currently running. Sends `transport.get` to the PushHack Remote Script. |
 | `POST` | `/api/live/play` | Starts Live's transport. Sends `transport.play` to the PushHack Remote Script. Returns `{ok:true}`. |
 | `POST` | `/api/live/stop` | Stops Live's transport. Sends `transport.stop` to the PushHack Remote Script. Returns `{ok:true}`. |
@@ -381,6 +383,10 @@ Auto-refreshes every 3 seconds. Shows:
 - A card **Push Hack update**: installed and latest version, last check, Check now, Update now, the two switches, and how the last update ended. See "Push Hack update" below.
 
 > **Battery not shown:** Push 3's battery state is only accessible via the XMOS firmware's custom MIDI SysEx protocol — `/sys/class/power_supply/` is empty. The UI handles the `battery` field gracefully (hidden when absent).
+
+### PushHack Remote Script card
+
+The System page also has a **PushHack Remote Script** card: if the script is in the User Library and the version, if Live runs it, and a hint when Live must be restarted or the script selected in a control-surface slot. If an old `PushHackBrowser` or `PushHackArrangement` is still there, the card lists it with a **Remove** button. Nothing removes an old script by itself: a hack that was not updated yet may still need it. Code: `src/script_status.go`, `src/rscript/`.
 
 ### Push Hack update
 
