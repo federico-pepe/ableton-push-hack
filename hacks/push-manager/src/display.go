@@ -341,16 +341,22 @@ func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
 // Shows "Push Hack loaded..." for splashDuration then restores passthrough.
 // sync.Once — fires at most once per push-manager process.
 //
-// Approach C handoff: push_hook.c constructor writes its own identical static
-// frame at push3 start; push-manager connects ~1-2s later and overwrites,
-// then restores mode=0 after splashDuration.
+// The hook ignores the display mode for its first hookGrace (8 s) and loads
+// with Push3, which at a cold boot starts after push-manager. So the splash
+// waits for Push3, puts its first frame in place while the hook still
+// ignores it, and starts moving when the grace ends (hookage.go). A splash
+// that ran inside the grace was never drawn, and the hook then showed the
+// last frame, frozen.
 
-const splashDuration = 3 * time.Second
+const splashDuration = 5 * time.Second
 
 func scheduleStartupSplash() {
 	startupSplashOnce.Do(func() {
-		time.Sleep(200 * time.Millisecond)
 		const msg = "Push Hack loaded..."
+		if !waitHookAge(hookLoaded, 90*time.Second) {
+			log.Printf("startup splash: Push3 not running, skipping")
+			return
+		}
 		if err := shmWritePixels(renderStarSplash(newStars(rand.New(rand.NewSource(1))), msg, buildVersion, 0)); err != nil {
 			log.Printf("startup splash: %v (push-display not loaded, skipping)", err)
 			return
@@ -359,6 +365,7 @@ func scheduleStartupSplash() {
 			log.Printf("startup splash: set mode: %v", err)
 			return
 		}
+		waitHookAge(hookGrace, hookGrace) // draws nothing while the hook ignores it
 		log.Printf("startup splash: showing for %v", splashDuration)
 		if err := runStarSplash(msg, buildVersion, splashDuration); err != nil {
 			log.Printf("startup splash: %v", err)

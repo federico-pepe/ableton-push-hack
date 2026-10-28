@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Fixed
+
+- The startup starfield now shows after a boot or a Push3 restart. It used to run while the hook still ignored the display (its first 8 seconds), so you only saw the last frame, frozen. Push Manager now waits until Push3 is past that time. It needs no change to the hook. The starfield now runs 5 seconds, not 3.
+
 ### Added
 
 - `GET /api/display/mirror`: a web page that shows what the Push screen shows now, with Live's own UI too. It draws single PNGs from `GET /api/display/mirror/frame` into a canvas. push-manager does no work for it while nobody watches, and it sends at most 15 pictures a second. It needs the new `push_hook.so`, which copies each outgoing frame into a new `mirror` shared-memory file. **Restart Push3 once** to load it; until then the routes return 503. The `framebuf` layout and `SHM_VERSION` are unchanged.
