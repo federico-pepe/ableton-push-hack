@@ -15,7 +15,7 @@ own README has full request/response detail for every route below.
 `/api/display/{status,mode,image,frame,screenshot}` (`frame` takes one raw
 BGR565 frame, see push-manager's README) (`screenshot` is a GET
 request; it returns a PNG of the current framebuffer with an
-`X-Display-Mode` header), `/api/midi/{events,stream,filter,ports,subscribe,
+`X-Display-Mode` header; `mirror` is a GET that returns a page showing the screen live, see "Push Display mirror" below), `/api/midi/{events,stream,filter,ports,subscribe,
 chords,led,palette,mapping,mapping/config}` (`ports?writable=1` lists output
 destinations), `/api/presets`, `/api/presets/{refresh,facets,meta}`,
 `/api/live/load`, `/api/live/plugins`, `/api/live/tempo`, `/api/live/scale`, `/api/live/listen`, `/api/live/playing`, `/api/live/play`,
@@ -94,6 +94,37 @@ is an app of Push Hack Home (above) and sends frames with
 `pmclient.PushFrame`; a hack that only shows an image can still use
 `POST /api/display/mode` and `POST /api/display/image` while nothing of
 Home owns the surface.
+
+### Push Display mirror
+
+`GET /api/display/mirror` is a web page that shows the screen live, in every
+mode, with Live's own UI too. Open `http://push.local:7701/api/display/mirror`
+in a browser. It fetches one PNG at a time into a `<canvas>` from
+`GET /api/display/mirror/frame[?since=<seq>]`: the newest frame as a PNG,
+its number in the `X-Mirror-Seq` header, and `204` with no body when `since`
+is already the newest number. An MJPEG stream was tried first; Chrome showed
+its newest frame late, about one screen change behind, so it was removed.
+Both routes return 503 when the hook has no mirror file (an older
+`push_hook.so`, or Push3 not restarted since the install). Without a viewer,
+push-manager does no work for it. The picture is read at most 15 times a second
+(`mirrorMinGap` in `display_mirror.go`), to keep the CPU cost low.
+
+The source is a second shared-memory file, `/data/push-hack/hacks/push-display/mirror`,
+permissions 0666. The hook is the only writer; push-manager maps it read-only.
+It is separate from `framebuf`, so the `framebuf` layout and `SHM_VERSION` do
+not change. `push_hook.c` and `core/display/mirror.go` must stay in sync:
+
+```
+offset  0: uint32 magic     (0x4D495252 "MIRR")
+offset  4: uint32 version   (1)
+offset  8: uint32 seq       (seqlock: odd while a frame is written, even when complete)
+offset 12: uint32 reserved  (0)
+offset 16: uint8[327680]    one frame, as sent on the wire (XOR still on)
+total: 327696 bytes
+```
+
+A reader copies the pixels, then reads `seq` again, and tries again if it
+changed or was odd. `Mirror.Read` in `core/display` does this and removes the XOR.
 
 ## Push Hack Catalog — `http://push.local:7702`
 

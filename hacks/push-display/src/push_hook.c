@@ -130,6 +130,32 @@ typedef struct __attribute__((packed)) {
 #define SHM_FILE "/data/push-hack/hacks/push-display/framebuf"
 #define SHM_SIZE sizeof(push_display_shm_t)  /* 16 + 655360 = 655376 bytes */
 
+/* ── Mirror shared memory ───────────────────────────────────────────────────
+ *
+ * Read-only copy of the frame that really goes out to the screen, in every
+ * mode (Live's own frames in passthrough; the bar and takeover frames too).
+ * This hook is the only writer; push-manager maps it read-only and serves it
+ * as MJPEG. Separate from framebuf so framebuf's layout (and SHM_VERSION,
+ * which the Push Hack updater compares) does not change.
+ *
+ * Pixels are the bytes as sent on the wire (XOR still applied), first frame
+ * half only. seq is a seqlock: odd while a frame is being written, even when
+ * pixels[] holds a whole frame. A reader copies, then re-reads seq. ── */
+
+#define MIRROR_FILE    "/data/push-hack/hacks/push-display/mirror"
+#define MIRROR_MAGIC   0x4D495252u  /* "MIRR" */
+#define MIRROR_VERSION 1u
+
+typedef struct __attribute__((packed)) {
+    uint32_t magic;               /*  0: 0x4D495252 */
+    uint32_t version;             /*  4: 1          */
+    uint32_t seq;                 /*  8: seqlock, even = complete frame */
+    uint32_t reserved;            /* 12: 0          */
+    uint8_t  pixels[FRAME_BYTES]; /* 16: wire bytes of one frame (XOR on) */
+} push_mirror_t;
+
+#define MIRROR_SIZE sizeof(push_mirror_t)
+
 /* ── MIDI filter shared memory ──────────────────────────────────────────────
  *
  * Tiny (16-byte) shm file.  push-manager writes enabled=0/1;
@@ -172,6 +198,7 @@ static seq_event_input_fn  real_seq_input = NULL;
 static FILE               *log_fp         = NULL;
 static push_display_shm_t *shm            = NULL;
 static push_midi_filt_t   *midi_filt      = NULL;
+static push_mirror_t      *mirror         = NULL;
 
 static pthread_mutex_t log_mutex     = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t display_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -323,6 +350,41 @@ static void shm_init(void) {
     shm = s;
 }
 
+/* ── Mirror shm init ────────────────────────────────────────────────────── */
+
+/* Best effort: on any failure mirror stays NULL and the display path is
+ * untouched. Not retried -- a missing mirror must never cost Push3 anything. */
+static void mirror_init(void) {
+    int fd = open(MIRROR_FILE, O_RDWR | O_CREAT, 0664);
+    if (fd < 0) {
+        hook_logf("mirror: open failed: %s\n", MIRROR_FILE);
+        return;
+    }
+    struct stat st;
+    if (fstat(fd, &st) == 0 && (size_t)st.st_size < MIRROR_SIZE &&
+        ftruncate(fd, (off_t)MIRROR_SIZE) < 0) {
+        hook_logf("mirror: ftruncate failed\n");
+        close(fd);
+        return;
+    }
+    fchmod(fd, 0666);
+    void *m = mmap(NULL, MIRROR_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (m == MAP_FAILED) {
+        hook_logf("mirror: mmap failed\n");
+        return;
+    }
+    push_mirror_t *p = (push_mirror_t *)m;
+    if (p->magic != MIRROR_MAGIC || p->version != MIRROR_VERSION) {
+        memset(p, 0, sizeof(*p));
+        p->magic   = MIRROR_MAGIC;
+        p->version = MIRROR_VERSION;
+    }
+    if (p->seq & 1) p->seq++;   /* a frame cut short by the last exit */
+    mirror = p;
+    hook_logf("mirror: ready at %s\n", MIRROR_FILE);
+}
+
 /* ── MIDI filter shm init ────────────────────────────────────────────────── */
 
 /* Set when an open failed; the first failure is logged, retries are not. */
@@ -411,6 +473,7 @@ static void hook_init(void) {
 
     if (hook_active) {
         shm_init();
+        mirror_init();
         midi_filt_init();
     }
     /* Only Push3 logs its load. Every amidi/sh child inherits LD_PRELOAD and
@@ -593,6 +656,8 @@ static void process_display_out(unsigned char *data, int length) {
         /* Frame header: reset pixel offset */
         pixel_byte_offset = 0;
         in_pixel_frame    = 1;
+        if (mirror && !(mirror->seq & 1))
+            __atomic_store_n(&mirror->seq, mirror->seq + 1, __ATOMIC_RELEASE);
     } else if (in_pixel_frame && length > 16) {
         /* Pixel data chunk */
         cur_mode = shm ? shm->mode : DISPLAY_MODE_PASS;
@@ -609,6 +674,14 @@ static void process_display_out(unsigned char *data, int length) {
             break;
         default:
             break; /* DISPLAY_MODE_PASS: do nothing */
+        }
+        /* Mirror what is going out, after any bar or takeover rewrite. */
+        if (mirror && pixel_byte_offset < FRAME_BYTES) {
+            int n = length;
+            if (pixel_byte_offset + n > FRAME_BYTES) n = FRAME_BYTES - pixel_byte_offset;
+            memcpy(mirror->pixels + pixel_byte_offset, data, (size_t)n);
+            if (pixel_byte_offset + n == FRAME_BYTES)
+                __atomic_store_n(&mirror->seq, mirror->seq + 1, __ATOMIC_RELEASE);
         }
         pixel_byte_offset += length;
     } else {

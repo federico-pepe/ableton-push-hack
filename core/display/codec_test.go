@@ -115,3 +115,16 @@ func TestToWireBlack(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeRGBAMatchesFromBGR565(t *testing.T) {
+	px := make([]byte, FrameBytes)
+	for i := range px {
+		px[i] = byte(i * 7)
+	}
+	want := FromBGR565(px)
+	got := image.NewRGBA(image.Rect(0, 0, VisW, VisH))
+	DecodeRGBA(px, got)
+	if !bytes.Equal(got.Pix, want.Pix) {
+		t.Fatal("DecodeRGBA differs from FromBGR565")
+	}
+}

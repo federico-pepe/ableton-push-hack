@@ -70,6 +70,27 @@ func FromBGR565(px []byte) *image.NRGBA {
 	return img
 }
 
+// DecodeRGBA is FromBGR565 into a caller-owned image, for a loop that decodes
+// every frame: it allocates nothing and reads Pix directly. A is set to 255.
+// dst must be exactly VisW x VisH at the origin; px must be FrameBytes long.
+// *image.RGBA, not NRGBA, because image/jpeg has a fast path only for it.
+func DecodeRGBA(px []byte, dst *image.RGBA) {
+	for y := 0; y < VisH; y++ {
+		src := px[y*Stride*2 : y*Stride*2+VisW*2]
+		out := dst.Pix[y*dst.Stride : y*dst.Stride+VisW*4]
+		for x := 0; x < VisW; x++ {
+			v := uint16(src[x*2]) | uint16(src[x*2+1])<<8
+			b5 := (v >> 11) & 0x1f
+			g6 := (v >> 5) & 0x3f
+			r5 := v & 0x1f
+			out[x*4] = byte(r5<<3 | r5>>2)
+			out[x*4+1] = byte(g6<<2 | g6>>4)
+			out[x*4+2] = byte(b5<<3 | b5>>2)
+			out[x*4+3] = 255
+		}
+	}
+}
+
 // EncodeFrame writes one frame (FrameBytes: BGR565 little-endian, 1024-pixel
 // stride, padding left zero) from a 960x160 NRGBA image, reading Pix
 // directly. It allocates nothing, so a hack can encode every frame into the
