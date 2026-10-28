@@ -9,6 +9,10 @@ between minor versions).
 
 ### Changed
 
+- The Shadow UI tab "Stats" is now "System". It shows two columns: CPU, memory, storage, battery and uptime on the left; Push Hack version, PushHack Remote Script state, network addresses and hotspot password on the right. The values refresh in the background, so the screen no longer stalls while it reads them.
+
+### Changed
+
 - The startup splash now shows a starfield flying past "Push Hack loaded...", with the Push Hack version in small text at the bottom. The text stays the same as before.
 - Opening and closing the Shadow UI (the MIDI intercept chord and Shift + Set) no longer shows the "PUSH HACK" on-screen message first. The Shadow UI opens and closes at once.
 

@@ -548,7 +548,7 @@ ALSA port is created**.
 
 Push Hack Home is one place to open every hack that uses Push's screen,
 buttons and pads (an **app**, such as Stacks or Riffs), and every Shadow
-UI panel (a **tool**: Files, Stats, MIDI, Browser, Plugins, Catalog, and
+UI panel (a **tool**: Files, System, MIDI, Browser, Plugins, Catalog, and
 any hack's Shadow UI tab). No hack needs a button combination of its own,
 so two hacks can never react to the same press.
 
