@@ -205,9 +205,9 @@ deploy_hack() {
     local svc_name
     svc_name=$(service_name "${hack_id}")
     if [[ "${INIT}" == "systemd" ]]; then
-        push_exec_root "systemctl stop '${svc_name}'" 2>/dev/null || true
+        maybe push_exec_root "systemctl stop '${svc_name}'" 2>/dev/null || true
     else
-        push_exec_root "/etc/init.d/${svc_name} stop" 2>/dev/null || true
+        maybe push_exec_root "/etc/init.d/${svc_name} stop" 2>/dev/null || true
     fi
 
     # Copy binary (skipped when not applicable)
@@ -316,7 +316,7 @@ EOF
         rm -f "${tmp_service}"
         maybe push_exec_root "systemctl daemon-reload"
         maybe push_exec_root "systemctl enable '${svc_name}'"
-        push_exec_root "systemctl stop '${svc_name}'" 2>/dev/null || true
+        maybe push_exec_root "systemctl stop '${svc_name}'" 2>/dev/null || true
         maybe push_exec_root "systemctl start '${svc_name}'"
 
     else
@@ -359,7 +359,7 @@ EOF
             fi
         "
 
-        push_exec_root "/etc/init.d/$(service_name "${hack_id}") stop 2>/dev/null || true"
+        maybe push_exec_root "/etc/init.d/$(service_name "${hack_id}") stop 2>/dev/null || true"
         maybe push_exec_root "/etc/init.d/$(service_name "${hack_id}") start"
     fi
 
