@@ -1,5 +1,5 @@
 # arrangement: the Set's arrangement (tracks, clips, locators) and the position,
-# for the arrangement hack. Built from a Song-like object, so tests use a fake.
+# for the hacks that show the arrangement. Built from a Song-like object, so tests use a fake.
 #
 # The snapshot costs time on a big Set, so a Feed rebuilds it at most about once
 # a second and waits longer after a slow build (BUILD_BUDGET_TICKS_PER_SEC).
@@ -124,7 +124,7 @@ def _toggle(attr):
     return fn
 
 
-# The arrangement hack's commands that are not in transport: Back to
+# The arrangement commands that are not in transport: Back to
 # Arrangement and the loop/punch toggles.
 def _toggles():
     return {"loop_toggle": _toggle("loop"), "punch_in_toggle": _toggle("punch_in"),

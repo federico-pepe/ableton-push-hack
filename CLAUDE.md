@@ -237,7 +237,7 @@ New optional hacks live in their **own repo** (`push-hack-<id>`), not in
 
 1. New repo with `hack.json`, `Makefile` (`GOOS=linux GOARCH=amd64`), `src/`. A hack that needs Live uses the PushHack Remote Script (see above); it does not bring its own.
 2. `src/go.mod` pins `core` to the newest `core/vX.Y.Z` tag — no `replace`
-3. Test on device: `make build`, `scp` binary + `hack.json` to `/data/push-hack/hacks/<id>/`, run it over SSH (pattern: `push-hack-arrangement/scripts/deploy.sh`)
+3. Test on device: `make build`, `scp` binary + `hack.json` to `/data/push-hack/hacks/<id>/`, run it over SSH
 4. Publish: `v*` tag release workflow + entry in `catalog/catalog.json` (see `catalog/PUBLISHING.md`)
 
 See [docs/adding-a-hack.md](docs/adding-a-hack.md) for the full walkthrough

@@ -9,7 +9,7 @@ Today each hack that needs Live ships its own Remote Script:
 | Script | Owner | Transport | Use |
 |---|---|---|---|
 | `PushHackBrowser` | `push-hack-browser-bridge` | TCP `127.0.0.1:7704`, one text line per connection | load presets and samples, tempo, beat, playing, scale, plugin list |
-| `PushHackArrangement` | `push-hack-arrangement` (private) | Unix socket `/tmp/push-hack-arrangement.sock`, TCP `7720` on Windows, JSON lines | arrangement snapshot, position, transport commands |
+| `PushHackArrangement` | a private hack | Unix socket `/tmp/push-hack-arrangement.sock`, TCP `7720` on Windows, JSON lines | arrangement snapshot, position, transport commands |
 
 The user must enable each one by hand in a control-surface slot. Live has few slots.
 
@@ -149,12 +149,12 @@ Plan assumes A until the owner decides.
 ### 5.3 Catalog hacks
 
 - `push-hack-browser-bridge`: becomes a stub. Its repo drops the script. It stays in the catalog only if it adds something else, otherwise it is retired, and push-manager's preset browser requires `PushHack` instead. The "Browser Bridge installed" gating in `hacks_nav.go` (`hackInstalled("browser-bridge")`) changes to "PushHack reachable".
-- `push-hack-arrangement` and `pta-module-arrangement`: switch their client to the new protocol and drop their own script. They stay private. They depend on a Push Hack release that carries `PushHack`.
+- Private hacks that use the old arrangement script: switch their client to the new protocol and drop their own script. They stay private. They depend on a Push Hack release that carries `PushHack`.
 - Every hack that reads Live state declares a dependency on the minimum `protocol` number.
 
 ## 6. Answer to the owner's question about the arrangement command set
 
-`push-hack-arrangement` is private on purpose (`~/.claude/push-family.md`: must stay private, not in the catalog). `PushHack` lives in this public repo. When the arrangement script moves into `PushHack/ns/arrangement.py`, its snapshot builder and its commands become public code. That includes `snapshot.py` and `commands.py`, which today are in the private repo. The owner must choose:
+The first user of the arrangement script is a private hack. `PushHack` lives in this public repo. When the arrangement script moves into `PushHack/ns/arrangement.py`, its snapshot builder and its commands become public code. That includes `snapshot.py` and `commands.py`, which today are in the private hack. The owner must choose:
 
 - **Accept it:** the code is small, uses only Live's public API, and the family doc says only the hack itself must stay private. Then the arrangement namespace goes in this repo.
 - **Keep it private:** `PushHack` supports plug-in namespaces. A private hack drops a file into `PushHack/ns/` or a `plugins/` folder, and `PushHack` loads every module it finds there. The public repo then has the loader only. This adds a loading mechanism and a way for a broken plug-in to hurt Live, so it needs an `try/except` around each import.

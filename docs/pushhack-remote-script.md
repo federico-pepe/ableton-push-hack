@@ -151,7 +151,7 @@ this Live has a property before you rely on it.
 |---|---|---|
 | `tempo` | `{tempo}` | every tick |
 | `transport` | the `transport.get` data | every tick |
-| `position`, `arrangement` | see `push-hack-arrangement` `docs/protocol.md` | every tick, about 1 s |
+| `position`, `arrangement` | the arrangement snapshot and the playhead position | every tick, about 1 s |
 | `scale` | the `notes.scale` data | 5 ticks |
 | `tracks` | the `track.list` data | 5 ticks |
 | `session` | the `session.get` data (24 tracks x 40 scenes) | 3 ticks |

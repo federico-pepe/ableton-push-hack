@@ -47,8 +47,7 @@ provide a `service.initd` template instead.
    the Push.
 3. Start the binary over SSH, in the foreground.
 
-`push-hack-arrangement`'s `scripts/deploy.sh` is a working example of these
-three steps.
+A small `scripts/deploy.sh` that does these three steps saves time.
 
 For local testing, put any free port 7711 or higher in `hack.json`. The
 range 7701-7710 is reserved for the framework: 7701 is push-manager, and

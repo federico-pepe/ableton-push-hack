@@ -1,6 +1,6 @@
 // Package widgets holds composite Shadow-UI-style drawing components built
-// on core/gfx and core/gfx/text — lists, label:value rows, soft-buttons, and
-// a shared color Theme. Anything here operates on a plain *image.NRGBA; it
+// on core/gfx and core/gfx/text — lists, label:value rows, soft-buttons, the touch
+// overlay header (DrawTouchHeader), and a shared color Theme. Anything here operates on a plain *image.NRGBA; it
 // knows nothing about shm, BGR565, or which hack is drawing. See
 // discovery/shadow-ui-component-framework.md for the extraction rationale:
 // this exists so push-manager's Shadow UI and keyboard-visualizer's own

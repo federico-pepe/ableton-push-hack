@@ -1,6 +1,8 @@
 package widgets
 
 import (
+	"github.com/federico-pepe/ableton-push-hack/core/gfx"
+	"github.com/federico-pepe/ableton-push-hack/core/gfx/text"
 	"image"
 	"image/color"
 	"testing"
@@ -333,5 +335,81 @@ func TestDrawStatusBarError(t *testing.T) {
 	DrawStatusBar(img, Default, 142, 960, 18, "bad", true)
 	if img.NRGBAAt(10, 143) != Default.OffColor {
 		t.Errorf("error status bar bg = %+v, want OffColor %+v", img.NRGBAAt(10, 143), Default.OffColor)
+	}
+}
+
+func TestDimImageScalesBrightness(t *testing.T) {
+	img := newCanvas(4, 4)
+	gfx.FillRect(img, 0, 0, 4, 4, color.NRGBA{200, 100, 50, 255})
+	DimImage(img, 0.5)
+	if got := img.NRGBAAt(1, 1); got != (color.NRGBA{100, 50, 25, 255}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestDimImageKeepOneIsNoOp(t *testing.T) {
+	img := newCanvas(2, 2)
+	gfx.FillRect(img, 0, 0, 2, 2, color.NRGBA{9, 9, 9, 255})
+	DimImage(img, 1)
+	if got := img.NRGBAAt(0, 0); got != (color.NRGBA{9, 9, 9, 255}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestDrawOnOffBoxOnIsFilledWhite(t *testing.T) {
+	img := newCanvas(60, 30)
+	w := DrawOnOffBox(img, Default, 5, 5, "On", true)
+	if w != text.Width("On")+8 {
+		t.Fatalf("width %d", w)
+	}
+	if got := img.NRGBAAt(5+w/2, 5+1); got != Default.White { // top edge middle, no text there
+		t.Fatalf("on box must be white, got %v", got)
+	}
+	if got := img.NRGBAAt(5, 5); got.A != 0 { // rounded corner left untouched
+		t.Fatalf("corner must not be painted, got %v", got)
+	}
+}
+
+func TestDrawOnOffBoxOffHasBorderAndBlackFill(t *testing.T) {
+	img := newCanvas(60, 30)
+	w := DrawOnOffBox(img, Default, 5, 5, "Off", false)
+	if got := img.NRGBAAt(5+w/2, 5); got != Default.White {
+		t.Fatalf("border must be white, got %v", got)
+	}
+	if got := img.NRGBAAt(5+2, 5+2); got != Default.Black {
+		t.Fatalf("inside must be black, got %v", got)
+	}
+}
+
+func TestDrawTouchHeaderDimsAndDrawsText(t *testing.T) {
+	img := newCanvas(960, 160)
+	gfx.FillRect(img, 0, 0, 960, 160, color.NRGBA{200, 200, 200, 255})
+	DrawTouchHeader(img, Default, []HeaderCol{{Col: 1, Label: "Loop", Toggle: true, On: true, Name: "Loop Start", Value: "1.1.1"}})
+	if got := img.NRGBAAt(900, 120); got.R != 80 { // 200 * 0.4, far from any text
+		t.Fatalf("not dimmed: %v", got)
+	}
+	lit := false
+	for y := 0; y < 60 && !lit; y++ {
+		for x := 120; x < 240; x++ {
+			if img.NRGBAAt(x, y) == Default.White {
+				lit = true
+				break
+			}
+		}
+	}
+	if !lit {
+		t.Fatal("no header text in column 2")
+	}
+}
+
+func TestDrawTouchHeaderEmptyNameDrawsNoKnobLines(t *testing.T) {
+	img := newCanvas(960, 160)
+	DrawTouchHeader(img, Default, []HeaderCol{{Col: 0, Label: "Punch Out"}})
+	for y := 30; y < 60; y++ {
+		for x := 0; x < 120; x++ {
+			if img.NRGBAAt(x, y).R != 0 {
+				t.Fatalf("pixel (%d,%d) drawn, want none below the label", x, y)
+			}
+		}
 	}
 }
