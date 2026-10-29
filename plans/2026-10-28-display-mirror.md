@@ -26,6 +26,7 @@ Show what the Push screen shows now, in a browser, while Push Hack is loaded. Li
 | Canvas page, one JPEG per fetch | In sync. |
 | Lossless PNG (fastest level) | Sharper text and colors. 2.3 ms and 6.9 KB per frame on the device, cheaper than JPEG q95 (3.3 ms, 11 KB). |
 | Dedupe by hook frame number | Not enough: the hook sends about 54 frames a second even when the picture is the same. Compare the pixels, and give each picture a version. |
+| Upscale 2x on the Push (nearest neighbour), page shows it at 960 CSS px | Sharper on a Retina display. `image-rendering: pixelated` on the browser side looked worse. CPU stayed at 3.5-5.5%. |
 | Cap at 15 reads a second | CPU in a poll test fell from 9-10% to 2.5-5.5%. Looks good enough on device. |
 
 ## Open

@@ -45,6 +45,26 @@ var mirrorSrc = &coredisplay.Mirror{}
 // from the cache, with no copy and no encode.
 const mirrorMinGap = 66 * time.Millisecond
 
+// mirrorScale: whole-number nearest-neighbour upscale done on the Push (1 = off).
+const mirrorScale = 2
+
+// upscale copies src into dst, every pixel becoming scale x scale pixels.
+func upscale(dst, src *image.RGBA, scale int) {
+	w, h := src.Rect.Dx(), src.Rect.Dy()
+	for y := 0; y < h; y++ {
+		in := src.Pix[y*src.Stride : y*src.Stride+w*4]
+		first := dst.Pix[y*scale*dst.Stride : y*scale*dst.Stride+w*scale*4]
+		for x := 0; x < w; x++ {
+			for k := 0; k < scale; k++ {
+				copy(first[(x*scale+k)*4:], in[x*4:x*4+4])
+			}
+		}
+		for k := 1; k < scale; k++ {
+			copy(dst.Pix[(y*scale+k)*dst.Stride:], first)
+		}
+	}
+}
+
 // snap is the scratch and cache behind /api/display/mirror/frame.
 // hook is the last hook frame number looked at; ver is the hook number at
 // which the picture last changed. The hook sends the same picture many times
@@ -52,7 +72,7 @@ const mirrorMinGap = 66 * time.Millisecond
 var snap struct {
 	sync.Mutex
 	raw, prev []byte // prev holds the pixels behind png
-	img       *image.RGBA
+	img, big  *image.RGBA
 	buf       bytes.Buffer
 	hook, ver uint32
 	at        time.Time // last read of the hook's frame
@@ -69,6 +89,7 @@ func mirrorSnapshot() (pic []byte, ver uint32, ok bool) {
 		snap.raw = make([]byte, coredisplay.FrameBytes)
 		snap.prev = make([]byte, coredisplay.FrameBytes)
 		snap.img = image.NewRGBA(image.Rect(0, 0, coredisplay.VisW, coredisplay.VisH))
+		snap.big = image.NewRGBA(image.Rect(0, 0, coredisplay.VisW*mirrorScale, coredisplay.VisH*mirrorScale))
 	}
 	if snap.png != nil && time.Since(snap.at) < mirrorMinGap {
 		return snap.png, snap.ver, true
@@ -86,8 +107,13 @@ func mirrorSnapshot() (pic []byte, ver uint32, ok bool) {
 		return snap.png, snap.ver, true // same picture sent again
 	}
 	coredisplay.DecodeRGBA(snap.raw, snap.img)
+	out := snap.img
+	if mirrorScale > 1 {
+		upscale(snap.big, snap.img, mirrorScale)
+		out = snap.big
+	}
 	snap.buf.Reset()
-	if err := mirrorPNG.Encode(&snap.buf, snap.img); err != nil {
+	if err := mirrorPNG.Encode(&snap.buf, out); err != nil {
 		return nil, 0, false
 	}
 	snap.png = append([]byte(nil), snap.buf.Bytes()...)
@@ -148,8 +174,8 @@ func handleDisplayMirrorFrame(w http.ResponseWriter, r *http.Request) {
 }
 
 const mirrorViewHTML = `<!doctype html><meta charset=utf-8><title>Push mirror</title>
-<style>html,body{margin:0;background:#111;height:100%}canvas{width:100%;image-rendering:auto;display:block}</style>
-<canvas id=c width=960 height=160></canvas>
+<style>html,body{margin:0;background:#111;height:100%}canvas{width:960px;max-width:100%;image-rendering:auto;display:block}</style>
+<canvas id=c width=1920 height=320></canvas>
 <script>
 const ctx=document.getElementById('c').getContext('2d');let since=0;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));

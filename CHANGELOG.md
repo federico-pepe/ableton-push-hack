@@ -14,7 +14,7 @@ between minor versions).
 ### Added
 
 - `core/gfx/widgets`: the touch overlay that Push's own UI shows. `DrawTouchHeader` dims the whole screen and draws up to 8 columns (`HeaderCol`): the button function above the column (with an On/Off box when it is a switch), the knob name and its value. `DimImage` (the dim alone) and `DrawOnOffBox` (a rounded box, white with black text when on, white border when off) can be used alone. Only the drawing is in core. Each hack decides when the overlay shows.
-- `GET /api/display/mirror`: a web page that shows what the Push screen shows now, with Live's own UI too. It draws single PNGs from `GET /api/display/mirror/frame` into a canvas. push-manager does no work for it while nobody watches, and it sends at most 15 pictures a second. It needs the new `push_hook.so`, which copies each outgoing frame into a new `mirror` shared-memory file. **Restart Push3 once** to load it; until then the routes return 503. The `framebuf` layout and `SHM_VERSION` are unchanged.
+- `GET /api/display/mirror`: a web page that shows what the Push screen shows now, with Live's own UI too. It draws single PNGs from `GET /api/display/mirror/frame` into a canvas. push-manager does no work for it while nobody watches, and it sends at most 15 pictures a second. The picture is scaled to 2x on the Push (1920x320) and shown at 960 CSS pixels wide, so it is sharp on a Retina display. It needs the new `push_hook.so`, which copies each outgoing frame into a new `mirror` shared-memory file. **Restart Push3 once** to load it; until then the routes return 503. The `framebuf` layout and `SHM_VERSION` are unchanged.
 
 ## [0.1.20-alpha] - 2026-10-28
 
