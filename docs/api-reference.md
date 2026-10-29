@@ -100,7 +100,7 @@ Home owns the surface.
 `GET /api/display/mirror` is a web page that shows the screen live, in every
 mode, with Live's own UI too. Open `http://push.local:7701/api/display/mirror`
 in a browser. It fetches one PNG at a time into a `<canvas>` from
-`GET /api/display/mirror/frame[?since=<seq>]`: the newest frame as a PNG,
+`GET /api/display/mirror/frame[?since=<seq>]`: the newest frame as a PNG, 1920x320 (the 960x160 screen at 2x, each pixel repeated 2x2; `mirrorScale` in `display_mirror.go`),
 its number in the `X-Mirror-Seq` header, and `204` with no body when `since`
 is already the newest number. An MJPEG stream was tried first; Chrome showed
 its newest frame late, about one screen change behind, so it was removed.
