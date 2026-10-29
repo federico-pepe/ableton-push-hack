@@ -13,6 +13,7 @@ between minor versions).
 
 ### Added
 
+- `core/gfx/widgets`: the touch overlay that Push's own UI shows. `DrawTouchHeader` dims the whole screen and draws up to 8 columns (`HeaderCol`): the button function above the column (with an On/Off box when it is a switch), the knob name and its value. `DimImage` (the dim alone) and `DrawOnOffBox` (a rounded box, white with black text when on, white border when off) can be used alone. Only the drawing is in core. Each hack decides when the overlay shows.
 - `GET /api/display/mirror`: a web page that shows what the Push screen shows now, with Live's own UI too. It draws single PNGs from `GET /api/display/mirror/frame` into a canvas. push-manager does no work for it while nobody watches, and it sends at most 15 pictures a second. It needs the new `push_hook.so`, which copies each outgoing frame into a new `mirror` shared-memory file. **Restart Push3 once** to load it; until then the routes return 503. The `framebuf` layout and `SHM_VERSION` are unchanged.
 
 ## [0.1.20-alpha] - 2026-10-28
@@ -34,11 +35,11 @@ This release updates the PushHack Remote Script to 0.5.0: a hack can now read an
 
 ## [0.1.19-alpha] - 2026-10-28
 
-This release updates the PushHack Remote Script to 0.4.0, which removes the old text protocol and the old arrangement socket. After the update, **restart Live** to load it. It needs Push Manager 0.1.18-alpha or later (this release has it) and, for the arrangement hack, 0.0.9-alpha or later.
+This release updates the PushHack Remote Script to 0.4.0, which removes the old text protocol and the old arrangement socket. After the update, **restart Live** to load it. It needs Push Manager 0.1.18-alpha or later (this release has it) and.
 
 ### Changed
 
-- PushHack Remote Script 0.4.0 removes the old protocols: the Browser Bridge text commands on port 7704 and the old arrangement socket (`/tmp/push-hack-arrangement.sock`, TCP 7720). A client whose first byte is not `{` now gets `{"ok":false,"error":"old_protocol"}` and is closed. Push Manager, automation, the arrangement hack and the PTA module already use the JSON protocol. An older arrangement hack (before 0.0.9-alpha) or an older Push Manager (before 0.1.18-alpha) needs updating first.
+- PushHack Remote Script 0.4.0 removes the old protocols: the Browser Bridge text commands on port 7704 and the old arrangement socket (`/tmp/push-hack-arrangement.sock`, TCP 7720). A client whose first byte is not `{` now gets `{"ok":false,"error":"old_protocol"}` and is closed. Push Manager, automation and the other Push hacks already use the JSON protocol. An older arrangement hack (before 0.0.9-alpha) or an older Push Manager (before 0.1.18-alpha) needs updating first.
 
 ### Fixed
 
@@ -160,7 +161,7 @@ This release teaches the update to install the PushHack Remote Script, but does 
 
 ### Changed
 
-- `core/v0.3.0` is tagged. It holds the raw MIDI helpers in `alsaseq` (with the corrected Stop, Continue, Sensing and Song Position numbers), `display.USB`, `ToWire` and `EncodeFrame`, the `pmclient` surface and frame calls, and `push3.LEDButtons`. The consumer repos (automation, keyboard-visualizer, arrangement, audio-loopback, braids, push-tethered-app, pta-module-arrangement) pin it.
+- `core/v0.3.0` is tagged. It holds the raw MIDI helpers in `alsaseq` (with the corrected Stop, Continue, Sensing and Song Position numbers), `display.USB`, `ToWire` and `EncodeFrame`, the `pmclient` surface and frame calls, and `push3.LEDButtons`. The consumer repos (automation, keyboard-visualizer, audio-loopback, braids, push-tethered-app) pin it.
 - The VST scripts moved into `scripts/VST/`: `make-vst3-preset.py`, `vst3_params.py` and the preset template. Update any saved command to `./scripts/VST/make-vst3-preset.py`.
 
 ## [0.1.12-alpha] - 2026-10-04
