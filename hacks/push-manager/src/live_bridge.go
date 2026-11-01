@@ -18,6 +18,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"push-manager/plugintree"
 )
 
 // liveBridgeAddr is a var so a test can use its own port.
@@ -132,11 +134,7 @@ func liveSampleLoad(name string) error {
 
 // bridgePlugin is one entry of the script's list_plugins reply: a scanned
 // plugin and the preset files Live has indexed for it.
-type bridgePlugin struct {
-	Vendor  string   `json:"vendor"`
-	Name    string   `json:"name"`
-	Presets []string `json:"presets"`
-}
+type bridgePlugin = plugintree.Plugin
 
 // livePlugins asks the script which plugins Live has scanned.
 func livePlugins() ([]bridgePlugin, error) {

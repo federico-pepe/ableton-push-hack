@@ -25,7 +25,7 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Parameter list read from the plugin (`--list-params`) | Works on Push (Surge XT, 2855 parameters; IDs match the Mac file) |
 | Parameter map written by `make-vst3-preset.py --params` | Same XML as the Mac file, **not yet confirmed on the device** |
 | CPU load while playing | Not measured. Idle Push uses about 13% (Live) and 6% (Push3). |
-| VST3 effects | Not tested. The script makes instruments only. |
+| VST3 effects | Airwindows effects load and run on an audio track. Dragonfly Reverb scans. `make-vst3-preset.py` makes instruments only. |
 | VST2 (`.so` files) | Does not work with the system-paths flag. See below. |
 
 ## Tested plugins
@@ -36,6 +36,8 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Dragonfly Reverb 3.2.10 (Early Reflections, Hall, Plate, Room; effects) | All four scan and are listed. Load them on an **audio** track. |
 | Dexed 1.0.1 (instrument) | The official Linux download does **not** load: it needs glibc 2.38 and Push has 2.35. Built from source on Ubuntu 22.04 it scans and is listed. |
 | JE8086 2.2.25 by The Usual Suspects (JP-8000 emulation, instrument) | Scans, loads and plays once its firmware is in the right folder. See [Plugins that need data files](#plugins-that-need-data-files). Factory performances load as presets. |
+
+| Airwindows effects (161 of 532 built; effects, audio) | All 161 scan and are listed. OrbitKick, TapeDelay2 and VerbSevens load, run and sound right. See [Airwindows effects as VST3](#airwindows-effects-as-vst3). |
 
 Rule of thumb: use a plugin built on Ubuntu 22.04 (glibc 2.35) or older. The
 error in `PluginScanner.txt` for a build that is too new is
@@ -204,6 +206,52 @@ The template is `scripts/VST/templates/vst3-instrument.adg.xml`. The schema is
 in `/opt/push3/products/live/Live/AppLive/Resources/Schema/` on Push
 (`Vst3PluginInfo`, `Vst3Preset`, `PluginDevice`).
 
+## Airwindows effects as VST3
+
+Airwindows publishes its Linux plugins only as VST2 (`.so`), which Push does not
+load. Its only official VST3 is "Airwindows Consolidated", one plugin with a screen
+that Push cannot show. So we build one VST3 for each effect.
+
+Tested on 2026-11-01 (AbletonOS v3.23, Live 12.4.15b7). The build project is
+outside this repository: `~/Developer/airwindows-vst3` (README.md and CLAUDE.md
+there). How it works:
+
+- A small stand-in for Steinberg's VST2 `audioeffectx.h` lets the Airwindows code
+  compile unchanged. One generic VST3 wrapper (VST3 SDK 3.8.0, MIT licence) runs
+  each effect. Parameters are the Airwindows parameters, 0 to 1.
+- The build runs in an Ubuntu 22.04 container. The result needs glibc 2.34 or lower
+  (Push has 2.35). The fast build is a cross build on an arm64 container: all 532
+  effects build in about 2.5 minutes. An emulated x86 build gives the same result but is much
+  slower.
+- **Check before you install.** Steinberg's `validator` passes 532 of 532 effects
+  (47 tests each). It found one bug in our wrapper (the processor did not name its
+  controller class). An AddressSanitizer run found one upstream bug that matters:
+  `X2Buss` writes past its arrays above 352.8 kHz (patched in our build). Four
+  Console effects (`ConsoleHChannel`, `ConsoleHPre`, `ConsoleX2Channel`,
+  `ConsoleX2Pre`) read index -1 of an array, and `PunchyGuitar` reads one value past
+  the end of an array. We built them but did not install them.
+
+Install:
+
+```bash
+cd out-all && tar -cf - Reverb.vst3 Tape.vst3 | ssh root@push.local \
+    'cd /data/.vst3 && tar -xf - && chown -R ableton:users /data/.vst3'
+```
+
+One `tar` stream is more reliable than many `scp` calls (one `scp` of a 22 MB plugin
+dropped the connection once). Then stop and start the Push stack. On our Push a
+plain `/etc/init.d/push3 restart` did not restart Live; use `stop`, a pause, then
+`start`. Live scans at start.
+
+What we installed: 161 effects from the Airwindopedia categories Ambience, Amp Sims,
+Distortion, Effects, Lo-Fi, Reverb and Tape. All 161 appear in `PluginScanner.txt`
+as `device:vst3:audiofx` with no error, and Live ran without a crash. The scan
+still finished within seconds. Load an effect on an **audio** track. Push shows no
+parameters on the encoders without a saved parameter map (see above).
+
+Not tested: the sound of the other 158 effects, CPU load with many effects, and
+`.adg` presets with a parameter map for Airwindows effects.
+
 ## Build a plugin from source (Docker)
 
 Many plugins ship no Linux `.vst3`, or ship one built on a new distribution.
@@ -319,6 +367,32 @@ patch, and `list_plugins` lists plugins with their presets. Tested with Surge XT
 push-manager has a **PLUGINS** tab in the Shadow UI and a Plugins list in the
 web Browser view. Both call PushHack, so you do not need SSH to load a
 plugin or a preset.
+
+## Plugin folders
+
+With 100 plugins or more, the plugin list is long. Push Manager can group plugins in
+folders, in the PLUGINS tab of the Shadow UI and in the web Browser. The folders are in
+the file `/data/push-hack/plugin-folders.json`. The file format and the rules are in
+`hacks/push-manager/README.md`, section "Plugin folders". A plugin that is in no
+folder is grouped by its vendor, so the list works with no file.
+
+To make a file for the Airwindows effects, use the generator. It reads the category
+lines of `Airwindopedia.txt` and writes one folder for each category. It keeps the
+order of the file, which lists the best effects first.
+
+```bash
+./scripts/VST/make-plugin-folders.py \
+    --airwindopedia ~/Developer/airwindows/Airwindopedia.txt \
+    --plugins-dir ~/Developer/airwindows/plugins/LinuxVST/src \
+    --out resources/VST/Airwindows/plugin-folders.json
+scp resources/VST/Airwindows/plugin-folders.json root@push.local:/data/push-hack/plugin-folders.json
+ssh root@push.local 'chown ableton:users /data/push-hack/plugin-folders.json'
+```
+
+The file lists all 510 effect names in 22 categories. A folder with no installed
+plugin is hidden, so you can install more effects later and the folders fill. Check
+the destination first: `scp` replaces a file you already made. To add folders by hand,
+use **Folder...** in the web Browser, or edit the file over SSH.
 
 ## Convert Surge XT patches (`.fxp`) to presets
 

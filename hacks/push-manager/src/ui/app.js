@@ -1917,33 +1917,82 @@ async function brLoad(name, category, type) {
 // ── Plugins (VST3) ─────────────────────────────────────────────────────────
 // Push's own browser hides plugins; PushHack lists and loads them. Each
 // plugin loads with its default patch, or with one of its indexed presets.
-let PL = { list: [], error: '' };
+// Plugins sit in folders (/data/push-hack/plugin-folders.json, built by
+// push-manager): PL.tree is the folder tree, PL.path the open folder, PL.list
+// the flat list that search and loading use.
+let PL = { list: [], tree: null, path: [], note: '', error: '' };
 
 async function plReload() {
   try {
-    const r = await api('GET', '/api/live/plugins');
-    if (!r.ok) throw new Error(r.error || 'failed');
-    PL.list = r.plugins || [];
+    const [flat, tree] = await Promise.all([
+      api('GET', '/api/live/plugins'), api('GET', '/api/live/plugin-tree')]);
+    if (!flat.ok) throw new Error(flat.error || 'failed');
+    if (!tree.ok) throw new Error(tree.error || 'failed');
+    PL.list = flat.plugins || [];
+    PL.tree = tree.tree;
+    PL.note = tree.note || '';
     PL.error = '';
+    if (!plNode()) PL.path = [];
   } catch (e) {
     PL.list = [];
+    PL.tree = null;
+    PL.path = [];
     PL.error = 'PushHack not answering (is it selected in Live, and is Live restarted?).';
   }
   plRender();
 }
 
-// Plugins matching the search box: plugin name, vendor or any preset name.
-function plRender() {
-  $('br-count').textContent = '';
-  const q = $('br-search').value.trim().toLowerCase();
-  const shown = PL.list.map((p, i) => ({p, i})).filter(({p}) => !q ||
-    p.name.toLowerCase().includes(q) || (p.vendor || '').toLowerCase().includes(q) ||
-    (p.presets || []).some(n => n.toLowerCase().includes(q)));
-  $('pl-note').textContent = PL.error ||
-    (PL.list.length ? shown.length + ' of ' + PL.list.length + ' plugins' :
-      'No plugins scanned. See docs/vst3-on-push3.md to turn on VST3 scanning.');
-  $('pl-list').innerHTML = shown.map(({p, i}) => `
+// The open folder, or null when the path is stale.
+function plNode() {
+  let n = PL.tree;
+  for (const name of PL.path) n = n && (n.folders || []).find(f => f.name === name);
+  return n || null;
+}
+
+function plCount(n) {
+  return (n.plugins || []).length + (n.folders || []).reduce((c, f) => c + plCount(f), 0);
+}
+
+function plOpen(k) { const f = plNode().folders[k]; PL.path.push(f.name); plRender(); }
+function plUp(depth) { PL.path = PL.path.slice(0, depth); plRender(); }
+
+// A server error comes back as the JSON body in the Error message.
+function plErr(e) {
+  try { return JSON.parse(e.message).error || e.message; } catch (_) { return e.message; }
+}
+
+// Ask for folders, "Airwindows/Reverb", and add the plugin to them.
+async function plAddToFolder(i) {
+  const p = PL.list[i];
+  if (!p) return;
+  const v = prompt('Put "' + p.name + '" in these folders, separated by "/" (example: Airwindows/Reverb). ' +
+    'Letters, digits and punctuation only, no accents.', PL.path.join('/'));
+  if (v === null) return;
+  const path = v.split('/').map(x => x.trim()).filter(Boolean);
+  if (!path.length) return;
+  try {
+    await api('POST', '/api/live/plugin-folders/add', {plugin: p.name, path});
+    toast('"' + p.name + '" is in ' + path.join(' / '), 'success');
+    await plReload();
+  } catch (e) { toast('Folder failed: ' + plErr(e), 'error'); }
+}
+
+async function plRemoveFromFolder(i) {
+  const p = PL.list[i];
+  if (!p || !PL.path.length) return;
+  try {
+    await api('POST', '/api/live/plugin-folders/remove', {plugin: p.name, path: PL.path});
+    toast('"' + p.name + '" is out of ' + PL.path.join(' / '), 'success');
+    await plReload();
+  } catch (e) { toast('Remove failed: ' + plErr(e), 'error'); }
+}
+
+// One plugin row. i is the index in PL.list. Remove shows inside a folder.
+const PL_ICON = 'width:22px;opacity:.7;margin-right:10px;flex-shrink:0';
+function plRow(p, i, inFolder) {
+  return `
     <div class="br-row">
+      <img src="${BASE}Browser_VST3Effect.png" style="${PL_ICON}" alt="">
       <div style="flex:1;min-width:0">
         <div class="br-name">${esc(p.name)}</div>
         <div class="br-meta">${esc(p.vendor || '')}</div>
@@ -1952,7 +2001,50 @@ function plRender() {
         ${p.presets.map((n, k) => `<option value="${k}">${esc(n)}</option>`).join('')}
       </select><button class="br-load" onclick="plLoad(${i}, true)">Load preset</button>` : ''}
       <button class="br-load" onclick="plLoad(${i}, false)">Load</button>
-    </div>`).join('');
+      <button class="br-sel" onclick="plAddToFolder(${i})" title="Put this plugin in a folder">Folder...</button>
+      ${inFolder ? `<button class="br-sel" onclick="plRemoveFromFolder(${i})" title="Take this plugin out of the open folder">Remove</button>` : ''}
+    </div>`;
+}
+
+// No search text: the open folder (sub-folders, then plugins). With search
+// text: a flat list over every plugin, matching plugin name, vendor or any
+// preset name.
+function plRender() {
+  $('br-count').textContent = '';
+  const q = $('br-search').value.trim().toLowerCase();
+  // First index wins, like plugintree.Build, so a name used twice maps to the plugin the tree holds.
+  const byName = new Map();
+  PL.list.forEach((p, i) => { if (!byName.has(p.name)) byName.set(p.name, i); });
+  const node = plNode();
+  let html = '', crumb = '';
+  if (q) {
+    const shown = PL.list.map((p, i) => ({p, i})).filter(({p}) =>
+      p.name.toLowerCase().includes(q) || (p.vendor || '').toLowerCase().includes(q) ||
+      (p.presets || []).some(n => n.toLowerCase().includes(q)));
+    $('pl-note').textContent = PL.error || PL.note ||
+      shown.length + ' of ' + PL.list.length + ' plugins';
+    html = shown.map(({p, i}) => plRow(p, i, false)).join('');
+  } else {
+    $('pl-note').textContent = PL.error || PL.note ||
+      (PL.list.length ? PL.list.length + ' plugins' :
+        'No plugins scanned. See docs/vst3-on-push3.md to turn on VST3 scanning.');
+    if (node) {
+      crumb = ['<span style="cursor:pointer;text-decoration:underline" onclick="plUp(0)">Plugins</span>']
+        .concat(PL.path.map((name, d) =>
+          `<span style="cursor:pointer;text-decoration:underline" onclick="plUp(${d + 1})">${esc(name)}</span>`))
+        .join(' / ');
+      html = (node.folders || []).map((f, k) => `
+        <div class="br-row" style="cursor:pointer" onclick="plOpen(${k})">
+          <img src="${BASE}Sidebar_Folder.png" style="${PL_ICON}" alt="">
+          <div style="flex:1;min-width:0"><div class="br-name">${esc(f.name)}</div></div>
+          <div class="br-meta">${plCount(f)}</div>
+        </div>`).join('') +
+        (node.plugins || []).filter(p => byName.has(p.name))
+          .map(p => plRow(p, byName.get(p.name), PL.path.length > 0)).join('');
+    }
+  }
+  $('pl-crumb').innerHTML = crumb;
+  $('pl-list').innerHTML = html;
 }
 
 async function plLoad(i, withPreset) {
