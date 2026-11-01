@@ -62,6 +62,10 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/presets/refresh` | Rescan the preset index (after installing Packs). Returns `{ok, count}`. |
 | `POST` | `/api/live/load` | Load a preset onto Live's selected track. Body `{"name":"…","category":"Instruments"}`. Sends `browser.load` to the PushHack Remote Script over `127.0.0.1:7704`. Returns `{ok}` or `{ok:false, error}`. Requires the PushHack Remote Script active in Live. With `"type":"plugin"` it loads a VST3 plugin: `name` is the plugin and the optional `preset` is one of its presets (sends `browser.load_plugin`). `{ok:true}` means Live loaded it; otherwise `error` says why. |
 | `GET` | `/api/live/plugins` | Plugins Live has scanned: `{ok, plugins:[{vendor,name,presets:[…]}]}`. Sends `browser.list_plugins`. Needs the PushHack Remote Script. |
+| `GET` | `/api/live/plugin-tree` | The scanned plugins grouped in folders: `{ok, tree:{name, folders:[…], plugins:[…]}, note}`. `note` is not empty when `plugin-folders.json` is not valid; the tree then groups by vendor only. |
+| `GET` / `PUT` | `/api/live/plugin-folders` | Read or replace the whole folders file `/data/push-hack/plugin-folders.json`. `PUT` returns 400 for a bad folder name. |
+| `POST` | `/api/live/plugin-folders/add` | `{plugin, path:["Airwindows","Reverb"]}`. Puts a plugin in a folder and makes missing folders. Safe to repeat. 400 for a bad name; 422 if the file on disk is not valid. |
+| `POST` | `/api/live/plugin-folders/remove` | `{plugin, path:[…]}`. Takes a plugin out of a folder. The folder stays in the file. |
 | `GET` | `/api/live/tempo` | Returns the current Live song tempo. Sends `transport.get` to the PushHack Remote Script and returns `{ok:true, bpm:124.0}`. Requires the PushHack Remote Script active in Live. Returns `{ok:false, error}` if the Remote Script is unreachable. |
 | `GET` | `/api/live/scale` | The Set's scale, the one Push's Scale button edits: `{ok:true, supported:true, root:9, name:"Minor", intervals:[0,2,3,5,7,8,10], mode:true}` (`root` 0-11 with 0 = C). Sends `get_scale` to the PushHack Remote Script (0.3 or later). `supported` is false on a Live without the scale API. |
 | `GET`/`POST` | `/api/live/listen` | The listen track: a silent MIDI track whose input follows the selected track and whose output is a hack's MIDI port, so the hack gets the notes played on Push's pads. `POST {on:true, port:"Stacks Listen"}` makes or finds it (`listen_on`), `{on:false}` stops it (`listen_off`), `GET` reports it. Replies with Browser Bridge's JSON; on failure `ok:false`, `error` and the outputs Live offers. Needs Browser Bridge 0.4 or later. |
@@ -262,6 +266,33 @@ gets used on a phone, next to the hardware.
 - A hack that declares `surface` (an app of Push Hack Home) is listed here
   too, marked "app", even with no `web_ui` or `shadow_ui`.
 
+### Plugin folders
+
+With many plugins the flat list is long to scroll. The PLUGINS tab and the web Browser's Plugins view group plugins in folders. The folders come from one file on Push, `/data/push-hack/plugin-folders.json`:
+
+```json
+{
+  "folders": [
+    {"name": "Airwindows", "folders": [
+      {"name": "Reverb", "plugins": ["Reverb", "MatrixVerb"]}
+    ]},
+    {"name": "Synths", "plugins": ["Surge XT", "Dexed"]}
+  ]
+}
+```
+
+- Folders nest up to 8 levels. Folder names use letters, digits and punctuation only (the Push screen cannot draw accents), 1 to 40 characters, no `/`.
+- Folders and plugins show in the order of the file.
+- A plugin name must match a scanned plugin exactly. A name that matches nothing is ignored. A folder with no plugin in it is hidden.
+- A plugin can be in more than one folder.
+- A plugin that is in no folder goes into a folder with the name of its vendor (`Other` if it has none). If a top-level folder has the same name, it goes there.
+- With no file, every plugin is grouped by vendor. A file that is not valid shows a note on the screen and in the web page, and the list still works. Edits are refused until you fix the file.
+- Push Manager reads the file again when the tab refreshes (every 10 seconds). No restart is needed.
+
+**In the PLUGINS tab:** folders show first (Push's folder icon, the name and the plugin count), then plugins (Push's VST3 effect icon). The web Browser uses the same icons. Jog press, D-pad right or **Load** opens a folder. **Back** (D-pad left or button 2) goes up one folder and keeps your place. The line above the list shows the path.
+
+**Airwindows:** `scripts/VST/make-plugin-folders.py` writes the file from `Airwindopedia.txt`, one folder for each category. See `docs/vst3-on-push3.md`. Design: `plans/2026-11-01-plugin-folders.md`.
+
 ### Shadow UI tabs from other hacks
 
 A hack can own a Shadow UI tab without any Go code landing in push-manager.
@@ -372,6 +403,8 @@ Preset browser backed by the filesystem index (`presets.go`), no Live access for
 - **Favourites** — ★ toggles per preset; persisted to `<hackdir>/preset_meta.json` and shared with the on-device Shadow UI Favourites filter.
 - **Load** — `POST /api/live/load {name,category}` → PushHack instantiates it onto Live's selected track (the reply says if Live loaded it; a failure shows as an error).
 - **Plugins** — a list above the preset rows. Each scanned VST3 plugin has **Load** (default patch) and, if it has indexed `.vstpreset` files, a preset menu with **Load preset**. Data comes from `GET /api/live/plugins`. See `docs/vst3-on-push3.md`.
+
+  **Folders.** Without search text the list shows the plugins in folders. Click a folder to open it. Click a part of the path above the list to go back. Each plugin has **Folder...** (type a path such as `Airwindows/Reverb`) and, inside a folder, **Remove**. Search text shows a flat list over all plugins. See "Plugin folders" below.
 - Rows capped at 300 (`BR_CAP`) with a "showing N of M" count.
 
 ### Stats page (System)
