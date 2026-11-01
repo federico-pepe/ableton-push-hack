@@ -37,7 +37,7 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Dexed 1.0.1 (instrument) | The official Linux download does **not** load: it needs glibc 2.38 and Push has 2.35. Built from source on Ubuntu 22.04 it scans and is listed. |
 | JE8086 2.2.25 by The Usual Suspects (JP-8000 emulation, instrument) | Scans, loads and plays once its firmware is in the right folder. See [Plugins that need data files](#plugins-that-need-data-files). Factory performances load as presets. |
 
-| Airwindows effects (161 of 532 built; effects, audio) | All 161 scan and are listed. OrbitKick, TapeDelay2 and VerbSevens load, run and sound right. See [Airwindows effects as VST3](#airwindows-effects-as-vst3). |
+| Airwindows effects (all 532; effects, audio) | All scan and are listed. OrbitKick, TapeDelay2 and VerbSevens load, run and sound right. See [Airwindows effects as VST3](#airwindows-effects-as-vst3). |
 
 Rule of thumb: use a plugin built on Ubuntu 22.04 (glibc 2.35) or older. The
 error in `PluginScanner.txt` for a build that is too new is
@@ -226,10 +226,12 @@ there). How it works:
 - **Check before you install.** Steinberg's `validator` passes 532 of 532 effects
   (47 tests each). It found one bug in our wrapper (the processor did not name its
   controller class). An AddressSanitizer run found one upstream bug that matters:
-  `X2Buss` writes past its arrays above 352.8 kHz (patched in our build). Four
-  Console effects (`ConsoleHChannel`, `ConsoleHPre`, `ConsoleX2Channel`,
-  `ConsoleX2Pre`) read index -1 of an array, and `PunchyGuitar` reads one value past
-  the end of an array. We built them but did not install them.
+  `X2Buss` writes past its arrays above 352.8 kHz. Four Console effects
+  (`ConsoleHChannel`, `ConsoleHPre`, `ConsoleX2Channel`, `ConsoleX2Pre`) read
+  index -1 of an array, `PunchyGuitar` can use more poles than its arrays hold, and
+  `Ditherbox` reads a flag that is never set. We patched all six in our build
+  (the Airwindows source is not changed), and they pass the same check and the
+  validator.
 
 Install:
 
@@ -243,14 +245,15 @@ dropped the connection once). Then stop and start the Push stack. On our Push a
 plain `/etc/init.d/push3 restart` did not restart Live; use `stop`, a pause, then
 `start`. Live scans at start.
 
-What we installed: 161 effects from the Airwindopedia categories Ambience, Amp Sims,
-Distortion, Effects, Lo-Fi, Reverb and Tape. All 161 appear in `PluginScanner.txt`
-as `device:vst3:audiofx` with no error, and Live ran without a crash. The scan
-still finished within seconds. Load an effect on an **audio** track. Push shows no
+What we installed: first 161 effects from the Airwindopedia categories Ambience,
+Amp Sims, Distortion, Effects, Lo-Fi, Reverb and Tape, then the other 371 (all 532).
+They appear in `PluginScanner.txt` as `device:vst3:audiofx` with no error, and Live
+ran without a crash. Live scans 50 plugins and restarts the scanner, so the full
+scan took 8 passes, about 15 seconds. Load an effect on an **audio** track. Push shows no
 parameters on the encoders without a saved parameter map (see above).
 
-Not tested: the sound of the other 158 effects, CPU load with many effects, and
-`.adg` presets with a parameter map for Airwindows effects.
+Checked by ear on a Push: a sample of effects from many categories, with normal Live CPU.
+Not tested: `.adg` presets with a parameter map for Airwindows effects.
 
 ## Build a plugin from source (Docker)
 
