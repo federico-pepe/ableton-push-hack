@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.21-alpha] - 2026-11-01
+
+This release adds plugin folders to the PLUGINS tab and the web Browser, and a display mirror page. After the update, **restart Push3 once** to load the new `push_hook.so` (the mirror needs it). Folders need no restart: they read `/data/push-hack/plugin-folders.json` when the list refreshes.
+
 ### Fixed
 
 - The startup starfield now shows after a boot or a Push3 restart. It used to run while the hook still ignored the display (its first 8 seconds), so you only saw the last frame, frozen. Push Manager now waits until Push3 is past that time. It needs no change to the hook. The starfield now runs 5 seconds, not 3.
