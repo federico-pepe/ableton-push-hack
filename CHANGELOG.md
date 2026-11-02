@@ -7,6 +7,9 @@ between minor versions).
 
 ## [Unreleased]
 
+- `core/audiobus` (prototype): many hacks can play through the one loopback card. A mixer in push-audio-loopback adds the audio of all clients. See [docs/audio-bus.md](docs/audio-bus.md). Not released.
+- `core/alsapcm`: `ReadHWParams` reads the format that Live negotiated on the loopback card. Needs a `core/v*` tag before consumers get it.
+
 ## [0.1.21-alpha] - 2026-11-01
 
 This release adds plugin folders to the PLUGINS tab and the web Browser, and a display mirror page. After the update, **restart Push3 once** to load the new `push_hook.so` (the mirror needs it). Folders need no restart: they read `/data/push-hack/plugin-folders.json` when the list refreshes.
