@@ -103,7 +103,7 @@ See [docs/adding-a-hack.md](docs/adding-a-hack.md) for the full walkthrough — 
 - `docs/push3-assets.md` — Push UI image assets (`/api/assets/<path>`)
 
 **Shared library:**
-- `core/README.md` — package-by-package guide to the shared Go module (push3, gfx, display, httpx, hackcfg, sse, pmclient, alsaseq)
+- `core/README.md` — package-by-package guide to the shared Go module (push3, gfx, display, httpx, hackcfg, sse, pmclient, alsaseq, alsapcm, audiobus)
 
 **Per-hack** (folder README):
 - `hacks/push-manager/README.md` — full API reference, features, display control, MIDI monitor
