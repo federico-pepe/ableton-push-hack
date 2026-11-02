@@ -1,7 +1,9 @@
 # Audio bus: many hacks, one loopback card
 
-Status: prototype. The code is in `core/audiobus` and in the `mixer` program of
-push-audio-loopback (branch `audiobus-prototype`). Nothing here is released.
+Status: working on a Push 3, not released. The server and client are in `core/audiobus`.
+The mixer runs inside push-audio-loopback (branch `audiobus-prototype`).
+Braids and MachineModule are clients (branches `audiobus-client`). Each repo builds
+against a local `core/` until a `core/v*` tag has `audiobus`.
 
 ## The problem
 
@@ -28,7 +30,7 @@ The mixer knows no hack by name. It mixes whoever is connected. A user can insta
 | `Server` | `core/audiobus` | Accepts clients and mixes them. `Mix` has no lock and no allocation. |
 | `Client` | `core/audiobus` | A hack calls `Open`, then `Write` for each block. It reconnects by itself. |
 | `HWParams` | `core/alsapcm` | Reads the format that Live negotiated. It replaces the copies in Braids and MachineModule. |
-| mixer | push-audio-loopback | Opens the card, sets the format, calls `Mix` and writes the result. |
+| mixer | push-audio-loopback | Opens the card, sets the format, calls `Mix` and writes the result. It also serves a status page and `/api/status`. |
 | `abustone` | `core/audiobus/cmd` | A test client that plays a sine wave. |
 
 ## Data path
@@ -91,9 +93,10 @@ In Live, the user enables the pair on the input of the card.
 | The card is not ready | The mixer refuses clients with the error "card not ready". |
 | A client is late | The mixer plays silence for that client and counts an underrun. |
 
-## Prototype results
+## Results
 
-Test on a Push 3 (44.1 kHz, period 256, 32 channels). The mixer ran with two `abustone` clients on pairs 1-2 and 3-4. The test ran for 25 seconds.
+First test (Push 3, 44.1 kHz, period 256, 32 channels): the mixer ran with two `abustone`
+clients on pairs 1-2 and 3-4 for 25 seconds.
 
 | Measure | Result |
 |---|---|
@@ -102,29 +105,45 @@ Test on a Push 3 (44.1 kHz, period 256, 32 channels). The mixer ran with two `ab
 | Underruns | 0 for both clients |
 | Time for `Mix`, worst case | 110 to 190 µs (a block lasts 5800 µs) |
 | CPU of the mixer | 6.7% in one sample of `top` |
-| CPU of one client | 0.0% in the same sample |
 
-These numbers come from one short run. They do not include real hacks, a long run, or the sound in Live.
+Second test: the mixer ran inside the push-audio-loopback service, with Braids and
+MachineModule as clients on pairs 1-2 and 5-6. Both hacks were audible in Live at the same time.
+The worst `Mix` time was 220 µs. There were no write errors and no underruns.
 
-## What the prototype does not do
+These numbers come from short runs. There is no long-run test yet.
 
-- The mixer is a separate program. The released push-audio-loopback is still pure Go.
-- The mixer needs cgo and libasound to write to the card. The release workflow of push-audio-loopback builds with `CGO_ENABLED=0`. It must change.
-- Braids and MachineModule do not use the bus yet.
-- A hack cannot ask for a new pair while it runs, except through `SetPair`, which reconnects. There is no live pair change.
+Other results from the tests:
+
+- When the service restarts, the hacks fall back to the card for a moment and grab the device.
+  The new mixer then logs "Device or resource busy" for about two seconds. The hacks see the mixer
+  again, leave the card, and the mixer opens it. No restart of a hack is needed.
+- A client that changes its pair reconnects. The sound continues with no underruns.
+- Create tracks in Live must not change the pair that the user chose. Live offers only the pairs
+  that the user enabled. Both hacks used to switch to the one offered pair. They now keep the
+  user's pair and name the offered pairs in the error.
+
+## Known limits
+
 - Dropped clients keep their ring mapped for 500 ms, because `Mix` can still read it. A fixed delay is simple but not elegant.
 - The bus folder is in `/dev/shm`, open to all users (mode 0777). Every process on the Push can send audio. Hacks already run as root on a single-user device.
 - The sample rate of a client must follow the card. A hack that renders at a fixed rate needs a resampler.
+- There is no live change of pair for a running client, except `SetPair`, which reconnects.
+- The engine of a hack can send denormal numbers (for example 1e-43) in a silent tail. The mixer handles them, but they cost CPU on some processors.
 
 ## Plan
 
-1. Review this document.
-2. Add `core/audiobus` and the `HWParams` change to `core/`. Tag a new `core/vX.Y.Z`.
-3. Move the mixer into the main program of push-audio-loopback. Change the release workflow to use cgo. Keep the kernel module loader.
-4. Add a small status API to the mixer: the clients, their pairs, their peaks and their underruns. Show it in the web page of push-audio-loopback.
-5. Move MachineModule to the client. It is the smaller of the two hacks.
-6. Move Braids to the client.
-7. Keep the direct `hw:` path in each hack as a fallback, for users who do not have the new push-audio-loopback. Remove it later.
+| Step | State |
+|---|---|
+| 1. Review this document | Open |
+| 2. Add `core/audiobus` and `ReadHWParams` to `core/`, tag a new `core/vX.Y.Z` | Code done on branch `audiobus-prototype`. The tag is open. |
+| 3. Move the mixer into the push-audio-loopback service, build with cgo | Done on branch `audiobus-prototype`. The release workflow builds in Docker. The pin of `core` in `go.mod` waits for the tag. |
+| 4. Status API and page for the mixer | Done (`/api/status`, status page). |
+| 5. MachineModule as a client | Done on branch `audiobus-client`. |
+| 6. Braids as a client | Done on branch `audiobus-client`. |
+| 7. Keep the direct `hw:` path in each hack as a fallback | Done. Remove it later. |
+
+Release order: merge the `core/` change and tag it, then bump the `core` pin in the three
+repos, then release push-audio-loopback first (the mixer), then the two hacks.
 
 ## Decisions
 
