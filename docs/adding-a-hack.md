@@ -122,3 +122,10 @@ go get github.com/federico-pepe/ableton-push-hack/core@vX.Y.Z && go mod tidy
 ## Talking to Live
 
 A hack that needs Live (tempo, clips, devices, the selection) uses the PushHack Remote Script. It ships with Push Hack. Connect to `127.0.0.1:7704`, send `hello`, then ask for data or subscribe to topics. Do not ship your own Remote Script. See [pushhack-remote-script.md](pushhack-remote-script.md).
+
+## Playing audio
+
+A hack that makes sound must not open the loopback card itself. ALSA lets only one process write to it, so two such hacks cannot run together.
+Use `core/audiobus` instead: call `audiobus.Open(audiobus.SocketPath(audiobus.DefaultDir), "<your hack name>", pair)`, then `Write` one block of stereo `float32` per period.
+The mixer in push-audio-loopback adds your audio to the audio of the other hacks. Read the rate and the block size from `Client.Format()`, and read it again when `Generation()` changes.
+If no mixer runs, a hack can still open `hw:PHVAudio,1,0` itself. The design and a worked example are in [audio-bus.md](audio-bus.md).
