@@ -7,8 +7,8 @@ between minor versions).
 
 ## [Unreleased]
 
-- `core/audiobus`: many hacks can play through the one loopback card. The mixer in push-audio-loopback adds the audio of all clients; Braids and MachineModule are the first clients. Tested on a Push 3. See [docs/audio-bus.md](docs/audio-bus.md). Needs a `core/v*` tag before consumers get it.
-- `core/alsapcm`: `ReadHWParams` reads the format that Live negotiated on the loopback card. Needs a `core/v*` tag before consumers get it.
+- `core/audiobus`: many hacks can play through the one loopback card. The mixer in push-audio-loopback adds the audio of all clients; Braids and MachineModule are the first clients. Tested on a Push 3. See [docs/audio-bus.md](docs/audio-bus.md). Tagged `core/v0.5.3`.
+- `core/alsapcm`: `ReadHWParams` reads the format that Live negotiated on the loopback card. Tagged `core/v0.5.3`.
 
 ## [0.1.21-alpha] - 2026-11-01
 

@@ -1,9 +1,8 @@
 # Audio bus: many hacks, one loopback card
 
-Status: working on a Push 3, not released. The server and client are in `core/audiobus`.
-The mixer runs inside push-audio-loopback (branch `audiobus-prototype`).
-Braids and MachineModule are clients (branches `audiobus-client`). Each repo builds
-against a local `core/` until a `core/v*` tag has `audiobus`.
+Status: working on a Push 3. The server and client are in `core/audiobus`
+(`core/v0.5.3` and later). The mixer runs inside push-audio-loopback.
+Braids and MachineModule are clients.
 
 ## The problem
 
