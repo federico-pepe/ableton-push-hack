@@ -411,7 +411,7 @@ When push-manager is running it appears as an additional client (`131+`) also su
 - `16:0` — USB MIDI keyboard
 - `18:0` or `20:0` — Push 3 Live Port
 
-push-manager auto-detects Push 3 by scanning `/proc/asound/seq/clients` for "Ableton Push 3 Live Port" on each connection attempt (`detectPush3Port()`), so a shifted client is handled transparently — no manual intervention needed. The port selector dropdown (`GET /api/midi/ports`, `POST /api/midi/subscribe`) can still override the target; doing so disables auto-detect for that session. To restore stable numbering: disconnect external devices and reboot Push.
+push-manager auto-detects Push 3 by scanning `/proc/asound/seq/clients` for "Ableton Push 3 Live Port" on each connection attempt (`detectPush3Port()`), so a shifted client is handled transparently — no manual intervention needed. The port selector dropdown (`GET /api/midi/ports`, `POST /api/midi/subscribe`) can still override the target; doing so disables auto-detect for that session. To restore stable numbering: disconnect external devices and reboot Push. Other hacks do the same with `alsaseq.Push3` (`core/alsaseq/push3.go`): call `Refresh` before each subscribe attempt, then use `Addr`, `Is` and `IsLivePort` instead of comparing with `Push3ClientDefault`. The loopback card (PHVAudio) also shifts the number: Push 3 is client 20 when PHVAudio is ALSA card 0.
 
 #### Subscribing via ALSA sequencer (no cgo, pure Go ioctls)
 
