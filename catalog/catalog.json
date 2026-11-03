@@ -55,6 +55,32 @@
       ]
     },
     {
+      "id": "machinemodule",
+      "name": "MachineModule (alpha)",
+      "description": "Machinedrum-style drum machine for Push 3: 16 synth/sample tracks, sequencer with parameter locks, effects, kits and songs. Plays through the Audio Loopback mixer.",
+      "author": "joman66",
+      "homepage": "https://github.com/joman66/MachineModule",
+      "github_repo": "joman66/MachineModule",
+      "default_branch": "main",
+      "asset_name": "machinemodule.tar.gz",
+      "requires": [
+        "push-audio-loopback"
+      ]
+    },
+    {
+      "id": "monomodule",
+      "name": "MonoModule (alpha)",
+      "description": "Monomachine-style six-voice synth for Push 3: 22 machines, filter and LFOs, pitched sequencer with parameter locks, POLY mode, arpeggiator, kits and songs. Plays through the Audio Loopback mixer.",
+      "author": "joman66",
+      "homepage": "https://github.com/joman66/MonoModule",
+      "github_repo": "joman66/MonoModule",
+      "default_branch": "main",
+      "asset_name": "monomodule.tar.gz",
+      "requires": [
+        "push-audio-loopback"
+      ]
+    },
+    {
       "id": "screensaver",
       "name": "Screensaver",
       "description": "Idle screensaver: after a timeout it takes over the display with animations (Rainbow / Twinkle / Starfield); pads and buttons glow along. Any input wakes it. Configured on-device via push-manager's Shadow UI.",
