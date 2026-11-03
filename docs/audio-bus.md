@@ -1,8 +1,8 @@
 # Audio bus: many hacks, one loopback card
 
-Status: working on a Push 3. The server and client are in `core/audiobus`
+Status: released, working on a Push 3. The server and client are in `core/audiobus`
 (`core/v0.5.3` and later). The mixer runs inside push-audio-loopback.
-Braids and MachineModule are clients.
+Braids, MachineModule and MonoModule are clients.
 
 ## The problem
 
@@ -133,12 +133,12 @@ Other results from the tests:
 
 | Step | State |
 |---|---|
-| 1. Review this document | Open |
-| 2. Add `core/audiobus` and `ReadHWParams` to `core/`, tag a new `core/vX.Y.Z` | Code done on branch `audiobus-prototype`. The tag is open. |
-| 3. Move the mixer into the push-audio-loopback service, build with cgo | Done on branch `audiobus-prototype`. The release workflow builds in Docker. The pin of `core` in `go.mod` waits for the tag. |
+| 1. Review this document | Done |
+| 2. Add `core/audiobus` and `ReadHWParams` to `core/`, tag a new `core/vX.Y.Z` | Done. Released in `core/v0.5.3`. |
+| 3. Move the mixer into the push-audio-loopback service, build with cgo | Done. The release workflow builds in Docker. Released as push-audio-loopback 0.2.0-alpha, pinned to `core/v0.5.3`. |
 | 4. Status API and page for the mixer | Done (`/api/status`, status page). |
-| 5. MachineModule as a client | Done on branch `audiobus-client`. |
-| 6. Braids as a client | Done on branch `audiobus-client`. |
+| 5. MachineModule and MonoModule as clients | Done. Both released as 0.2.0-alpha. |
+| 6. Braids as a client | Done. Released as push-braids 0.4.0-alpha. |
 | 7. Keep the direct `hw:` path in each hack as a fallback | Done. Remove it later. |
 
 Release order: merge the `core/` change and tag it, then bump the `core` pin in the three
