@@ -1,8 +1,11 @@
 # Plan: Link Audio instead of the Loopback card
 
-Status: in progress. The spike works. Steps 1 and 3 are built on the branch `link-audio` of push-hack-audio-loopback (not committed).
-The setting is on the web page of the service, as two buttons: "Virtual Audio Interface" and "Link". Step 2 (the change in `core/`) was not needed.
-The first tests on a Push 3 (2026-11-07) pass. See "Results on the Push".
+Status: built and merged (2026-11-07), not released. Steps 1, 3 and 4 are in `main` of push-hack-audio-loopback. Step 2 (a change in `core/`) was not needed.
+The setting is on the web page of the service, as two buttons: "Virtual Audio Interface" and "Link". Link is the default.
+The tests on a Push 3 pass. See "Results on the Push".
+
+Still open: the release (the license of the binary must be decided first), the delay was not measured, the drift of the hacks after a restart of the service (the fix is in the hacks),
+and the docs of MachineModule, MonoModule and Braids still describe only the virtual card.
 
 ## Goal
 

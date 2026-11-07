@@ -34,7 +34,7 @@
     {
       "id": "push-audio-loopback",
       "name": "Audio Loopback (alpha)",
-      "description": "Persistent virtual sound card (\"Push Hack Virtual Audio\") for routing audio between Live and another process, without opening the real hardware device.",
+      "description": "Audio for hacks. Sends the audio of hacks to Live over Ableton Link Audio (default) or through a persistent virtual sound card (\"Push Hack Virtual Audio\"), and routes Link channels into hack inputs, without opening the real hardware device.",
       "author": "federico-pepe",
       "homepage": "https://github.com/federico-pepe/push-hack-audio-loopback",
       "github_repo": "federico-pepe/push-hack-audio-loopback",
