@@ -7,7 +7,16 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.22-alpha] - 2026-11-07
+
+This release changes the look of the Push Hack Catalog page and adds audio inputs to `core/audiobus`. It needs no reinstall. **Audio Loopback 0.3.0-alpha** is a separate release in its own repository: it sends the audio of hacks to Live over Ableton Link Audio, so Live keeps the sound card of the Push as its output.
+
+### Changed
+
 - Push Hack Catalog: the page has the look of Push Manager (dark, one blue accent). A "Back" link at the top goes to Push Manager. The tab title is now "Catalog".
+
+### Added
+
 - push-audio-loopback (own repository): Link Audio output mode, the default. Each audio hack is its own Link channel and Live keeps the sound card of the Push as its output. The Audio page switches between Link and the Virtual Audio Interface, shows the number of Link peers, and has a matrix that connects Link channels to the inputs of hacks. See `docs/audio-bus.md`.
 - `core/audiobus`: a hack can declare audio inputs (`OpenWithInputs`) and read them (`Client.Read`). The service writes audio into an input ring (`Server.Inputs`, `Input.Write`). Old clients and old servers still work. `abusrec` records an input to a WAV file. Tagged `core/v0.5.5`.
 - `core/audiobus`: many hacks can play through the one loopback card. The mixer in push-audio-loopback adds the audio of all clients; Braids and MachineModule are the first clients. Tested on a Push 3. See [docs/audio-bus.md](docs/audio-bus.md). Tagged `core/v0.5.3`.
