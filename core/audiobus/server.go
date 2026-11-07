@@ -3,7 +3,8 @@
 // ALSA lets only one process write to a loopback stream, so the loopback
 // service owns it: it runs a Server, mixes every client into the card, and
 // writes one block per period. A hack runs a Client and writes stereo float32
-// blocks. See docs/audio-bus.md.
+// blocks. A hack can also declare inputs: the server writes audio into an input
+// ring and the hack reads it with Client.Read. See docs/audio-bus.md.
 package audiobus
 
 import (
@@ -26,6 +27,10 @@ const (
 	socketName  = "bus.sock"
 	pairsName   = "pairs.json"
 	ringPeriods = 2 // ring holds at least this many periods
+
+	inputPeriods = 8  // an input ring holds at least this many periods
+	maxInputs    = 8  // inputs one client may declare
+	maxInputName = 64 // bytes
 )
 
 // Format is what the card runs at. Clients render at this rate and block size.
@@ -43,6 +48,9 @@ type request struct {
 	V    int    `json:"v"`
 	Name string `json:"name"`
 	Pair int    `json:"pair"`
+	// Inputs are the audio inputs this client wants, by name. Optional: an old
+	// client does not send it.
+	Inputs []string `json:"inputs,omitempty"`
 }
 
 type reply struct {
@@ -50,6 +58,9 @@ type reply struct {
 	Error string `json:"error,omitempty"`
 	Ring  string `json:"ring,omitempty"`
 	Pair  int    `json:"pair"`
+	// InRings holds one ring path for each requested input, in the same order.
+	// An old server does not send it.
+	InRings []string `json:"in_rings,omitempty"`
 	Format
 }
 
@@ -59,6 +70,7 @@ type session struct {
 	pair  int
 	rg    *ring
 	path  string
+	ins   []*Input
 	conn  net.Conn
 	peak  atomic.Uint32 // float32 bits, peak of the last block
 	under atomic.Uint64 // blocks that came up short, after the first sound
@@ -67,10 +79,11 @@ type session struct {
 
 // ClientInfo is a read-only view of one client, for UIs.
 type ClientInfo struct {
-	Name      string  `json:"name"`
-	Pair      int     `json:"pair"`
-	Peak      float32 `json:"peak"`
-	Underruns uint64  `json:"underruns"`
+	Name      string   `json:"name"`
+	Pair      int      `json:"pair"`
+	Peak      float32  `json:"peak"`
+	Underruns uint64   `json:"underruns"`
+	Inputs    []string `json:"inputs,omitempty"`
 }
 
 // Server owns the mixing side. Safe for concurrent use; Mix is lock-free.
@@ -166,11 +179,15 @@ func (s *Server) dropAll() {
 func (s *Server) release(ss *session) {
 	ss.conn.Close()
 	// Mix may still be reading this ring for one more block: unmap late.
-	go func(rg *ring, path string) {
+	go func(rg *ring, path string, ins []*Input) {
 		syncGrace()
 		rg.close()
 		os.Remove(path)
-	}(ss.rg, ss.path)
+		for _, in := range ins {
+			in.rg.close()
+			os.Remove(in.path)
+		}
+	}(ss.rg, ss.path, ss.ins)
 }
 
 func (s *Server) serve(c net.Conn) {
@@ -221,16 +238,25 @@ func (s *Server) add(rq request, c net.Conn) (*session, reply) {
 	}
 	capFrames := pow2(f.Period * ringPeriods)
 	path := filepath.Join(s.dir, fmt.Sprintf("%s-%d.ring", sanitize(rq.Name), nextID()))
+	if msg := checkInputs(rq.Inputs); msg != "" {
+		return nil, reply{Error: msg}
+	}
 	rg, err := createRing(path, capFrames)
 	if err != nil {
 		return nil, reply{Error: err.Error()}
 	}
-	ss := &session{name: rq.Name, pair: pair, rg: rg, path: path, conn: c}
+	ins, inPaths, err := s.makeInputs(rq, f, path)
+	if err != nil {
+		rg.close()
+		os.Remove(path)
+		return nil, reply{Error: err.Error()}
+	}
+	ss := &session{name: rq.Name, pair: pair, rg: rg, path: path, ins: ins, conn: c}
 	next := append(append([]*session{}, cur...), ss)
 	s.sessions.Store(&next)
 	s.pairs[rq.Name] = pair
 	s.savePairs()
-	return ss, reply{OK: true, Ring: path, Pair: pair, Format: f}
+	return ss, reply{OK: true, Ring: path, Pair: pair, InRings: inPaths, Format: f}
 }
 
 func (s *Server) remove(ss *session) {
@@ -303,7 +329,10 @@ func (s *Server) Clients() []ClientInfo {
 	cur := *s.sessions.Load()
 	out := make([]ClientInfo, len(cur))
 	for i, ss := range cur {
-		out[i] = ClientInfo{ss.name, ss.pair, float32frombits(ss.peak.Load()), ss.under.Load()}
+		out[i] = ClientInfo{Name: ss.name, Pair: ss.pair, Peak: float32frombits(ss.peak.Load()), Underruns: ss.under.Load()}
+		for _, in := range ss.ins {
+			out[i].Inputs = append(out[i].Inputs, in.Name)
+		}
 	}
 	return out
 }

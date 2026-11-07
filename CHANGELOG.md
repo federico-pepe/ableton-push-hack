@@ -8,6 +8,8 @@ between minor versions).
 ## [Unreleased]
 
 - Push Hack Catalog: the page has the look of Push Manager (dark, one blue accent). A "Back" link at the top goes to Push Manager. The tab title is now "Catalog".
+- push-audio-loopback (own repository): Link Audio output mode, the default. Each audio hack is its own Link channel and Live keeps the sound card of the Push as its output. The Audio page switches between Link and the Virtual Audio Interface, shows the number of Link peers, and has a matrix that connects Link channels to the inputs of hacks. See `docs/audio-bus.md`.
+- `core/audiobus`: a hack can declare audio inputs (`OpenWithInputs`) and read them (`Client.Read`). The service writes audio into an input ring (`Server.Inputs`, `Input.Write`). Old clients and old servers still work. `abusrec` records an input to a WAV file. Tagged `core/v0.5.5`.
 - `core/audiobus`: many hacks can play through the one loopback card. The mixer in push-audio-loopback adds the audio of all clients; Braids and MachineModule are the first clients. Tested on a Push 3. See [docs/audio-bus.md](docs/audio-bus.md). Tagged `core/v0.5.3`.
 - `core/alsapcm`: `ReadHWParams` reads the format that Live negotiated on the loopback card. Tagged `core/v0.5.3`.
 - `core/alsaseq`: `Push3` finds Push 3's Live Port by name and follows it when its client number moves (16 only while Push 3 is ALSA card 0; 20 when the loopback card is card 0). A hack that pinned `Push3ClientDefault` got no pad, button or encoder input in that case. `Refresh`, `Addr`, `Is` and `IsLivePort`; a hack calls `Refresh` before each subscribe attempt. Tagged `core/v0.5.4`.

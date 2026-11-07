@@ -23,6 +23,7 @@ const (
 type Client struct {
 	name   string
 	socket string
+	inputs []string // input names to ask for
 	want   atomic.Int32
 	rate   atomic.Int32 // last known card rate
 
@@ -38,9 +39,28 @@ type connState struct {
 	pair   int
 	dead   atomic.Bool
 
-	mu     sync.RWMutex // Write holds R while it touches rg; teardown holds W
+	mu     sync.RWMutex // Write and Read hold R while they touch a ring; teardown holds W
 	rg     *ring
+	ins    []*ring // one for each name in names, same order
+	names  []string
 	closed bool
+}
+
+// get reads input i. The rest of buf is silence.
+func (cs *connState) get(i int, buf []float32) (int, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	if cs.closed {
+		return 0, ErrNotConnected
+	}
+	if i < 0 || i >= len(cs.ins) {
+		return 0, ErrNoInput
+	}
+	n := cs.ins[i].read(buf)
+	for j := n * 2; j < len(buf); j++ {
+		buf[j] = 0
+	}
+	return n, nil
 }
 
 // put writes buf unless the ring is gone or full.
@@ -59,6 +79,9 @@ func (cs *connState) teardown() {
 	if !cs.closed {
 		cs.closed = true
 		cs.rg.close()
+		for _, g := range cs.ins {
+			g.close()
+		}
 	}
 	cs.mu.Unlock()
 }
@@ -67,7 +90,15 @@ func (cs *connState) teardown() {
 // take the saved or a free pair. It never blocks and never fails: it keeps
 // trying to reach the mixer.
 func Open(socket, name string, pair int) *Client {
-	c := &Client{name: name, socket: socket, stop: make(chan struct{})}
+	return OpenWithInputs(socket, name, pair, nil)
+}
+
+// OpenWithInputs is Open for a hack that also wants audio inputs, by name. At
+// most 8, and each name must be different. The server makes one ring for each.
+// Read them with Read. An older server gives no inputs: Inputs() is empty.
+func OpenWithInputs(socket, name string, pair int, inputs []string) *Client {
+	c := &Client{name: name, socket: socket, stop: make(chan struct{}),
+		inputs: append([]string(nil), inputs...)}
 	c.want.Store(int32(pair))
 	c.wg.Add(1)
 	go c.loop()
@@ -110,6 +141,39 @@ func (c *Client) Pair() int {
 		return -1
 	}
 	return c.conn.pair
+}
+
+// Inputs are the names of the inputs that the server gave us on this
+// connection. Empty before the first connection, and with an older server.
+func (c *Client) Inputs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return nil
+	}
+	return append([]string(nil), c.conn.names...)
+}
+
+// Read takes the audio that waits on input i (an index into Inputs). It fills
+// buf with interleaved L,R and returns how many frames are real. The rest of
+// buf is silence. It never blocks.
+func (c *Client) Read(i int, buf []float32) (int, error) {
+	c.mu.Lock()
+	cs := c.conn
+	c.mu.Unlock()
+	if cs == nil || cs.dead.Load() {
+		for j := range buf {
+			buf[j] = 0
+		}
+		return 0, ErrNotConnected
+	}
+	n, err := cs.get(i, buf)
+	if err != nil {
+		for j := range buf {
+			buf[j] = 0
+		}
+	}
+	return n, err
 }
 
 // Generation grows with every (re)connection. When it changes, read Format
@@ -162,6 +226,8 @@ func (c *Client) Write(buf []float32) error {
 var (
 	ErrNotConnected = errors.New("audiobus: not connected")
 	ErrStalled      = errors.New("audiobus: mixer not reading")
+	// ErrNoInput is what Read returns for an input the server did not make.
+	ErrNoInput = errors.New("audiobus: no such input")
 )
 
 func (c *Client) loop() {
@@ -205,7 +271,7 @@ func (c *Client) dial() (*connState, net.Conn) {
 	if err != nil {
 		return nil, nil
 	}
-	b, _ := json.Marshal(request{V: 1, Name: c.name, Pair: int(c.want.Load())})
+	b, _ := json.Marshal(request{V: 1, Name: c.name, Pair: int(c.want.Load()), Inputs: c.inputs})
 	if _, err := conn.Write(append(b, '\n')); err != nil {
 		conn.Close()
 		return nil, nil
@@ -221,5 +287,19 @@ func (c *Client) dial() (*connState, net.Conn) {
 		conn.Close()
 		return nil, nil
 	}
-	return &connState{format: rep.Format, pair: rep.Pair, rg: rg}, conn
+	cs := &connState{format: rep.Format, pair: rep.Pair, rg: rg}
+	// An old server sends no in_rings: the client then has no inputs.
+	if len(rep.InRings) == len(c.inputs) {
+		for i, p := range rep.InRings {
+			g, err := openRing(p)
+			if err != nil {
+				cs.teardown()
+				conn.Close()
+				return nil, nil
+			}
+			cs.ins = append(cs.ins, g)
+			cs.names = append(cs.names, c.inputs[i])
+		}
+	}
+	return cs, conn
 }

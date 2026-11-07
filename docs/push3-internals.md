@@ -554,6 +554,24 @@ Full write-up, including the two approaches tried and dropped before
 this one (Ableton Link's audio extension, and an LD_PRELOAD hook
 inside Live's own process): `plans/2026-08-27-push-audio-virtual-device.md`.
 
+### Audio — Ableton Link Audio between Live and a hack (2026-11-07)
+
+Live 12.4 on Push 3 Standalone sends and receives Link Audio. A process on the Push joins the Link session as a peer, and Live lists its channels as an input type.
+Tested with a small peer on a Push 3, then with push-audio-loopback:
+
+- A peer on the same Push finds Live with no setup, over `wlan0`. It also works with Wi-Fi off.
+- Live offers one channel for each track, return and Main. Buffers are stereo `int16`, 44100 Hz (Live at 48000, 88200 and 96000 Hz kept working), about 345 buffers per second.
+- Live ignores buffers that carry its own timestamps, at any offset from +20 to -100 ms. It plays buffers stamped with a sample counter that starts 40 ms after "now". Stamps from the clock for each buffer play with glitches.
+- A sink sends only while a source listens. Live sends a channel only while a source listens.
+- A peer takes the tempo of the session. It must never set it.
+- When Live uses `A3` for input only, the `A3` playback stream is free. A process can open `hw:A3,0` (`S24_3LE`, 16 channels) and play to the physical outputs. We did not build on this.
+
+Build facts for a binary on the Push: glibc is 2.35 and there is no `/lib64`. The loader is `/lib/ld-linux-x86-64.so.2`.
+A static libstdc++ from Debian bookworm (glibc 2.36) asks for `arc4random`, and the loader refuses the binary. push-audio-loopback defines its own copy.
+`ps` and `pgrep` do not show a process by its name when it runs through the loader. Use `pidof ld-linux-x86-64.so.2`. `scp` to the Push needs `-O`.
+
+See [audio-bus.md](audio-bus.md) and `plans/2026-11-05-link-audio-for-hacks.md`.
+
 ### External-facing USB personality — gadget theory tested and killed (2026-08-25)
 
 Ableton's v2.4.2 GPL source release (`resources/push-assets/push3-242-gpl-sources.tgz`,

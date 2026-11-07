@@ -190,3 +190,175 @@ func TestMixAllocatesNothing(t *testing.T) {
 		t.Fatalf("%v allocs per Mix", n)
 	}
 }
+
+// ---- inputs: the other direction ----
+
+func TestInputDeliversAudioToTheHack(t *testing.T) {
+	f := Format{Rate: 44100, Period: 16, Channels: 4}
+	s, sock := testServer(t, f)
+	c := OpenWithInputs(sock, "rec", -1, []string{"line", "aux"})
+	defer c.Close()
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	if got := c.Inputs(); len(got) != 2 || got[0] != "line" || got[1] != "aux" {
+		t.Fatalf("inputs = %v", got)
+	}
+	ins := s.Inputs()
+	if len(ins) != 2 || ins[0].Client != "rec" || ins[0].Name != "line" || ins[1].Name != "aux" {
+		t.Fatalf("server inputs = %+v", ins)
+	}
+	if !ins[0].Write(block(16, 0.5, -0.5)) || !ins[1].Write(block(16, 0.1, 0.2)) {
+		t.Fatal("write refused")
+	}
+	if p := ins[0].Peak(); p != 0.5 {
+		t.Errorf("peak = %v, want 0.5", p)
+	}
+	buf := make([]float32, 16*2)
+	n, err := c.Read(0, buf)
+	if err != nil || n != 16 || buf[0] != 0.5 || buf[1] != -0.5 || buf[30] != 0.5 {
+		t.Fatalf("line: n=%d err=%v buf=%v", n, err, buf[:4])
+	}
+	n, err = c.Read(1, buf)
+	if err != nil || n != 16 || buf[0] != 0.1 || buf[1] != 0.2 {
+		t.Fatalf("aux: n=%d err=%v buf=%v", n, err, buf[:4])
+	}
+}
+
+func TestInputReadGivesSilenceWhenEmptyAndNeverBlocks(t *testing.T) {
+	_, sock := testServer(t, Format{Rate: 44100, Period: 16, Channels: 4})
+	c := OpenWithInputs(sock, "rec", -1, []string{"line"})
+	defer c.Close()
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	buf := block(16, 9, 9) // not silence before the call
+	done := make(chan struct{})
+	go func() {
+		n, err := c.Read(0, buf)
+		if n != 0 || err != nil {
+			t.Errorf("n=%d err=%v, want 0 frames and no error", n, err)
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Read blocked")
+	}
+	for i, v := range buf {
+		if v != 0 {
+			t.Fatalf("buf[%d] = %v, want silence", i, v)
+		}
+	}
+}
+
+func TestInputPartialBlockIsPaddedWithSilence(t *testing.T) {
+	s, sock := testServer(t, Format{Rate: 44100, Period: 16, Channels: 4})
+	c := OpenWithInputs(sock, "rec", -1, []string{"line"})
+	defer c.Close()
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	s.Inputs()[0].Write(block(5, 1, 1))
+	buf := block(16, 9, 9)
+	n, err := c.Read(0, buf)
+	if err != nil || n != 5 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	if buf[9] != 1 || buf[10] != 0 || buf[31] != 0 {
+		t.Fatalf("buf = %v", buf)
+	}
+}
+
+func TestInputRingFullRefusesAndCounts(t *testing.T) {
+	s, sock := testServer(t, Format{Rate: 44100, Period: 16, Channels: 4})
+	c := OpenWithInputs(sock, "rec", -1, []string{"line"})
+	defer c.Close()
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	in := s.Inputs()[0]
+	ok := 0
+	for in.Write(block(16, 1, 1)) {
+		if ok++; ok > 100 {
+			t.Fatal("ring never filled")
+		}
+	}
+	if ok != inputPeriods || in.Refused() != 1 || in.Fill() != 16*inputPeriods {
+		t.Errorf("accepted %d blocks, refused %d, fill %d", ok, in.Refused(), in.Fill())
+	}
+}
+
+func TestClientWithoutInputsStillWorks(t *testing.T) {
+	s, sock := testServer(t, Format{Rate: 44100, Period: 16, Channels: 4})
+	c := Open(sock, "old", -1)
+	defer c.Close()
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	if len(c.Inputs()) != 0 || len(s.Inputs()) != 0 {
+		t.Errorf("inputs = %v / %v", c.Inputs(), s.Inputs())
+	}
+	buf := block(16, 7, 7)
+	if n, err := c.Read(0, buf); n != 0 || err != ErrNoInput {
+		t.Errorf("Read = %d, %v, want 0, ErrNoInput", n, err)
+	}
+	if buf[0] != 0 {
+		t.Error("buf must be silence after an error")
+	}
+	if err := c.Write(block(16, 0.25, 0.25)); err != nil {
+		t.Fatal(err)
+	}
+	out := make([]float32, 16*4)
+	s.Mix(out)
+	if out[0] != 0.25 {
+		t.Errorf("Mix = %v", out[:4])
+	}
+}
+
+func TestBadInputNamesAreRefused(t *testing.T) {
+	_, sock := testServer(t, Format{Rate: 44100, Period: 16, Channels: 4})
+	for name, in := range map[string][]string{
+		"empty":     {""},
+		"duplicate": {"a", "a"},
+		"too many":  {"1", "2", "3", "4", "5", "6", "7", "8", "9"},
+	} {
+		c := OpenWithInputs(sock, "bad-"+name, -1, in)
+		time.Sleep(150 * time.Millisecond)
+		if c.Connected() {
+			t.Errorf("%s: connected with %v", name, in)
+		}
+		c.Close()
+	}
+}
+
+func TestClientsListTheirInputs(t *testing.T) {
+	s, sock := testServer(t, Format{Rate: 44100, Period: 16, Channels: 4})
+	c := OpenWithInputs(sock, "rec", -1, []string{"line"})
+	defer c.Close()
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	cl := s.Clients()
+	if len(cl) != 1 || len(cl[0].Inputs) != 1 || cl[0].Inputs[0] != "line" {
+		t.Errorf("clients = %+v", cl)
+	}
+}
+
+func TestInputsGoWhenTheClientLeaves(t *testing.T) {
+	s, sock := testServer(t, Format{Rate: 44100, Period: 16, Channels: 4})
+	c := OpenWithInputs(sock, "rec", -1, []string{"line"})
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	if len(s.Inputs()) != 1 {
+		t.Fatal("no input")
+	}
+	c.Close()
+	waitFor(t, "input removed", func() bool { return len(s.Inputs()) == 0 })
+}
+
+func TestInputsComeBackAfterAReformat(t *testing.T) {
+	f := Format{Rate: 44100, Period: 16, Channels: 4}
+	s, sock := testServer(t, f)
+	c := OpenWithInputs(sock, "rec", -1, []string{"line"})
+	defer c.Close()
+	waitFor(t, "connect", func() bool { return c.Connected() })
+	gen := c.Generation()
+	s.SetFormat(Format{Rate: 48000, Period: 32, Channels: 4}) // drops every client
+	waitFor(t, "reconnect", func() bool { return c.Generation() != gen && c.Connected() })
+	if got := c.Inputs(); len(got) != 1 || got[0] != "line" {
+		t.Fatalf("inputs = %v", got)
+	}
+	ins := s.Inputs()
+	if len(ins) != 1 || ins[0].Free() != 32*inputPeriods {
+		t.Fatalf("server inputs after reformat: %+v", ins)
+	}
+}

@@ -127,5 +127,16 @@ A hack that needs Live (tempo, clips, devices, the selection) uses the PushHack 
 
 A hack that makes sound must not open the loopback card itself. ALSA lets only one process write to it, so two such hacks cannot run together.
 Use `core/audiobus` instead: call `audiobus.Open(audiobus.SocketPath(audiobus.DefaultDir), "<your hack name>", pair)`, then `Write` one block of stereo `float32` per period.
-The mixer in push-audio-loopback adds your audio to the audio of the other hacks. Read the rate and the block size from `Client.Format()`, and read it again when `Generation()` changes.
-If no mixer runs, a hack can still open `hw:PHVAudio,1,0` itself. The design and a worked example are in [audio-bus.md](audio-bus.md).
+The service push-audio-loopback takes your audio. Read the rate and the block size from `Client.Format()`, and read it again when `Generation()` changes.
+
+The service has two outputs. In **Link** mode (the default) your hack is its own Link Audio channel, named after the hack, and Live keeps the sound card of the Push as its output.
+In **Virtual Audio Interface** mode the service adds your audio to the audio of the other hacks and writes the loopback card. You write the same code for both.
+In Link mode the pair number has no meaning, so do not show a pair control to the user. Tell the user to turn on Link and Link Audio in Live, and to give an audio track the input `PushHack`.
+If no service runs, a hack can still open `hw:PHVAudio,1,0` itself.
+
+If your hack renders audio, keep calling the render function while the bus is not connected. `Write` drops the audio and sleeps one block then, so your sequencer stays on time.
+A hack that stops rendering drifts against the clock of Live after a restart of the service.
+
+**Audio inputs.** A hack that records audio calls `audiobus.OpenWithInputs(sock, "<name>", -1, []string{"<input>"})` and then `Client.Read(i, buf)` once for each period.
+The user connects a Link channel (a track of Live, Main, another hack) to the input in the matrix on the web page of the service. Until then `Read` gives silence. The inputs are 44100 Hz stereo.
+The design and a worked example are in [audio-bus.md](audio-bus.md).

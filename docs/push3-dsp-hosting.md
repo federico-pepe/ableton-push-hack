@@ -28,6 +28,8 @@ map of where the code lives now.
    kernel's own ALSA Loopback driver. A user routes an audio track's
    input to this device, with Monitor set to In. Confirmed carrying
    real, audible audio on real hardware.
+   Since 2026-11-07 the service can also send the audio over Ableton Link Audio, and Link is the default.
+   Live then keeps the sound card of the Push as its output. See [audio-bus.md](audio-bus.md).
 2. **`hacks/push-braids-host`** reads pad and button presses off
    Push 3's own MIDI, feeds them into a DSP plugin, and writes the
    plugin's audio into the virtual card above. Confirmed producing

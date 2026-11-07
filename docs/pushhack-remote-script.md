@@ -169,7 +169,9 @@ has a button that calls `track.ensure` twice: once for an audio track named "Bra
 MIDI" (`output_type` `Braids MIDI In`, a port the hack itself opens). If Live offers exactly one stereo pair on
 `Ext. In`, it takes that pair and sets its own channel offset to match. It subscribes to `tracks` and `meters` and
 shows the meter of the "Braids" track as its Volume fader. The one thing the script cannot do for it is enable the
-Push Hack Virtual Audio card in Push's audio preferences.
+audio input in Live: the Push Hack Virtual Audio card in Push's audio preferences (card mode), or Link and Link Audio
+(Link mode, the default). The track it makes uses the virtual card, so in Link mode the user gives the track the input
+`PushHack` by hand.
 
 ## What was checked on a Push
 

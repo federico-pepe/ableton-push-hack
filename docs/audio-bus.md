@@ -1,6 +1,6 @@
 # Audio bus: many hacks, one loopback card
 
-Status: released, working on a Push 3. The server and client are in `core/audiobus`
+Status: released, working on a Push 3. Link Audio mode and inputs: see the sections below. The server and client are in `core/audiobus`
 (`core/v0.5.3` and later). The mixer runs inside push-audio-loopback.
 Braids, MachineModule and MonoModule are clients.
 
@@ -31,6 +31,7 @@ The mixer knows no hack by name. It mixes whoever is connected. A user can insta
 | `HWParams` | `core/alsapcm` | Reads the format that Live negotiated. It replaces the copies in Braids and MachineModule. |
 | mixer | push-audio-loopback | Opens the card, sets the format, calls `Mix` and writes the result. It also serves a status page and `/api/status`. |
 | `abustone` | `core/audiobus/cmd` | A test client that plays a sine wave. |
+| `abusrec` | `core/audiobus/cmd` | A test client that records an input to a WAV file. |
 
 ## Data path
 
@@ -80,6 +81,63 @@ Two clients can use the same pair. The mixer then adds them. This is the choice 
 
 A hack shows the pair in its own web page, as MachineModule does. The hack sends the choice to the mixer with `SetPair`.
 In Live, the user enables the pair on the input of the card.
+
+## Link Audio mode
+
+Since 2026-11-07 the service can send the audio of the hacks to Live over Ableton Link Audio instead of the loopback card.
+Link is the default. The web page of push-audio-loopback has a switch with two values: **Virtual Audio Interface** and **Link**.
+The choice is saved in `output-mode.json` next to `hack.json`.
+
+In Link mode:
+- The service joins Link as the peer `PushHack`. Each hack that connects to the bus gets its own Link channel, named after the hack.
+- The hacks do not change. They use the same bus and the same `Open`, `Format` and `Write`. The format is fixed: stereo, 44100 Hz, 128 frames, 16 channels (8 pairs).
+- The service reads the pair of each client (`Server.Mix`) and writes it to the sink of that client. Nothing is mixed across hacks.
+- Live keeps the sound card of the Push as its output. In Live, turn on Link and Link Audio. Give an audio track the input type `PushHack` and pick the channel of the hack.
+- The page shows `Link: N peers`, as Live does.
+
+Rules for the stamps. Live ignores buffers that carry its own timestamps. Stamps taken from the clock for each buffer give glitches.
+The service stamps every buffer with a sample counter. The counter starts at "now plus 40 ms" and restarts only when it drifts more than 10 ms.
+Never set the Link tempo or the transport.
+
+Results on a Push 3 (2026-11-07): MachineModule, MonoModule and Braids play clean, alone and together. A restart of the service brings the audio back with no action in Live.
+Link keeps working with Wi-Fi off, and with Live at 48000, 88200 and 96000 Hz. The service uses about 3% of one core with two hacks.
+The worst block time is 83 to 211 µs of 2902 µs. The stamp counter restarts about once every 7 minutes.
+
+Known issue: after a restart of the service, the hacks can drift against the clock of Live. The engine of a hack stops while the bus is not connected, but the MIDI clock goes on.
+Press play in Live. A fix in the hacks (keep rendering while disconnected) is not done yet.
+
+The design and the tests are in `plans/2026-11-05-link-audio-for-hacks.md`.
+
+## Inputs: the other direction
+
+A hack can also receive audio. It declares inputs when it connects, and the service writes audio into one ring for each input.
+The source of an input is a Link channel: a track of Live, the Main output, or the channel of another hack. The user connects them in a matrix on the web page.
+
+Client side (`core/audiobus`, `core/v0.5.5` and later):
+
+```go
+c := audiobus.OpenWithInputs(sock, "MyHack", -1, []string{"Sample in"})
+// ...once connected:
+n, err := c.Read(0, buf) // buf: one period of interleaved L,R float32
+```
+
+- `Inputs()` lists the inputs that the server gave. With an older server it is empty, and `Read` returns `ErrNoInput`.
+- `Read` never blocks. It fills `buf` with the audio that waits and the rest with silence. It returns the number of real frames.
+- Call `Read` once for each period. The service writes one period for each tick.
+
+Wire format. The first line gets an optional field, `"inputs":["Sample in"]` (at most 8 names, each different, each at most 64 bytes).
+The reply gets `"in_rings":[...]`, one path for each input in the same order. An old client sends no inputs. An old server sends no `in_rings`.
+An input ring holds 8 periods. The service writes it (`Input.Write`), the hack reads it.
+
+Service side. The service subscribes to the channel (`LinkAudioSource`), and the rule in `jitter.go` makes one steady stream:
+play starts when the ring holds 4 periods, audio above 6 periods is dropped, and an empty ring gives silence and a new fill.
+The source accepts only 44100 Hz. Another rate shows "rate not supported" on the page.
+Routes are saved in `link-routes.json`. A route comes back when its hack or its channel comes back. There is no route by default.
+
+Result (2026-11-07): a 131 Hz tone from a track of Live, recorded through a route by `abusrec` for 40 seconds.
+The only silence was the first 525 ms (connect and fill). After that there was no dropout. The plan is `plans/2026-11-07-link-inputs-matrix.md`.
+
+`abusrec` (`core/audiobus/cmd/abusrec`) records one input to a WAV file. Use it to test a route on a Push.
 
 ## Failure behavior
 
@@ -140,6 +198,9 @@ Other results from the tests:
 | 5. MachineModule and MonoModule as clients | Done. Both released as 0.2.0-alpha. |
 | 6. Braids as a client | Done. Released as push-braids 0.4.0-alpha. |
 | 7. Keep the direct `hw:` path in each hack as a fallback | Done. Remove it later. |
+| 8. Link Audio output mode in push-audio-loopback (default) | Done on branch, see "Link Audio mode". |
+| 9. Inputs for hacks (`OpenWithInputs`, `Client.Read`), routes and a matrix on the web page | Done on branch, see "Inputs". `core/v0.5.5`. |
+| 10. Hacks keep rendering while the bus is not connected | Not done. Needed to stop the drift after a restart of the service. |
 
 Release order: merge the `core/` change and tag it, then bump the `core` pin in the three
 repos, then release push-audio-loopback first (the mixer), then the two hacks.
