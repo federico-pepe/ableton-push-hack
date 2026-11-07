@@ -7,6 +7,7 @@ between minor versions).
 
 ## [Unreleased]
 
+- Push Hack Catalog: the page has the look of Push Manager (dark, one blue accent). A "Back" link at the top goes to Push Manager. The tab title is now "Catalog".
 - `core/audiobus`: many hacks can play through the one loopback card. The mixer in push-audio-loopback adds the audio of all clients; Braids and MachineModule are the first clients. Tested on a Push 3. See [docs/audio-bus.md](docs/audio-bus.md). Tagged `core/v0.5.3`.
 - `core/alsapcm`: `ReadHWParams` reads the format that Live negotiated on the loopback card. Tagged `core/v0.5.3`.
 - `core/alsaseq`: `Push3` finds Push 3's Live Port by name and follows it when its client number moves (16 only while Push 3 is ALSA card 0; 20 when the loopback card is card 0). A hack that pinned `Push3ClientDefault` got no pad, button or encoder input in that case. `Refresh`, `Addr`, `Is` and `IsLivePort`; a hack calls `Refresh` before each subscribe attempt. Tagged `core/v0.5.4`.
