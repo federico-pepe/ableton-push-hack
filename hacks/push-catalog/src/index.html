@@ -3,56 +3,84 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Push Hack Catalog</title>
+<title>Catalog</title>
 <style>
-  :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --muted:#666; --card:#f4f4f5; --line:#e4e4e7; --accent:#111; --accent-fg:#fff; --danger:#b91c1c; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0c0c0d; --fg:#f4f4f5; --muted:#9a9aa2; --card:#18181b; --line:#27272a; --accent:#f4f4f5; --accent-fg:#111; --danger:#f87171; } }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,sans-serif; }
-  header { padding:20px 16px 8px; }
-  footer { text-align: center; font-size: smaller; }
-  h1 { margin:0; font-size:22px; letter-spacing:-.02em; }
-  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
-  main { padding:12px 16px 32px; max-width:1080px; margin:0 auto; }
+  /* Same look as Push Manager (hacks/push-manager/src/ui/app.css): dark, one blue accent. */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-tap-highlight-color: transparent; }
+  :root {
+    --black:    rgb(228, 228, 235);   /* primary text (light on dark) */
+    --blue:     rgb(0, 100, 255);     /* accent / links */
+    --grey:     rgb(42, 42, 46);      /* surfaces / borders */
+    --grey-mid: rgb(140, 140, 150);   /* secondary text */
+    --white:    rgb(22, 22, 24);      /* page background (dark) */
+    --red:      rgb(254, 89, 72);
+    --yellow:   rgb(255, 214, 0);     /* warning bar; dark text on it */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --px:       20px;
+  }
+  body { min-height:100vh; background:var(--white); color:var(--black); -webkit-font-smoothing:antialiased;
+         font:16px/1.5 "Ableton Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  a { color:inherit; }
+
+  /* Header: a Back link to Push Manager and the name of this page. */
+  #header { border-bottom:1px solid var(--grey); position:sticky; top:0; z-index:20; background:var(--white);
+            padding:var(--safe-top) var(--px) 0; }
+  .header-inner { display:flex; align-items:center; height:52px; gap:12px; }
+  .back { font-size:14px; font-weight:500; color:var(--blue); text-decoration:none; white-space:nowrap; flex-shrink:0; }
+  .back:hover { opacity:.7; }
+  .header-sep { color:var(--grey-mid); font-size:14px; flex-shrink:0; }
+  .crumb { font-size:14px; font-weight:500; white-space:nowrap; }
+
+  main { padding:16px var(--px) 32px; max-width:1080px; margin:0 auto; }
+  .intro { color:var(--grey-mid); font-size:14px; margin-bottom:12px; }
+  footer { text-align:center; font-size:13px; color:var(--grey-mid); padding:0 var(--px) 32px; }
+  footer a { color:var(--grey-mid); }
+  footer a:hover { color:var(--blue); }
   #list.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; }
+  .card { background:var(--grey); padding:16px 20px; display:flex; flex-direction:column; }
   .row { display:flex; align-items:center; gap:12px; }
   .grow { flex:1; min-width:0; }
   .name { font-weight:600; }
-  .desc { color:var(--muted); font-size:14px; margin-top:2px; }
-  .meta { color:var(--muted); font-size:12px; margin-top:4px; font-variant-numeric:tabular-nums; }
-  .meta a.repo { color:var(--muted); text-decoration:underline; }
-  .meta a.repo:hover { color:var(--fg); }
-  button { border:0; border-radius:8px; padding:8px 14px; font:inherit; font-weight:600; font-size:14px; cursor:pointer; }
-  .install { background:var(--accent); color:var(--accent-fg); }
-  .remove { background:transparent; color:var(--danger); border:1px solid var(--line); }
+  .desc { color:var(--grey-mid); font-size:14px; margin-top:2px; }
+  .meta { color:var(--grey-mid); font-size:12px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .meta a.repo { color:var(--grey-mid); text-decoration:underline; }
+  .meta a.repo:hover { color:var(--blue); }
+  button { border:0; padding:8px 14px; font:inherit; font-weight:600; font-size:14px; cursor:pointer; }
+  .install { background:var(--blue); color:#fff; }
+  .remove { background:transparent; color:var(--red); border:1px solid var(--grey-mid); }
   button:disabled { opacity:.5; cursor:default; }
-  .tag { display:inline-block; background:var(--line); color:var(--muted); font-size:11px; padding:1px 7px; border-radius:99px; }
-  .tag.update { background:var(--accent); color:var(--accent-fg); font-weight:600; }
-  .tag.off { background:var(--danger); color:#fff; font-weight:600; }
-  .disable, .enable { background:transparent; border:1px solid var(--line); color:var(--fg); }
-  .open { color:var(--fg); text-decoration:none; font-size:12px; font-weight:600; border:1px solid var(--line); border-radius:99px; padding:3px 10px; white-space:nowrap; }
-  .open:hover { border-color:var(--fg); }
+  .tag { display:inline-block; background:var(--white); color:var(--grey-mid); font-size:11px; padding:1px 7px; }
+  .tag.update { background:var(--blue); color:#fff; font-weight:600; }
+  .tag.off { background:var(--red); color:#fff; font-weight:600; }
+  .disable, .enable { background:transparent; border:1px solid var(--grey-mid); color:var(--black); }
+  .open { color:var(--black); text-decoration:none; font-size:12px; font-weight:600; border:1px solid var(--grey-mid);
+          padding:3px 10px; white-space:nowrap; }
+  .open:hover { border-color:var(--blue); color:var(--blue); }
   .actions { margin-top:12px; flex-wrap:wrap; }
-  pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; font-size:12px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
-  .empty { color:var(--muted); text-align:center; padding:40px 0; }
-  .warning { background: #ffc107!important; padding: 1rem!important }
-  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
+  pre { background:var(--white); padding:12px; font-size:12px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+  .empty { color:var(--grey-mid); text-align:center; padding:40px 0; }
+  .warning { background:var(--yellow); color:rgb(22,22,24); padding:12px 16px; font-size:14px; margin-bottom:16px; }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
   .modal-backdrop[hidden] { display:none; }
-  .modal { background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:16px; max-width:560px; width:100%; max-height:75vh; display:flex; flex-direction:column; }
+  .modal { background:var(--grey); padding:16px; max-width:560px; width:100%; max-height:75vh; display:flex; flex-direction:column; }
   .modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-  .modal-head h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0; }
-  .modal-close { background:none; border:0; font-size:22px; line-height:1; color:var(--muted); cursor:pointer; padding:0 4px; }
-  .modal pre { margin:0; overflow:auto; }
+  .modal-head h2 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--grey-mid); }
+  .modal-close { background:none; border:0; font-size:22px; line-height:1; color:var(--grey-mid); cursor:pointer; padding:0 4px; }
+  .modal pre { overflow:auto; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Push Hack Catalog</h1>
-  <p>Browse and install community hacks on your Push.</p>
-  <p class="warning">Hacks are created by the community. Their functionality is not verified in any way. If you decide to install them, you do so at your own risk.</p>
-</header>
+<div id="header">
+  <div class="header-inner">
+    <a class="back" id="back" href="/">&lsaquo; Back</a>
+    <span class="header-sep">&rsaquo;</span>
+    <span class="crumb">Catalog</span>
+  </div>
+</div>
 <main>
+  <p class="intro">Browse and install community hacks on your Push.</p>
+  <p class="warning">Hacks are created by the community. Their functionality is not verified in any way. If you decide to install them, you do so at your own risk.</p>
   <div id="list" class="empty">Loading catalog…</div>
 </main>
 <div class="modal-backdrop" hidden id="modal-backdrop">
@@ -70,6 +98,8 @@
 </footer>
 <script>
 const $ = s => document.querySelector(s);
+// Back goes to Push Manager, on its own port.
+$("#back").href = "//" + location.hostname + ":7701/";
 const openModal = t => { $("#log").textContent = t; $("#modal-backdrop").hidden = false; };
 const closeModal = () => { $("#modal-backdrop").hidden = true; };
 $("#modal-close").onclick = closeModal;
