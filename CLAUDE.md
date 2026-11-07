@@ -203,6 +203,13 @@ Hack Harmony (`core/harmony`, spec in
   explicit, off-by-default setting for it (Stacks: "plays when
   closed"). Parked stays the default.
 
+## Audio from hacks
+
+A hack that makes sound sends it through `core/audiobus` to the push-audio-loopback service. It never opens `hw:PHVAudio,1,0` itself unless no service runs.
+The service sends the audio to Live over Ableton Link Audio (the default) or through the loopback card. Live keeps the sound card of the Push as its output. The hack code is the same for both.
+A hack that renders audio keeps rendering while the bus is not connected, or it drifts after a service restart. A hack can declare inputs (`OpenWithInputs`, `Client.Read`) and the user connects a Link channel to them in a matrix on the Audio page.
+Details: [docs/audio-bus.md](docs/audio-bus.md). Link Audio facts for the Push (stamps, glibc 2.35, no `/lib64`): [docs/push3-internals.md](docs/push3-internals.md).
+
 ## PushHack Remote Script
 
 One Live Remote Script serves every hack (`remote-script/PushHack/`; reference:

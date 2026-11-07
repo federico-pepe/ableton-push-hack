@@ -3,6 +3,8 @@
 On-device installer for community `push-hack` hacks — browse and install
 from your phone, no SSH or build toolchain needed. Port 7702.
 
+The page has the look of Push Manager (dark, one blue accent). A **Back** link at the top goes to Push Manager on port 7701.
+
 Push Hack Catalog hosts nothing itself. It reads a catalog
 (`catalog/catalog.json` in this repo) that's just a list of pointers to
 hacks living in **their own GitHub repos**. Each hack repo publishes its own

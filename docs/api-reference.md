@@ -139,6 +139,19 @@ newest download. `total` is 0 when the server did not send a size. The
 values stay after a download ends, so read them only while an install runs.
 push-manager's CATALOG tab polls it to draw its download bar.
 
+## Push Audio Loopback — `http://push.local:<port>` (7712 on one Push)
+
+The port is assigned by the catalog. The hack also serves a web page at `/`.
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | `/api/status` | | State, format, blocks, write errors, worst block time, the clients, the output `mode` (`card` or `link`) and a `link` object: `enabled`, `peers` (other Link peers, as Live shows it), `tempo`, `lead_ms`, `error`, `sinks` (name, `listening`, `reanchors`). |
+| POST | `/api/mode` | `{"mode":"card"\|"link"}` | Saves the output and switches. The hacks reconnect by themselves. `Content-Type` must be `application/json`. |
+| GET | `/api/matrix` | | `available` (false when the output is not Link), `channels` (id, name, peer), and `inputs` (hack, input, `connected`, and its `route` with state, fill, peak, underruns, dropped frames, refused periods). |
+| POST | `/api/route` | `{"hack","input","channel_id"}` | Connects an input to a Link channel. A null or empty `channel_id` removes the route. 409 when the output is not Link, 404 for an unknown channel. |
+
+Routes are saved in `link-routes.json`, the output in `output-mode.json`, both next to `hack.json`.
+
 ## PushHack Remote Script
 
 Hacks reach Live through the PushHack Remote Script, not through push-manager's HTTP routes. Protocol, namespaces and topics: [pushhack-remote-script.md](pushhack-remote-script.md). push-manager's `/api/live/*` routes are a thin layer over it for the web UI and for hacks that prefer HTTP (`load`, `plugins`, `tempo`, `scale`, `listen`, `playing`, `play`, `stop`, `script`).

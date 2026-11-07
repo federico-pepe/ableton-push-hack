@@ -138,6 +138,23 @@ func (g *ring) write(src []float32) bool {
 	return true
 }
 
+// read copies up to len(dst)/2 frames out (interleaved L,R) and returns how
+// many. Reader only. No allocation.
+func (g *ring) read(dst []float32) int {
+	n := len(dst) / 2
+	if a := g.avail(); n > a {
+		n = a
+	}
+	r := atomic.LoadUint64(g.r)
+	mask := g.cap - 1
+	for i := 0; i < n; i++ {
+		p := ((r + uint64(i)) & mask) * 2
+		dst[i*2], dst[i*2+1] = g.data[p], g.data[p+1]
+	}
+	atomic.StoreUint64(g.r, r+uint64(n))
+	return n
+}
+
 // addTo adds up to n frames into dst (interleaved with stride, first channel
 // at dst[0]) and returns how many frames it took and the peak it saw. Reader
 // only. No allocation.
