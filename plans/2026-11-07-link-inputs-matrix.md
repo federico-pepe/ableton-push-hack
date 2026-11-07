@@ -1,6 +1,9 @@
 # Plan: Link inputs and a routing matrix for the hacks
 
-Status: draft. Nothing is built. This plan follows `plans/2026-11-05-link-audio-for-hacks.md`, which covers audio from a hack to Live.
+Status: built and merged (2026-11-07), not released. Steps 1 to 6 are done: the Link source, the play-out rule, the bus inputs (`core/v0.5.5`), the routes and the matrix on the page.
+A 131 Hz tone from a track of Live was recorded through a route for 40 seconds, with no dropout after the first 525 ms.
+Not done: the tests for restart of Live and of the service with routes, a hack to hack route, the CPU and delay numbers, and a hack that uses an input (step 7: left to the authors of hacks).
+This plan follows `plans/2026-11-05-link-audio-for-hacks.md`, which covers audio from a hack to Live.
 
 ## Goal
 
