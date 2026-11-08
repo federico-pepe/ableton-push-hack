@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- `core/audiobus`: `LinkProbe` (`NewLinkProbe`, `Link`). A hack can ask whether push-audio-loopback runs in Link mode, for example to hide its "Create tracks" button.
+
 ## [0.1.22-alpha] - 2026-11-07
 
 This release changes the look of the Push Hack Catalog page and adds audio inputs to `core/audiobus`. It needs no reinstall. **Audio Loopback 0.3.0-alpha** is a separate release in its own repository: it sends the audio of hacks to Live over Ableton Link Audio, so Live keeps the sound card of the Push as its output.
