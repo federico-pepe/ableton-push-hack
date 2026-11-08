@@ -108,6 +108,11 @@ Press play in Live. A fix in the hacks (keep rendering while disconnected) is no
 
 The design and the tests are in `plans/2026-11-05-link-audio-for-hacks.md`.
 
+**Hide the Live track button in Link mode.** The "Create tracks" button of a hack makes a track with the input `Ext. In`. That input is wrong in Link mode.
+A hack can ask which mode runs: `p := audiobus.NewLinkProbe()`, then `p.Link()`. It asks Push Manager for the port of push-audio-loopback and reads `mode` from `/api/status`.
+`Link` never blocks. It gives the last answer and refreshes it every 3 seconds in the background. If the service is down, or it is an old service with no `mode`, the answer is `false`.
+When `Link()` is true, the hack hides the button and tells the user to give an audio track the input `PushHack`.
+
 ## Inputs: the other direction
 
 A hack can also receive audio. It declares inputs when it connects, and the service writes audio into one ring for each input.
