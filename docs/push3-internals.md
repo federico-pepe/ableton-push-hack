@@ -14,8 +14,10 @@ Reference document for Ableton Push 3's OS and filesystem. Discovered via `./scr
 | Field | Value |
 |-------|-------|
 | OS | AbletonOS `abletonos-x86_64-intel-v3.21` |
-| Kernel | `5.15.48-intel-pk-preempt-rt` (real-time kernel) |
+| Kernel | `5.15.48-intel-pk-preempt-rt` (real-time kernel, built 2022-06-21) |
 | Architecture | `x86_64` (Intel) |
+| CPU | `11th Gen Intel Core i3-1115G4 @ 3.00GHz`, 4 logical CPUs |
+| Board | Intel `CM11EBI38W` (NUC 11 Compute Element), BIOS `EBTGL357.0068.2022.0531.1726` |
 | Hostname | `push` |
 | Init system | sysvinit (runlevel 5) |
 | Co-processor firmware | package `push3_fw_1.5.4` — XMOS `1.0 Build 91` (`1.0.91`), pmc `1.20`, apc `1.9`, xySensor `0.13`, imagery `0.7` |
@@ -144,6 +146,20 @@ Relevant processes at boot (from `ps aux`):
 | `Xorg :0` | root | X server for Push display |
 | `avahi-daemon` | avahi | mDNS → `push.local` hostname |
 
+### Launcher log and Live options
+
+`push3-launcher.pyc` writes `/data/logs/launcher.log`. It logs "Starting Push" at each start. Once a
+minute it writes one line (checked 2026-11-09):
+
+```
+T0=23.0 T1=22.0 LiveCPU=None PushCPU=None RootFree=4.30 DataFree=140.11
+```
+
+`T0` and `T1` are temperatures in degrees Celsius. `RootFree` and `DataFree` are free space in GB.
+
+`/opt/push3/Options.txt` holds the Live options of the Push. It includes `-_LinuxMidiBackend=Alsa`,
+`-DontLoadMaxForLiveAtStartup`, `-_LaunchPushAsFaceless` and `-_DisableAutoUpdates`.
+
 **Memory at rest:** ~861MB used of 7.4GB (8GB swap, unused). Plenty of headroom for hacks.  
 **CPU at rest:** Live ~13%, Push3 ~5%, `Ableton Index` spikes ~56% while indexing (nice `SNl`, low priority — settles when done).
 
@@ -164,8 +180,12 @@ Push can also act as a Wi-Fi hotspot (configurable from Push display settings). 
 |------|------|---------|
 | 22 | `0.0.0.0` | SSH |
 | 53 | `127.0.0.1` | DNS (avahi/connman local resolver) |
+| 80 | all addresses | Push web service (`PushWebServiceCli`), routes under `/api/v1` |
 
-No web ports open by default — push-hack adds port 7701+.
+Port 80 is open on a stock Push 3 (checked 2026-11-09, Push3 2.4.25-beta.1). The log
+`/data/logs/PushWebServiceCli.log` says "Bind HttpServer on port 80". A request to
+`/api/v1/` without credentials gets `401 {"error":"Unset credentials"}`. push-hack adds
+port 7701+. Do not use port 80 for a hack.
 
 ---
 
@@ -319,14 +339,46 @@ work in a separate X11 client running on `:0` (`Xorg` is confirmed running
 at boot — see Init system), since that's a normal X server with normal
 input handling.
 
-### Battery — XMOS firmware only, not via sysfs
+### Battery — a SysEx on the Live Port, not sysfs
 
-`/sys/class/power_supply/` is **empty** on Push 3. The ACPI battery driver is present but has no devices bound. Battery state is managed by the XMOS co-processor and communicated to the Linux Compute Module via a **custom MIDI SysEx protocol** over the internal USB connection (`2982:1969`, ALSA device `Ableton Push 3`).
+`/sys/class/power_supply/` is **empty** on Push 3. The XMOS co-processor holds the battery
+state. Push3 reads it with a MIDI SysEx on the Live Port (`GET_POWER_STATE`, `0x3A`).
 
-The Push3 Python battery component (`Push2/battery_component.pyc`) queries battery status via `_enquire_battery_status` SysEx calls. There is a `GET_POWER_STATE_MESSAGE_ID` constant in `Push2/sysex.pyc` for querying power supply connection state. No publicly documented SysEx command byte values are available.
+Push3 sends the request once a second (`STATUS_ENQUIRY_FREQUENCY = 1` in
+`Push2/battery_component.pyc`). The reply goes to every reader of the Live Port. push-manager
+only listens and sends nothing. Do not open the Live Port
+with `amidi`: Push3 holds the raw port (`Device or resource busy`).
 
-Battery info is **not accessible** from outside the Push3 Python environment without reverse-engineering the custom SysEx protocol and sending raw MIDI messages.
+```
+F0 00 21 1D 01 01 3A <status> <level> F7
+```
 
+| Field | Meaning |
+|-------|---------|
+| `status` bit `0x20` | The power supply is plugged in |
+| `status` bits `0x03` | Charge state: 0 not charging, 1 charging, 2 unavailable |
+| `status` bit `0x08` | A short press of the power button waits (see "What a power-button press does") |
+| `status` bit `0x10` | A long press of the power button waits |
+| `level` | Battery charge, 0 to 100 |
+
+Replies seen on the device (2026-11-09):
+
+| State | Reply |
+|-------|-------|
+| Plugged in, 99 % | `3A 22 63` |
+| Unplugged, 99 % | `3A 02 63` |
+| Unplugged, 94 % | `3A 00 5E` |
+| Plugged in, 94 %, charging | `3A 21 5E` |
+| Plugged in, 100 %, still charging | `3A 21 64` |
+
+Charge state `2` (unavailable) appeared at 99 %, plugged in or not. At 100 % on the supply the state was `1`
+(charging). Use bit `0x20` and the level, not the charge state, to decide if the Push runs on battery.
+push-manager decodes
+this in `power.go` and shows it in `/api/stats`.
+
+The related command `POWER_COMMAND` (`0x39`) takes `01` POWER_OFF, `02` CLEAR_SHORT_PRESS and
+`05` CLEAR_LONG_PRESS. **Never send it from a hack.** `39 01` switches the Push off. Push3 itself
+clears the press flags.
 
 ---
 
@@ -351,12 +403,12 @@ The XMOS chip (USB device `2982:1969`, internal hub port `1-1.4`) handles all ha
 | Interface | Class | Endpoints | Role |
 |-----------|-------|-----------|------|
 | 0 | `0xFF` vendor-specific | `ep_01` OUT, `ep_81` IN | **Display** — bulk transfer, pixel data |
-| 1 | `0x01` Audio | — | Audio streaming |
-| 2 | `0x01` Audio | — | Audio streaming |
-| 3 | `0x01` Audio | — | Audio streaming |
-| 4 | `0x01` Audio control | — | Audio control |
+| 1 | `0x01/0x01/0x20` audio control (UAC2) | — | Audio control for the USB audio function |
+| 2 | `0x01/0x02/0x20` audio streaming (UAC2) | — | Audio streaming, one direction |
+| 3 | `0x01/0x02/0x20` audio streaming (UAC2) | — | Audio streaming, the other direction |
+| 4 | `0x01/0x01/0x00` audio control (UAC1) | — | Audio control that belongs to the MIDI function (4 and 5 form one USB-MIDI function) |
 | 5 | `0x01` MIDI streaming | `ep_03` OUT, `ep_83` IN | **MIDI** — pads, buttons, encoders, SysEx |
-| 6 | `0xFF` vendor-specific | `ep_04` OUT, `ep_84` IN | Hardware control (LEDs, battery?) |
+| 6 | `0xFF` vendor-specific | `ep_04` OUT, `ep_84` IN | Purpose unknown (no kernel driver; `xPort` in push-tethered-app). Battery and LED colour are SysEx on interface 5, not here. |
 
 ### Display protocol (confirmed empirically — Push 2 and Push 3 identical)
 
@@ -490,12 +542,32 @@ Two more facts for a hack that owns the surface:
 
 #### SysEx manufacturer / known messages
 
-SysEx manufacturer ID: `00 21 1D` (Ableton). Known constants from `Push2/sysex.pyc`:
-- `GET_POWER_STATE_MESSAGE_ID` — query AC power connection
-- `POWER_COMMAND_MESSAGE_ID` — power control
-- `IDENTITY_RESPONSE_PRODUCT_ID_BYTES_PUSH3` — identity response
+SysEx manufacturer ID: `00 21 1D` (Ableton). Every Push 3 message has the form
+`F0 00 21 1D 01 01 <command> ... F7`. Command ids from `Push2/sysex.pyc` (Live 12.4.15, Push3 2.4.25-beta.1).
+The values were read from the file on 2026-11-09:
 
-Push3 sends periodic SysEx heartbeats (~3–5/sec) including LED state and touch sensor data.
+| Id | Name | Notes |
+|----|------|-------|
+| `0x0A` | MODE_SWITCH | `00` Live mode, `01` User mode |
+| `0x20` | PAD_VELOCITY_CURVE | Sent in chunks of 16 values |
+| `0x26` | SET_PAD_PARAMETER | `26 07 <pad> <value> 00` |
+| `0x37` | SET_AUDIO_CONTROLS | |
+| `0x38` | GET_AUDIO_CONTROLS | The request lists control ids. The reply repeats each id with two value bytes. |
+| `0x39` | POWER_COMMAND | `01` power off, `02` clear short press, `05` clear long press. Never send. |
+| `0x3A` | GET_POWER_STATE | Battery and power button. See "Battery". |
+| `0x3B` | SET_ARBITRARY_RGB_LED_COLOR | `3B 00 <led> r_lo r_hi g_lo g_hi b_lo b_hi`. Not tested on the device. |
+| `0x3E` | GET_HOST_MODE | |
+| `0x42` | GET_FIRMWARE_UPDATE_RESULTS | |
+| `0x43` | GET_PAD_VELOCITY_CURVE | |
+
+Audio-control ids: `0x0D` SAMPLE_RATE, `0x18` and `0x19` ADC_OVERFLOW_CH_0 and CH_1, `0x1E` DAC_VOLUME_MASTER,
+`0x3A` EXT_SAMPLE_RATE, `0x3B` EXT_CLOCK_VALID, `0x3C` EXT_CLOCK_SEL. Touch-strip ids: `0x0C`, `0x0D`, `0x0E`
+(X axis output type, CC number, relative down position) and `0x1A`, `0x1B`, `0x1C` (Y axis).
+
+The hardware sends no SysEx on its own. At rest the Live Port and the User Port send only Active Sensing
+(`FE`, about 3.7 per second). The External Port sends nothing (checked 2026-11-09). The other SysEx on the
+Live Port are replies to polls from Push3: `0x3A` once a second and `0x38` about every 300 ms (sample rate,
+external clock, ADC overflow flags). They carry no LED state and no touch data.
 
 Full Push 2 MIDI implementation documented at https://github.com/Ableton/push-interface — Push 3 is a superset. For the exact Push 3 control→CC/Note assignments verified on hardware, see [`push3-button-map.md`](push3-button-map.md); for the LED color indices (same palette for pad Note-velocity and button CC-value), see [`push3-led-colors.md`](push3-led-colors.md).
 
@@ -630,8 +702,8 @@ controller mode to confirm.
 This also means the previous version of this section's claim — that
 `xPort` might be a *relay* of the SoC-composed gadget's own interface 6 —
 doesn't hold up either; simpler explanation now is `xPort` (host-facing
-interface 6) *is* XMOS's own interface 6 directly ("Hardware control
-(LEDs, battery?)" per the table above), not a relay of anything.
+interface 6) *is* XMOS's own interface 6 directly ("Purpose
+unknown" per the table above), not a relay of anything.
 
 ### Live↔Push3 IPC sockets (2026-08-25/26)
 
@@ -904,26 +976,32 @@ on screen:
   event. The two "Power Button" devices are ACPI devices, and the XMOS does
   not use them.
 
-The press does show on MIDI. The XMOS sends one SysEx on the Push's
-`Live Port` (ALSA 16:0), about one second before Push3 asks the question:
+The press does show on MIDI. It is a flag in the power-state reply that Push3 polls once a second
+(see "Battery"). `status` bit `0x08` is a short press and bit `0x10` is a long press:
 
 ```
-F0 00 21 1D 01 01 3A 2A 64 F7
+F0 00 21 1D 01 01 3A 2A 64 F7     plugged in, 100 %, short press waiting
+F0 00 21 1D 01 01 3A 08 5E F7     unplugged, 94 %, short press waiting
 ```
 
-At rest, the same message arrives about once a second with `22` in place of
-`2A`. We read the port with `aseqdump -p 16:0,16:1,16:2` as root. In four
-presses we saw four `2A` messages. In 15 seconds of rest we saw none. We do
-not know what a long hold sends, or whether another event also sets that
-bit. `3A` is not in any public Push 3 documentation.
+The flag stays up until Push3 clears it with `POWER_COMMAND` (`39 02` for a short press, `39 05` for a
+long press). So the same message repeats while the flag is up. A listener must act on the change from
+"no flag" to "flag", not on each message. On 2026-10-20 we saw four presses and four `2A` messages while the
+Push was plugged in at 100 %. The `2A` message was `22` plus the flag `08`.
 
-push-manager reads this port already. When it sees the message, it gives the
-surface to Live (`release.go`, `Surface.PowerPress`). Then the question is
-visible and the buttons work. Nothing latches: after Cancel, Shift + Help
-opens Home again. This covers Home, apps, the Shadow UI and old hacks
-that take the screen themselves (Keyboard Visualizer): if the intercept is
-on or the screen is not Push3's, both go back to Live. With nothing held, a
-press changes nothing.
+We read the port with `aseqdump -p 16:0,16:1,16:2`. We saw bit `0x08` only. We did not test the long hold
+(bit `0x10` comes from `Push2/sysex.pyc`, `LONG_POWER_BUTTON_PRESS`). We also did not see a press on
+battery power, but the level and supply bits do not change where the flag sits.
+
+push-manager reads this port already. It decodes the reply in `power.go`. On the change to "flag up"
+(short or long, any level, plugged in or not), it gives the surface to Live (`release.go`,
+`Surface.PowerPress`). Then the question is visible and the buttons work. Nothing latches: after Cancel,
+Shift + Help opens Home again. This covers Home, apps, the Shadow UI and old hacks that take the screen
+themselves (Keyboard Visualizer): if the intercept is on or the screen is not Push3's, both go back to Live.
+With nothing held, a press changes nothing.
+
+Before 2026-11-09 push-manager matched only the exact bytes `3A 2A 64`. That is a short press with the
+supply plugged in and the battery at 100 %. A press on battery, or at 94 %, did not release the surface.
 
 An earlier version watched `/data/settings/.shutdown` (removed 2026-10-20).
 That file changes only after the user answers the question, so that watcher

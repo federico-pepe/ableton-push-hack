@@ -248,8 +248,8 @@ function fmtUptime(s) {
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
   return h > 24 ? Math.floor(h/24)+'d '+(h%24)+'h' : h+'h '+m+'m';
 }
-function mkBar(pct, warn=75, crit=90) {
-  const cls = pct>=crit ? 'crit' : pct>=warn ? 'warn' : '';
+function mkBar(pct, warn=75, crit=90, forceCls=null) {
+  const cls = forceCls !== null ? forceCls : pct>=crit ? 'crit' : pct>=warn ? 'warn' : '';
   return `<div class="stat-bar-wrap"><div class="stat-bar ${cls}" style="width:${Math.min(pct,100)}%"></div></div>`;
 }
 function renderStats(s) {
@@ -272,9 +272,10 @@ function renderStats(s) {
   }
   if (s.battery) {
     const pct = s.battery.percent;
-    const warn = s.battery.status==='Charging' ? 101 : 20;
+    // Blue above 10 %, red at 10 % or less, green when full.
+    const cls = pct>=100 ? 'full' : pct<=10 ? 'crit' : '';
     rows.push(`<div class="stat-row"><div class="stat-label">Battery</div><div class="stat-body">
-      <div class="stat-val">${pct}% · ${esc(s.battery.status)}</div>${mkBar(pct,warn,10)}</div></div>`);
+      <div class="stat-val">${pct}% · ${esc(s.battery.status)}</div>${mkBar(pct,0,0,cls)}</div></div>`);
   }
   if (s.ip_addresses && s.ip_addresses.length) {
     const pwLine = s.hotspot_password

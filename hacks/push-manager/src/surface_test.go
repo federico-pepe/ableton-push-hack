@@ -361,14 +361,6 @@ func TestSurfacePowerPressOutside(t *testing.T) {
 	}
 }
 
-func TestIsPowerPress(t *testing.T) {
-	press := []byte{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x3A, 0x2A, 0x64, 0xF7}
-	rest := []byte{0xF0, 0x00, 0x21, 0x1D, 0x01, 0x01, 0x3A, 0x22, 0x64, 0xF7}
-	if !isPowerPress(press) || isPowerPress(rest) || isPowerPress(press[:9]) || isPowerPress(nil) {
-		t.Error("only F0 00 21 1D 01 01 3A 2A 64 F7 is a power press")
-	}
-}
-
 // 10,000 random sequences of everything that can happen, the rules
 // checked after every event.
 func TestSurfaceRandom(t *testing.T) {
