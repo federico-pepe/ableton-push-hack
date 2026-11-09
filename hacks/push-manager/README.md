@@ -134,7 +134,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 
 CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall CPU%, plus two `/proc/<pid>/stat` readings per watched process. `top_procs` lists Ableton Index, Live, Push3, and push-manager sorted in that fixed order; a process is omitted if its PID is not found. `hotspot_password` is read from the first non-empty `hotspot_password` key found in any `PushPreferences.json` matching `/data/.config/Ableton/Live */PushPreferences.json`; omitted if not found.
 
-**Battery:** The `battery` field comes from the power-state SysEx on the Live Port (`power.go`), not from sysfs (`/sys/class/power_supply/` is empty on Push 3). push-manager only listens: Push3 asks for the state once a second. `percent` is the battery level. `status` is `Charging`, `Plugged in` or `Discharging`. The field is left out until the first reply arrives (about 30 s after a cold boot) and when no reply came for 5 s.
+**Battery:** The `battery` field comes from the power-state SysEx on the Live Port (`power.go`), not from sysfs (`/sys/class/power_supply/` is empty on Push 3). push-manager only listens: Push3 asks for the state once a second. `percent` is the battery level. `status` is `Charging`, `Plugged in` or `Discharging`. The Stats bar is blue, red at 10 % or less, green at 100 %. The field is left out until the first reply arrives (about 30 s after a cold boot) and when no reply came for 5 s.
 
 ---
 

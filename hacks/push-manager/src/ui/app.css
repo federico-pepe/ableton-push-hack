@@ -348,6 +348,7 @@ body {
 .stat-bar { height: 100%; background: var(--blue); transition: width 0.4s ease; }
 .stat-bar.warn { background: rgb(255,160,0); }
 .stat-bar.crit { background: var(--red); }
+.stat-bar.full { background: var(--green); }
 .stat-proc { display:flex; justify-content:space-between; font-size:11px; color:var(--grey-mid); margin-top:4px; }
 .stat-proc-cpu { font-variant-numeric: tabular-nums; }
 .hotspot-pw { font-family: monospace; letter-spacing: 0.08em; color: var(--black); }
