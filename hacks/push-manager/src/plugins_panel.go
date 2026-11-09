@@ -19,6 +19,7 @@ import (
 	"github.com/federico-pepe/ableton-push-hack/core/gfx/widgets"
 
 	"push-manager/plugintree"
+	"push-manager/vst3scan"
 )
 
 // Same row geometry as the other list panels.
@@ -52,10 +53,15 @@ type PluginsPanel struct {
 	status      string
 	busy        bool
 	lastRefresh time.Time
+
+	// VST3 scan switch on button 8 (vst3.go). Two presses, because Live restarts.
+	vst3State  string // on | off | unknown; empty until the first read
+	vst3Busy   bool
+	vst3Prompt vst3scan.Prompt
 }
 
 func newPluginsPanel() *PluginsPanel {
-	p := &PluginsPanel{status: "loading..."}
+	p := &PluginsPanel{status: "loading...", vst3Prompt: vst3scan.Prompt{TTL: vst3ConfirmTTL}}
 	go p.refresh()
 	return p
 }
@@ -66,9 +72,14 @@ func (p *PluginsPanel) Label() string { return "PLUGINS" }
 
 func (p *PluginsPanel) refresh() {
 	tree, note, err := loadPluginTree()
+	st := vst3.State() // file reads: outside the lock
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.lastRefresh = time.Now()
+	p.vst3State, p.vst3Busy = st.State, st.Busy
+	if !st.Busy && p.status == vst3RestartMsg {
+		p.status = ""
+	}
 	if err != nil {
 		p.status = "PushHack offline or too old?"
 		return
@@ -235,6 +246,7 @@ func (p *PluginsPanel) back() { // caller holds p.mu
 func (p *PluginsPanel) handleJog(val uint8) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.vst3Prompt.Cancel()
 	switch val {
 	case 127: // CW → up (same as the other list panels)
 		p.moveCursor(-1)
@@ -247,6 +259,13 @@ func (p *PluginsPanel) HandleCC(cc, val uint8) {
 	if val != 127 {
 		return // press events only
 	}
+	if cc == CCScreenBot8 {
+		p.vst3Press()
+		return
+	}
+	p.mu.Lock()
+	p.vst3Prompt.Cancel() // any other key cancels the VST3 prompt
+	p.mu.Unlock()
 	switch cc {
 	case CCJogWheel:
 		return // handled by handleJog
@@ -320,8 +339,11 @@ func (p *PluginsPanel) Render(img *image.NRGBA) {
 		Scroll:     p.scroll,
 		Breadcrumb: title,
 		Status:     status,
-		EmptyText:  "No plugins - turn on VST3 scanning (docs/vst3-on-push3.md)",
+		EmptyText:  "No plugins - turn on VST3 scanning",
 	}, suiContentY, suiW, pluginsRowH, suiContentBot)
+	if p.vst3Prompt.Active(time.Now()) {
+		p.renderVst3Prompt(img)
+	}
 }
 
 // ── bottom strip ──────────────────────────────────────────────────────────────
@@ -338,12 +360,17 @@ func (p *PluginsPanel) SoftBotStrip() ([8]widgets.SoftButton, string) {
 	b[1] = widgets.SoftButton{Label: "Back", State: backState}
 	b[2] = widgets.SoftButton{Label: "Refresh", State: widgets.SoftNeutral}
 
+	b[7] = p.vst3Button()
+
 	hint := "jog / up-down move, press to open"
 	if p.inPresets {
 		hint = "press to load, left to go back"
 	}
 	if p.busy {
 		hint = "working..."
+	}
+	if p.vst3Prompt.Active(time.Now()) {
+		hint = "Live restarts"
 	}
 	return b, hint
 }
@@ -357,5 +384,95 @@ func (p *PluginsPanel) BotLEDColors() [8]uint8 {
 		c[1] = suiBotWhite
 	}
 	c[2] = suiBotWhite
+	switch {
+	case p.vst3Prompt.Active(time.Now()):
+		c[7] = suiBotGreen
+	case p.vst3State == "on" || p.vst3State == "off":
+		c[7] = suiBotWhite
+	}
 	return c
+}
+
+// ── VST3 scan switch (button 8) ──────────────────────────────────────────────
+
+const (
+	vst3ConfirmTTL = 8 * time.Second
+	vst3RestartMsg = "Restarting Live..."
+)
+
+// vst3Button is the label of button 8. Caller holds p.mu.
+func (p *PluginsPanel) vst3Button() widgets.SoftButton {
+	switch {
+	case p.vst3Busy:
+		return widgets.SoftButton{Label: "..."}
+	case p.vst3Prompt.Active(time.Now()):
+		return widgets.SoftButton{Label: "CONFIRM?", State: widgets.SoftConfirm}
+	case p.vst3State == "on":
+		return widgets.SoftButton{Label: "VST3 ON", State: widgets.SoftOn}
+	case p.vst3State == "off":
+		return widgets.SoftButton{Label: "VST3 OFF", State: widgets.SoftOff}
+	}
+	return widgets.SoftButton{} // unknown layout or not read yet: no action
+}
+
+// vst3Press: first press asks, second press changes the flag and restarts Live.
+func (p *PluginsPanel) vst3Press() {
+	p.mu.Lock()
+	if p.vst3Busy || (p.vst3State != "on" && p.vst3State != "off") {
+		p.mu.Unlock()
+		return
+	}
+	want := p.vst3State != "on"
+	confirmed := p.vst3Prompt.Press(time.Now())
+	if confirmed {
+		p.vst3Busy = true
+		p.status = vst3RestartMsg
+	}
+	p.mu.Unlock()
+	if !confirmed {
+		time.AfterFunc(vst3ConfirmTTL+200*time.Millisecond, shadowUIRefreshBotLEDs)
+		go shadowUIRefreshBotLEDs()
+		return
+	}
+	go func() {
+		restarting, err := vst3.Set(want)
+		p.mu.Lock()
+		if err != nil || !restarting {
+			p.vst3Busy = false
+			p.status = ""
+			if err != nil {
+				p.status = asciiOnly(err.Error())
+			}
+		}
+		p.mu.Unlock()
+		shadowUIRefreshBotLEDs()
+	}()
+}
+
+// renderVst3Prompt covers the list with the restart notice. Caller holds p.mu.
+func (p *PluginsPanel) renderVst3Prompt(img *image.NRGBA) {
+	fillRect(img, 0, suiContentY, suiW, suiContentH, suiBlack)
+	fillRect(img, 0, suiContentY, suiW, 2, suiAccent)
+	what := "on"
+	if p.vst3State == "on" {
+		what = "off"
+	}
+	lines := []string{
+		"Turn VST3 scanning " + what + "?",
+		"Live restarts. The current set is lost.",
+		"The screen and MIDI are back in about 30 s.",
+	}
+	if what == "off" {
+		lines = append(lines, "Presets of VST3 plugins stop loading until scanning is on.")
+	}
+	lines = append(lines, "", "Press button 8 again to confirm. Any other key cancels.")
+	y := suiContentY + 20
+	for i, l := range lines {
+		col := suiWhite
+		if i == 0 {
+			col = suiAccent
+		}
+		drawText(img, 16, y, l, col)
+		y += 17
+	}
 }

@@ -7,6 +7,16 @@ between minor versions).
 
 ## [Unreleased]
 
+### Removed
+
+- push-manager System tab: the **USB INPUT** checkbox. The routes `/api/input/usbhid` and `/api/input/usbhid/status` stay.
+
+### Added
+
+- push-manager: the **System** tab has a **VST3 PLUGINS** card with a button that turns VST3 scanning on or off (`GET` and `POST /api/vst3`). It changes `AreSystemPathsEnabled` in Live's `Preferences.cfg` and restarts the Push stack, because Live reads the flag only at start (tested on device 2026-11-09). A backup goes to `/data/push-hack/backup/Preferences.cfg.bak`. The page asks first, since the Live set is lost. Before Live stops, MIDI intercept goes off and the Shadow UI closes. See `plans/2026-11-09-vst3-scan-toggle.md`.
+- push-manager Shadow UI: button 8 of the PLUGINS tab turns VST3 scanning on or off, with a two-press confirm that says Live restarts. It uses the same code as the web card.
+- push-manager System tab: the PushHack Remote Script, VST3 Plugins and Push Hack update cards sit in three columns (one column on a narrow screen).
+
 ## [0.1.23-alpha] - 2026-11-12
 
 This release shows the battery in Push Manager and fixes the power button. It needs no reinstall. The power-state SysEx and other device facts in the docs come from the notes of [Cardamien/push3-max-lab](https://github.com/Cardamien/push3-max-lab), checked on a Push 3.
