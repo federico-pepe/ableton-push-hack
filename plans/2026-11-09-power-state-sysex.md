@@ -1,6 +1,6 @@
 # Power state from the Live Port
 
-Date: 2026-11-09. Status: done on the branch, not yet tested on device.
+Date: 2026-11-09. Status: tested on device (press, battery, cold boot).
 
 ## Why
 
@@ -23,7 +23,7 @@ Live 12.4.15b7, firmware package 1.5.4).
 
 - The device identity reply and the `0x3B` LED colour. Both need us to send, and Push3 holds the raw port.
 - The long power-button press (flag `0x10`) and a press while on battery. Not triggered.
-- Charge state `0` and `1` at levels above 99 %, and the value at exactly 100 %.
+- Charge state `0` while plugged in.
 - Everything about the Mac helper, the tethered sockets, the USB mux and the display sync commands.
 - The class name `MidiHub` and the Live audio latency numbers.
 

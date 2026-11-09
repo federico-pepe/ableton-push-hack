@@ -369,9 +369,11 @@ Replies seen on the device (2026-11-09):
 | Unplugged, 99 % | `3A 02 63` |
 | Unplugged, 94 % | `3A 00 5E` |
 | Plugged in, 94 %, charging | `3A 21 5E` |
+| Plugged in, 100 %, still charging | `3A 21 64` |
 
-Charge state `2` (unavailable) appeared at 99 %, plugged in or not. Use bit `0x20` and the level, not
-charge state `2`, to decide if the Push runs on battery. We did not see 100 % yet. push-manager decodes
+Charge state `2` (unavailable) appeared at 99 %, plugged in or not. At 100 % on the supply the state was `1`
+(charging). Use bit `0x20` and the level, not the charge state, to decide if the Push runs on battery.
+push-manager decodes
 this in `power.go` and shows it in `/api/stats`.
 
 The related command `POWER_COMMAND` (`0x39`) takes `01` POWER_OFF, `02` CLEAR_SHORT_PRESS and
