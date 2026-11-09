@@ -134,7 +134,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 
 CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall CPU%, plus two `/proc/<pid>/stat` readings per watched process. `top_procs` lists Ableton Index, Live, Push3, and push-manager sorted in that fixed order; a process is omitted if its PID is not found. `hotspot_password` is read from the first non-empty `hotspot_password` key found in any `PushPreferences.json` matching `/data/.config/Ableton/Live */PushPreferences.json`; omitted if not found.
 
-**Battery:** The `battery` field is present in the struct and the UI handles it, but **Push 3 does not expose battery state through any standard Linux interface** — `/sys/class/power_supply/` is empty. Battery is managed by the XMOS firmware via a custom MIDI SysEx protocol, accessible only from Push's internal Python environment. The field will always be omitted in practice.
+**Battery:** The `battery` field comes from the power-state SysEx on the Live Port (`power.go`), not from sysfs (`/sys/class/power_supply/` is empty on Push 3). push-manager only listens: Push3 asks for the state once a second. `percent` is the battery level. `status` is `Charging`, `Plugged in` or `Discharging`. The field is left out until the first reply arrives (about 30 s after a cold boot) and when no reply came for 5 s.
 
 ---
 
@@ -417,7 +417,7 @@ Auto-refreshes every 3 seconds. Shows:
 - Uptime (from `/proc/uptime`)
 - A card **Push Hack update**: installed and latest version, last check, Check now, Update now, the two switches, and how the last update ended. See "Push Hack update" below.
 
-> **Battery not shown:** Push 3's battery state is only accessible via the XMOS firmware's custom MIDI SysEx protocol — `/sys/class/power_supply/` is empty. The UI handles the `battery` field gracefully (hidden when absent).
+> **Battery not shown:** The reading comes from the Live Port after the boot wait (about 30 s after a cold boot). If it stays hidden, push-manager has no MIDI connection: see the MIDI status in the logs.
 
 ### PushHack Remote Script card
 
@@ -675,8 +675,8 @@ Record), and the app draws until you leave it.
   it, Home says the app did not start.
 - The power button gives the surface to Live (`release.go`), also from the
   Shadow UI and from old hacks that hold it: its press
-  is one SysEx on the Push's Live Port, and Push3 asks "shut down?" a
-  second later. Nothing latches. After Cancel, Shift + Help opens Home
+  is a flag (short or long press) in the power-state SysEx on the Push's
+  Live Port, and Push3 asks "shut down?" a second later. Nothing latches. After Cancel, Shift + Help opens Home
   again.
 - push-manager gives the surface to Live when it starts (`release.go`). If the buttons were taken, it also repaints Live's LEDs once MIDI is up.
   Apps connect again by themselves.

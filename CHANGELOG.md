@@ -7,8 +7,14 @@ between minor versions).
 
 ## [Unreleased]
 
+### Fixed
+
+- The power button did not give the surface back to Live on battery or below 100 %. push-manager matched only the exact message `3A 2A 64` (short press, supply plugged in, battery at 100 %). It now reads the press flags in the power-state SysEx, so a short or a long press works at any level, plugged in or not. One press fires once, although the flag repeats each second.
+
 ### Added
 
+- push-manager shows the battery in the Stats panel and in `/api/stats` (`battery.percent`, `battery.status`: `Charging`, `Plugged in` or `Discharging`). It listens to the power-state SysEx that Push3 already polls on the Live Port, so it sends nothing.
+- `docs/push3-internals.md`: the power-state SysEx, the Push 3 command table, port 80 (Push web service), the USB interface classes, CPU and board, and the launcher log. They replace the old text that said battery was not readable. The source is the notes in [Cardamien/push3-max-lab](https://github.com/Cardamien/push3-max-lab) (`docs/push-hack-notes.md`). We checked each point on a Push 3 on 2026-11-09. See `plans/2026-11-09-power-state-sysex.md`.
 - `core/audiobus`: `LinkProbe` (`NewLinkProbe`, `Link`). A hack can ask whether push-audio-loopback runs in Link mode, for example to hide its "Create tracks" button.
 
 ## [0.1.22-alpha] - 2026-11-07

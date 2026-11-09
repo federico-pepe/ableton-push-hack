@@ -13,9 +13,8 @@ import (
 )
 
 // SystemStats holds all collected system metrics.
-// Note: Battery info is NOT included — Push 3's battery state is managed by
-// the XMOS firmware via a custom MIDI SysEx protocol and is not exposed through
-// any standard Linux interface (/sys/class/power_supply is empty on Push 3).
+// Battery comes from the power-state SysEx on the Live Port (power.go).
+// /sys/class/power_supply is empty on Push 3.
 type SystemStats struct {
 	CPUPercent      float64       `json:"cpu_percent"`
 	TopProcs        []ProcStat    `json:"top_procs,omitempty"`
@@ -305,6 +304,9 @@ func getLocalIPs() []string {
 }
 
 func batteryInfo() (*BatteryStats, error) {
+	if st, ok := power.latest(time.Now()); ok {
+		return &BatteryStats{Percent: st.Level, Status: st.Label()}, nil
+	}
 	entries, err := os.ReadDir("/sys/class/power_supply")
 	if err != nil {
 		return nil, err
