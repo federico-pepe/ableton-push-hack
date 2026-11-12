@@ -119,6 +119,16 @@
       "github_repo": "federico-pepe/push-hack-arrangement",
       "default_branch": "main",
       "asset_name": "arrangement.tar.gz"
+    },
+    {
+      "id": "netmidi",
+      "name": "Net MIDI",
+      "description": "The Push's MIDI on the network as Apple MIDI (RTP-MIDI): an iPad, iPhone or Mac sees the Push as a network MIDI peer, with one port for Live and routes for other hacks' ports.",
+      "author": "rgeissen",
+      "homepage": "https://github.com/rgeissen/push-hack-netmidi",
+      "github_repo": "rgeissen/push-hack-netmidi",
+      "default_branch": "main",
+      "asset_name": "netmidi.tar.gz"
     }
   ]
 }
