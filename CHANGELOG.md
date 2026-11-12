@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.24-alpha] - 2026-11-12
+
+This release adds a VST3 scanning switch to the System tab and to the Shadow UI. It needs no reinstall. The switch restarts Live, so save your set first.
+
 ### Removed
 
 - push-manager System tab: the **USB INPUT** checkbox. The routes `/api/input/usbhid` and `/api/input/usbhid/status` stay.
