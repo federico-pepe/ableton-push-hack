@@ -13,6 +13,7 @@ between minor versions).
 
 ### Added
 
+- Catalog: **Arrangement** (`federico-pepe/push-hack-arrangement`, first release `v0.0.11-alpha`). It shows the open Live Set's arrangement on the Push 3 screen. It needs the PushHack Remote Script.
 - push-manager shows the battery in the Stats panel and in `/api/stats` (`battery.percent`, `battery.status`: `Charging`, `Plugged in` or `Discharging`). It listens to the power-state SysEx that Push3 already polls on the Live Port, so it sends nothing. The bar is blue, red at 10 % or less, and green at 100 %.
 - `docs/push3-internals.md`: the power-state SysEx, the Push 3 command table, port 80 (Push web service), the USB interface classes, CPU and board, and the launcher log. They replace the old text that said battery was not readable. The source is the notes in [Cardamien/push3-max-lab](https://github.com/Cardamien/push3-max-lab) (`docs/push-hack-notes.md`). We checked each point on a Push 3 on 2026-11-09. See `plans/2026-11-09-power-state-sysex.md`.
 - `core/audiobus`: `LinkProbe` (`NewLinkProbe`, `Link`). A hack can ask whether push-audio-loopback runs in Link mode, for example to hide its "Create tracks" button.
