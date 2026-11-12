@@ -1,6 +1,6 @@
 # VST3 scan toggle in the System tab
 
-Date: 2026-11-09. Status: plan, not built.
+Date: 2026-11-09. Status: built; web and Shadow UI check on device pending.
 
 ## Goal
 
