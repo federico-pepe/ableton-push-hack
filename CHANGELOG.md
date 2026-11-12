@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.1.23-alpha] - 2026-11-12
+
+This release shows the battery in Push Manager and fixes the power button. It needs no reinstall. The power-state SysEx and other device facts in the docs come from the notes of [Cardamien/push3-max-lab](https://github.com/Cardamien/push3-max-lab), checked on a Push 3.
+
 ### Fixed
 
 - The power button did not give the surface back to Live on battery or below 100 %. push-manager matched only the exact message `3A 2A 64` (short press, supply plugged in, battery at 100 %). It now reads the press flags in the power-state SysEx, so a short or a long press works at any level, plugged in or not. One press fires once, although the flag repeats each second.
