@@ -109,6 +109,16 @@
       "github_repo": "rgeissen/push-hack-stacks",
       "default_branch": "main",
       "asset_name": "stacks.tar.gz"
+    },
+    {
+      "id": "arrangement",
+      "name": "Arrangement",
+      "description": "Shows the open Live Set's arrangement on the Push 3 screen: zoom, scroll, loop and punch, locators, play-start anchor. Touch a knob to see what it does. Toggle with Shift+Session. Needs the PushHack Remote Script enabled once in Live.",
+      "author": "federico-pepe",
+      "homepage": "https://github.com/federico-pepe/push-hack-arrangement",
+      "github_repo": "federico-pepe/push-hack-arrangement",
+      "default_branch": "main",
+      "asset_name": "arrangement.tar.gz"
     }
   ]
 }
