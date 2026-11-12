@@ -9,7 +9,7 @@ own README has full request/response detail for every route below.
 **Routes:**
 
 `/api/list`, `/api/download`, `/api/upload`, `/api/delete`, `/api/rename`,
-`/api/copy`, `/api/unmount`, `/api/stats`, `/api/update/{status,check,dismiss,settings,apply,ack}`
+`/api/copy`, `/api/unmount`, `/api/stats`, `/api/vst3` (GET: VST3 scan state; POST `{enabled}`: change it and restart the Push stack), `/api/update/{status,check,dismiss,settings,apply,ack}`
 (see push-manager's README, "Push Hack update"; `/api/status` also returns `hack_version`), `/api/assets/<path>`,
 `/api/display/{status,mode,image,screenshot,direct}` (`screenshot` is a GET
 `/api/display/{status,mode,image,frame,screenshot}` (`frame` takes one raw

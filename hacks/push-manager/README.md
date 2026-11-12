@@ -30,6 +30,8 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/update/dismiss` | Body `{"version":"0.1.11-alpha"}`. Hides the bar for that version. |
 | `GET`/`POST` | `/api/update/settings` | `{"auto_check":bool,"include_prerelease":bool}`; POST takes either or both. |
 | `GET` | `/api/stats` | System stats: CPU %, memory, disk, IP addresses, battery, uptime, hotspot password |
+| `GET` | `/api/vst3` | VST3 scanning: `{state, file, plugins, busy, error}`. `state` is `on`, `off` or `unknown` (the `Preferences.cfg` layout is not the expected one). `plugins` counts `.vst3` folders in `/data/.vst3`. |
+| `POST` | `/api/vst3` | Body `{"enabled": bool}`. Sets the flag `AreSystemPathsEnabled` and restarts the Push stack (`restarting: true`). If the flag has this value already, nothing happens. 409 while a change runs, 422 when the file layout is wrong. **The Live session ends.** |
 | `GET` | `/api/display/status` | Display hook status: `{connected, direct, mode, frame_seq, width, height}`. `connected` is also true while `direct` is on. |
 | `POST` | `/api/display/direct` | JSON body `{"enabled": true\|false}`. `true` claims the screen over USB, so push-manager drives it without Push3. Every frame push-manager writes then goes to the screen, whatever `mode` is. Only works while Push3 is stopped (409 otherwise). Set `false` before you start Push3 again: the call returns after the screen is released. |
 | `POST` | `/api/display/mode` | Set display mode. JSON body: `{"mode": 0\|1\|2}` (0=passthrough, 1=bar overlay, 2=custom). Entering mode 2 clears framebuf to black — no stale pixels from a previous session. |
@@ -137,6 +139,22 @@ CPU is sampled over a single 250ms window: two `/proc/stat` readings for overall
 **Battery:** The `battery` field comes from the power-state SysEx on the Live Port (`power.go`), not from sysfs (`/sys/class/power_supply/` is empty on Push 3). push-manager only listens: Push3 asks for the state once a second. `percent` is the battery level. `status` is `Charging`, `Plugged in` or `Discharging`. The Stats bar is blue, red at 10 % or less, green at 100 %. The field is left out until the first reply arrives (about 30 s after a cold boot) and when no reply came for 5 s.
 
 ---
+
+### VST3 scanning switch
+
+The **System** tab shows three cards side by side (PushHack Remote Script, VST3 Plugins, Push Hack update). On a narrow screen they stack. The **VST3 PLUGINS** card It shows if Live scans for VST3 plugins, how many plugins are in `/data/.vst3`, and a button to turn scanning on or off. Code: `vst3.go` (routes) and `vst3scan/` (logic, tested off the device).
+
+Live reads the flag only at start. Live has no call to scan again, and a change to the file while Live runs has no effect (tested 2026-11-09). So the button restarts the Push stack:
+
+1. Find `Preferences.cfg` in the folder of the highest Live version in `/data/.config/Ableton/`.
+2. Check the byte layout. If it is wrong, stop with an error. Live keeps running.
+3. If the flag has the wanted value, stop. Nothing restarts.
+4. Copy the file to `/data/push-hack/backup/Preferences.cfg.bak`. If this fails, stop with an error.
+5. Answer the HTTP request. Then turn MIDI intercept off and close the Shadow UI (the same two steps as `/api/display/mode`), run `/etc/init.d/push3 stop`, and wait 5 seconds.
+6. Change the one flag byte through a temporary file and a rename. Keep owner and mode. Read the file again. If the byte is wrong, write the old content back.
+7. Run `/etc/init.d/push3 start`. This runs after an error too, so Push never stays without Live.
+
+push-manager keeps running while Push3 stops. The screen and MIDI come back about 30 seconds after the start. The page asks for a confirmation first, because the Live set is lost. Turning scanning off keeps `/data/.vst3`, the plugin database and all presets. A preset for a plugin that Live does not scan fails to load. An Ableton OS update can reset the flag. Press the button again then. More: [docs/vst3-on-push3.md](../../docs/vst3-on-push3.md).
 
 ## Security model
 
@@ -290,6 +308,8 @@ With many plugins the flat list is long to scroll. The PLUGINS tab and the web B
 - Push Manager reads the file again when the tab refreshes (every 10 seconds). No restart is needed.
 
 **In the PLUGINS tab:** folders show first (Push's folder icon, the name and the plugin count), then plugins (Push's VST3 effect icon). The web Browser uses the same icons. Jog press, D-pad right or **Load** opens a folder. **Back** (D-pad left or button 2) goes up one folder and keeps your place. The line above the list shows the path.
+
+**VST3 scanning (button 8):** the last button under the screen shows `VST3 ON` (green) or `VST3 OFF` (red). It does the same as the System tab card in the web UI. The first press shows a notice over the list: Live restarts, the current set is lost, and the screen and MIDI come back in about 30 seconds. Press button 8 again within 8 seconds to confirm. Any other key, or the 8 seconds, cancels. After the confirm, MIDI intercept goes off, the Shadow UI closes, and Live restarts. The button is empty when the `Preferences.cfg` layout is not the expected one.
 
 **Airwindows:** `scripts/VST/make-plugin-folders.py` writes the file from `Airwindopedia.txt`, one folder for each category. See `docs/vst3-on-push3.md`. Design: `plans/2026-11-01-plugin-folders.md`.
 

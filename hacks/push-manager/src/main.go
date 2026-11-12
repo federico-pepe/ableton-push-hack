@@ -545,6 +545,7 @@ func main() {
 	mux.HandleFunc("/api/copy", handleCopy)
 	mux.HandleFunc("/api/unmount", handleUnmount)
 	mux.HandleFunc("/api/stats", handleStats)
+	mux.HandleFunc("/api/vst3", handleVst3)
 	mux.HandleFunc("/api/assets/", handleAssets)
 	mux.HandleFunc("/api/display/status", handleDisplayStatus)
 	mux.HandleFunc("/api/display/mode", handleDisplayMode)

@@ -79,17 +79,9 @@
     </div>
     <div id="stats-refresh"></div>
 
-    <!-- USB input -->
-    <div style="margin-top:12px;padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
-      <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">USB INPUT</div>
-      <label style="font-size:12px;color:var(--fg);display:flex;align-items:center;gap:8px;cursor:pointer" title="Load the usbhid kernel driver, so a mouse/keyboard plugged into the USB-A port becomes usable by Xorg/Live. Push3's own onboard UI still doesn't read it directly.">
-        <input type="checkbox" id="usb-hid-enabled" onchange="usbHidChanged()">
-        Enable USB mouse/keyboard (USB-A port)
-      </label>
-    </div>
-
     <!-- PushHack Remote Script -->
-    <div id="script-card" style="margin-top:12px;padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
+    <div class="sys-cards">
+    <div id="script-card" style="padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
       <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">PUSHHACK REMOTE SCRIPT</div>
       <div class="upd-row"><span>In the User Library</span><span id="scr-installed">-</span></div>
       <div class="upd-row"><span>Running in Live</span><span id="scr-running">-</span></div>
@@ -100,8 +92,19 @@
       </div>
     </div>
 
+    <!-- VST3 scanning -->
+    <div id="vst3-card" style="padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">VST3 PLUGINS</div>
+      <div class="upd-row"><span>Scanning</span><span id="vst3-state">-</span></div>
+      <div class="upd-row"><span>Plugins in /data/.vst3</span><span id="vst3-count">-</span></div>
+      <div id="vst3-msg" class="upd-msg"></div>
+      <div class="upd-actions">
+        <button class="upd-btn" id="vst3-btn" onclick="vst3Toggle()" disabled>-</button>
+      </div>
+    </div>
+
     <!-- Push Hack update -->
-    <div id="update-card" style="margin-top:12px;padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
+    <div id="update-card" style="padding:10px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">
       <div style="font-size:11px;font-weight:600;color:var(--grey-mid);margin-bottom:8px;letter-spacing:.05em">PUSH HACK UPDATE</div>
       <div class="upd-row"><span>Installed</span><span id="upd-installed">-</span></div>
       <div class="upd-row"><span>Latest</span><span id="upd-latest">-</span></div>
@@ -115,6 +118,7 @@
       </div>
       <label class="upd-opt"><input type="checkbox" id="upd-auto" onchange="updateSettingsChanged()"> Check for updates automatically (once a day, from GitHub)</label>
       <label class="upd-opt"><input type="checkbox" id="upd-pre" onchange="updateSettingsChanged()"> Include alpha and beta releases</label>
+    </div>
     </div>
   </div>
 

@@ -206,28 +206,11 @@ function showStats() {
 function startStatsPolling() {
   loadUpdate();
   loadScript();
+  loadVst3();
   loadStats();
-  loadUsbHidState();
   _statsTimer = setInterval(loadStats, 3000);
 }
 
-async function usbHidChanged() {
-  const enabled = $('usb-hid-enabled').checked;
-  try {
-    await api('POST', '/api/input/usbhid', JSON.stringify({enabled}));
-    toast(enabled ? 'USB mouse/keyboard enabled' : 'USB mouse/keyboard disabled', 'success');
-  } catch(e) {
-    $('usb-hid-enabled').checked = !enabled; // revert
-    toast('Failed: ' + esc(e.message), 'error');
-  }
-}
-
-async function loadUsbHidState() {
-  try {
-    const s = await api('GET', '/api/input/usbhid/status');
-    if (s && $('usb-hid-enabled')) $('usb-hid-enabled').checked = !!s.enabled;
-  } catch(_) {}
-}
 function stopStatsPolling() {
   if (_statsTimer) { clearInterval(_statsTimer); _statsTimer = null; }
 }
@@ -2398,3 +2381,71 @@ async function ackUpdateResult() {
 loadUpdate();
 loadScript();
 setInterval(loadUpdate, 5 * 60 * 1000);
+
+
+// ── VST3 scanning ──────────────────────────────────────────────────────────
+let _vst3 = null;
+let _vst3Restarting = false;
+
+async function loadVst3() {
+  if (_vst3Restarting) return;
+  try { _vst3 = await api('GET', '/api/vst3'); } catch (e) { return; }
+  renderVst3();
+}
+
+function renderVst3() {
+  const s = _vst3;
+  if (!s) return;
+  const btn = $('vst3-btn'), msg = $('vst3-msg');
+  msg.classList.remove('err');
+  $('vst3-count').textContent = String(s.plugins);
+  if (s.state === 'unknown') {
+    $('vst3-state').textContent = 'unknown';
+    btn.textContent = 'Not available';
+    btn.disabled = true;
+    msg.classList.add('err');
+    msg.textContent = s.error || 'Cannot read the Live preferences.';
+    return;
+  }
+  const on = s.state === 'on';
+  $('vst3-state').textContent = on ? 'on' : 'off';
+  btn.textContent = on ? 'Turn off' : 'Turn on';
+  btn.disabled = !!s.busy;
+  msg.textContent = s.busy ? 'Restarting Live...'
+    : on ? 'Live scans /data/.vst3 at start.'
+         : 'Live does not scan for VST3 plugins.';
+}
+
+async function vst3Toggle() {
+  if (!_vst3 || _vst3.state === 'unknown') return;
+  const want = _vst3.state !== 'on';
+  const what = want ? 'on' : 'off';
+  let text = 'Turn VST3 scanning ' + what + '?\n\nLive restarts to apply this. The current Live set is lost, and the screen and MIDI come back after about 30 seconds.';
+  if (!want) text += '\n\nPresets for VST3 plugins stop loading until you turn scanning on again.';
+  if (!confirm(text)) return;
+  const btn = $('vst3-btn'), msg = $('vst3-msg');
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/api/vst3', JSON.stringify({enabled: want}));
+    if (!r.restarting) { await loadVst3(); return; }
+  } catch (e) {
+    toast('Failed: ' + esc(e.message), 'error');
+    await loadVst3();
+    return;
+  }
+  _vst3Restarting = true;
+  msg.textContent = 'Restarting Live...';
+  const until = Date.now() + 180000;
+  let seenBusy = false;
+  while (Date.now() < until) {
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      const s = await api('GET', '/api/vst3');
+      if (s.busy) seenBusy = true;
+      if (!s.busy && (seenBusy || s.state === what)) { _vst3 = s; break; }
+    } catch (e) { /* push-manager may be busy */ }
+  }
+  _vst3Restarting = false;
+  renderVst3();
+  toast('VST3 scanning is ' + (_vst3 ? _vst3.state : what), 'success');
+}

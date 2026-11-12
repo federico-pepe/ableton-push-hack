@@ -80,7 +80,9 @@ ssh root@push.local 'chown -R ableton:users /data/.vst3'
 
 ### 3. Turn on VST3 scanning
 
-Live rewrites `Preferences.cfg` when it exits, so stop the Push stack first.
+The easy way: open the **System** tab of Push Manager and press **Turn on** in the **VST3 PLUGINS** card, or press button 8 (the last button under the screen) in the PLUGINS tab of the Shadow UI and press it again to confirm. Both do the steps below and restart the stack. The Live set is lost. To do it by hand, use the commands that follow.
+
+Live reads the flag only at start, and a change to the file while Live runs has no effect (tested 2026-11-09). So stop the Push stack first, change the file, and start the stack again. In two tests Live did not write its own value back to the file when the stack stopped.
 
 ```bash
 ssh root@push.local 'mkdir -p /data/push-hack/backup'
