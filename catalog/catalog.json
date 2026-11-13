@@ -129,6 +129,45 @@
       "github_repo": "rgeissen/push-hack-netmidi",
       "default_branch": "main",
       "asset_name": "netmidi.tar.gz"
+    },
+    {
+      "id": "convolute-creator",
+      "name": "ConvoluteCreator",
+      "description": "Pick a sample on the Push and make a Convolution Reverb preset that uses it as the impulse response. Preview audio plays through the Audio Loopback mixer.",
+      "author": "joman66",
+      "homepage": "https://github.com/joman66/Push-Hack-Convolution-Creator",
+      "github_repo": "joman66/Push-Hack-Convolution-Creator",
+      "default_branch": "main",
+      "asset_name": "convolute-creator.tar.gz",
+      "requires": [
+        "push-audio-loopback"
+      ]
+    },
+    {
+      "id": "airwindows",
+      "name": "Airwindows",
+      "description": "Effect chain of up to 8 Airwindows effects (510 effects in 22 categories). Audio from a Live track comes in over Ableton Link Audio, runs through the chain and goes back to Live. Edit it on Push's screen and encoders or in the web UI.",
+      "author": "joman66",
+      "homepage": "https://github.com/joman66/push-hack-airwindows",
+      "github_repo": "joman66/push-hack-airwindows",
+      "default_branch": "main",
+      "asset_name": "airwindows.tar.gz",
+      "requires": [
+        "push-audio-loopback"
+      ]
+    },
+    {
+      "id": "sample-edit",
+      "name": "Sample Edit",
+      "description": "Offline sampler and editor: record, trim, chop, process and export to Simpler, Sampler or Drum Rack. Preview audio and the stereo input use Audio Loopback in Link mode.",
+      "author": "joman66",
+      "homepage": "https://github.com/joman66/Push-Hack-Sample-Edit-Module",
+      "github_repo": "joman66/Push-Hack-Sample-Edit-Module",
+      "default_branch": "main",
+      "asset_name": "sample-edit.tar.gz",
+      "requires": [
+        "push-audio-loopback"
+      ]
     }
   ]
 }
