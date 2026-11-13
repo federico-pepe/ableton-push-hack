@@ -37,7 +37,7 @@ class SnapshotTest(unittest.TestCase):
         s = arr.build_snapshot(ArrSong())
         self.assertEqual([t["kind"] for t in s["tracks"]], ["group", "midi", "audio"])
         self.assertEqual(s["tracks"][1]["group"], 0)
-        self.assertEqual(s["tracks"][1]["clips"], [[0.0, 4.5, "A", 3]])
+        self.assertEqual(s["tracks"][1]["clips"], [[0.0, 4.5, "A", 3, 0]])
         self.assertEqual(s["tracks"][0]["clips"], [])
         self.assertEqual(s["locators"], [{"time": 8.0, "name": "Drop"}])
         self.assertEqual(s["sig"], [4, 4])

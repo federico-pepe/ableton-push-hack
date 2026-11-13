@@ -75,7 +75,7 @@ An error reply may carry `data` with detail (for example the valid names for `ba
 Live's Log.txt), `bad_arg`, `no_changes`, `bad_track`, `bad_scene`, `bad_device`, `bad_param`,
 `param_disabled`, `bad_pad`, `bad_view`, `no_clip`, `slot_taken`, `too_big`, `cannot_arm`,
 `wrong_clip_kind`, `not_looping`, `not_a_drum_rack`, `not_a_simpler`, `not_sliced`, `not_found`, `not_loadable`,
-`nothing_to_undo`, `nothing_to_redo`, `no_cue`, `nothing_to_capture`.
+`nothing_to_undo`, `nothing_to_redo`, `no_cue`, `nothing_to_capture`, `looping`.
 
 ## Namespaces
 
@@ -133,6 +133,31 @@ pads that hold a chain), `set_drum_pad {note, mute, solo}`, `select_drum_pad {no
 
 ### arrangement
 `snapshot`, `position`, `bta`, `loop_toggle`, `punch_in_toggle`, `punch_out_toggle`.
+
+In the snapshot a clip is `[start, end, name, color, muted]` (`muted` is 0 or 1; since script 0.6.0).
+
+Arrangement clips (script 0.6.0). A clip is named by `track` (an index) and `start` (its start
+time in beats). Each edit is one undo step where Live allows it. A reply to an edit has `clip`:
+`{track, start, end}` of the clip that the edit leaves.
+
+| Command | Arguments | Effect |
+|---|---|---|
+| `clips_info` | `clips: [{track, start}]` (at most 8) | For each clip: `kind`, `start`, `end`, markers (`start_marker`, `end_marker`, `loop_start`, `loop_end`), `looping`, `muted`, `color_index`. MIDI: `notes` as `[pitch, start, duration, velocity, mute]` (at most 512) and `notes_total`. Audio: `file`, `warping`, `warp_markers` as `[beat, seconds]`, `sample_rate`, `sample_length`, `gain`, `pitch_coarse`. A missing clip is `null` |
+| `clip_delete` | | Delete the clip |
+| `clip_move` | `to`, `to_track`? | Move it. It overwrites what is there, like a drag in Live |
+| `clip_duplicate` | `to`? (default: its end), `to_track`? | Copy it |
+| `clip_split` | `at` | Split it in two. The reply also has `left` |
+| `clip_trim` | `new_start`?, `new_end`? | Move an edge. Both edges can move in. The end can move out only on a clip that does not loop, and not past the next clip |
+| `clip_set` | `muted`, `name`, `color_index` (0-69), `gain` (audio), `pitch_coarse` (audio) | Set any of these |
+| `clip_transpose` | `semitones` | MIDI: shift every note. Audio: change the pitch |
+| `clip_velocity` | `delta` | MIDI: add to every note's velocity |
+| `clip_quantize` | `grid` (default 5 = 1/16), `amount` (default 1) | Quantize |
+| `clip_crop` | | Remove what is outside the loop (or the markers) |
+| `clip_new` | `track`, `start`, `length` | New empty MIDI clip (MIDI tracks only) |
+
+Live has no split or trim call. The script builds them from `duplicate_clip_to_arrangement` (a
+paste overwrites what is under it) and `delete_clip`. It shapes copies in a free area past the
+track's last clip and removes them again before it answers. Extra error codes: `looping`.
 
 ### modes
 `get`, `focus {view}`, `show {view}`, `hide {view}`, `toggle_browse`, `set {follow_song, draw_mode}`.

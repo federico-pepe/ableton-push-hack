@@ -9,6 +9,8 @@ between minor versions).
 
 ### Added
 
+- PushHack Remote Script 0.6.0: arrangement clip editing for the Arrangement hack. New `arrangement` commands: `clips_info` (a clip's notes, audio file, warp markers and markers, so a hack can draw them), `clip_move`, `clip_duplicate`, `clip_delete`, `clip_split`, `clip_trim`, `clip_set` (mute, name, colour, gain, pitch), `clip_transpose`, `clip_velocity`, `clip_quantize`, `clip_crop` and `clip_new`. The snapshot now says whether each clip is muted. See `docs/pushhack-remote-script.md`.
+
 - Catalog: **Net MIDI** (`rgeissen/push-hack-netmidi`, release `v0.1.1`, core `core/v0.5.6`). It puts the Push's MIDI on the network as Apple MIDI (RTP-MIDI), for an iPad, iPhone or Mac.
 
 ## [0.1.24-alpha] - 2026-11-12

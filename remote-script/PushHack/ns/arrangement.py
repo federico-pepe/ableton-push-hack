@@ -40,6 +40,7 @@ def build_snapshot(song):
                     round(float(c.end_time), 4),
                     _safe(lambda: c.name, "") or "",
                     _safe(lambda: int(c.color), 0),
+                    1 if _safe(lambda: c.muted, False) else 0,
                 ])
         tracks.append({
             "name": _safe(lambda: t.name, "") or "",
