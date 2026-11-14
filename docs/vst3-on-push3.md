@@ -5,11 +5,24 @@ a virtual sound card, or MIDI routing. Tested on 2026-10-03 with Surge XT on
 AbletonOS v3.23 (Live 12.4.15b5). The plugin loaded, and the pads played it
 through the normal Push audio path.
 
-Push does not show VST3 plugins in its browser. You load a plugin from a
-saved preset file (`.adg`) instead. This page explains how to do that.
+Push's own browser does not show VST3 plugins. Push Manager does. After you
+turn on VST3 scanning, the **PLUGINS** tab of the Shadow UI and the **Plugins**
+list of the web Browser show each scanned plugin and its presets. You load them
+from there, with no SSH. You can also load a plugin from a saved preset file
+(`.adg`) in Push's own browser. This page explains both ways.
 
-> **Warning:** This changes Live's `Preferences.cfg`. Make a backup first.
-> The steps below never write to `/opt`, `/boot`, or `/etc`.
+> **Warning:** Scanning changes Live's `Preferences.cfg` and restarts Live. The
+> Live set is lost, so save it first. Push Manager makes a backup of the file
+> before it changes it. The steps below never write to `/opt`, `/boot`, or `/etc`.
+
+The fast path:
+
+1. Copy the plugin to `/data/.vst3` ([step 2](#2-copy-the-plugin)).
+2. Turn on VST3 scanning in Push Manager ([step 3](#3-turn-on-vst3-scanning)).
+3. Copy `.vstpreset` files to the User Library, if you have them
+   ([Plugin presets](#plugin-presets-vstpreset)).
+4. Select a track, then load the plugin or a preset from Push Manager
+   ([step 6](#6-load-it-on-push)).
 
 ## What works and what is not tested
 
@@ -36,14 +49,28 @@ saved preset file (`.adg`) instead. This page explains how to do that.
 | Dragonfly Reverb 3.2.10 (Early Reflections, Hall, Plate, Room; effects) | All four scan and are listed. Load them on an **audio** track. |
 | Dexed 1.0.1 (instrument) | The official Linux download does **not** load: it needs glibc 2.38 and Push has 2.35. Built from source on Ubuntu 22.04 it scans and is listed. |
 | JE8086 2.2.25 by The Usual Suspects (JP-8000 emulation, instrument) | Scans, loads and plays once its firmware is in the right folder. See [Plugins that need data files](#plugins-that-need-data-files). Factory performances load as presets. |
-
 | Airwindows effects (all 532; effects, audio) | All scan and are listed. OrbitKick, TapeDelay2 and VerbSevens load, run and sound right. See [Airwindows effects as VST3](#airwindows-effects-as-vst3). |
+| Shrub (Linux x86_64 download) | Does **not** load. It needs glibc 2.38. The scanner log says `version 'GLIBC_2.38' not found`. No older build and no source were available, so it cannot be fixed. |
 
 Rule of thumb: use a plugin built on Ubuntu 22.04 (glibc 2.35) or older. The
 error in `PluginScanner.txt` for a build that is too new is
 `version 'GLIBC_2.38' not found`. If a plugin has no Linux x86_64 `.vst3`, or
 its build is too new, build it yourself. See
 [Build a plugin from source](#build-a-plugin-from-source-docker).
+
+An update of Live or of AbletonOS does not change this. Push has glibc 2.35 on
+AbletonOS v4.2 with Live 13.0b25 (checked 2026-11-14). To read the version on
+your Push, run `ssh root@push.local '/lib/libc.so.6 | head -1'`.
+
+Before you copy a plugin, look at the highest glibc version that it needs. On a
+Linux computer or in a container, run:
+
+```bash
+objdump -T Plugin.vst3/Contents/x86_64-linux/Plugin.so \
+  | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+```
+
+The result must be 2.35 or lower. Push has no `ldd` and no `objdump`.
 
 ## How it works
 
@@ -56,8 +83,12 @@ its build is too new, build it yourself. See
 3. After you set the flag to 1, the scanner process loads each plugin and
    records it in `/data/.local/share/Ableton/Live Database/Live-plugins-1.db`.
    The scanner log is `PluginScanner.txt` in the Live config folder.
-4. Push's browser does not list plugins. A saved `.adg` that names the plugin
+4. Push's own browser does not list plugins. A saved `.adg` that names the plugin
    still loads, because Live finds the plugin by its class ID.
+5. Push Manager asks the PushHack Remote Script for the list of scanned plugins
+   and their `.vstpreset` files. It shows them in the PLUGINS tab and in the web
+   Browser, and it loads the one you choose on the selected track. The PushHack
+   Remote Script must run. The System tab shows if it does.
 
 ## Steps
 
@@ -111,11 +142,17 @@ To undo this, stop the stack, copy the backup over `Preferences.cfg`, remove
 
 ### 4. Check the scan
 
-After about 30 seconds, look for the plugin:
+After about 30 seconds, look for the plugin in the PLUGINS tab of the Shadow UI
+or in the **Plugins** list of the web Browser. To read the scanner log, use the
+file of the newest Live version:
 
 ```bash
-ssh root@push.local 'grep -A8 "VST3: found" "/data/.config/Ableton/Live 12.4.15b5/PluginScanner.txt"'
+ssh root@push.local 'grep -A8 "VST3: found" "$(ls -d /data/.config/Ableton/Live*/ | tail -1)PluginScanner.txt"'
 ```
+
+The `ls` sort is by name, so it can pick the wrong folder when a beta and a
+release exist side by side. If the log has no match, list the folders with
+`ls /data/.config/Ableton/` and give the folder name by hand.
 
 You should see a line such as `VST3: found: Surge XT` with a `device-class-id`.
 The `device-class-id` is the plugin's class ID. A scan failure appears as
@@ -123,7 +160,9 @@ The `device-class-id` is the plugin's class ID. A scan failure appears as
 
 ### 5. Make a preset
 
-Push cannot list the plugin, so make a preset file for it. Use either way.
+Skip this step if you load plugins from Push Manager. You need an `.adg` only to
+load a plugin from Push's own browser. Push's browser cannot list the plugin, so
+you make a preset file for it. Use either way.
 
 **Without a Mac (script):**
 
@@ -149,8 +188,14 @@ User Library on Push. This saves the plugin's current patch too.
 
 ### 6. Load it on Push
 
-Open the Browser on Push, go to User Library, then Presets, then Instruments,
-and load the preset on a MIDI track.
+Select the track first. A load always goes to the selected track. Use an audio
+track for an effect and a MIDI track for an instrument.
+
+**From Push Manager (no SSH):** see [Plugin presets](#plugin-presets-vstpreset)
+for the PLUGINS tab and the web Browser.
+
+**From Push's own browser:** open the Browser on Push, go to User Library, then
+Presets, then Instruments, and load the `.adg` preset on a MIDI track.
 
 ### Optional: map parameters to the encoders
 
@@ -359,19 +404,82 @@ text `VST3`, a version number, and the plugin's class ID as 32 hex digits. This
 ID says which plugin the file belongs to. Live reads it and lists the preset
 under that plugin.
 
-To use a preset on Push, copy the file into the **User Library**:
-`/data/Music/Ableton/User Library/`. Live indexes it in about 40 seconds with
-no restart. A file in `~/.vst3/presets/<Vendor>/<Plugin>/` was **not** indexed
-in our test. You can make a `.vstpreset` in Live on a Mac (save the plugin's
-preset from the device).
+### Where to put the files
 
-Push's browser does not list plugins, so Push cannot show the preset either.
-The PushHack Remote Script can load it: `load_plugin:Surge XT:Surge-Bass1` loads the plugin with that
-patch, and `list_plugins` lists plugins with their presets. Tested with Surge XT.
+Copy the files into the **User Library** on Push:
+`/data/Music/Ableton/User Library/`. Live indexes them in about 40 seconds with
+no restart. Use a folder of your own, for example
+`/data/Music/Ableton/User Library/Surge XT Factory/`. A folder keeps the files
+apart from Live's own presets. Live finds the files in sub-folders too.
 
-push-manager has a **PLUGINS** tab in the Shadow UI and a Plugins list in the
-web Browser view. Both call PushHack, so you do not need SSH to load a
-plugin or a preset.
+```bash
+scp -r "My Presets" root@push.local:"/data/Music/Ableton/User Library/"
+ssh root@push.local 'chown -R ableton:users "/data/Music/Ableton/User Library/My Presets"'
+```
+
+- Live must scan the plugin that the preset belongs to. Turn on VST3 scanning
+  first. A preset for a plugin that Live does not scan does not load.
+- The name of the file is the name of the preset in Push Manager. Two presets
+  of one plugin must have different names, because Push Manager finds a preset
+  by name. A script that makes many files can use `<Category> - <Patch>`.
+- A file in `~/.vst3/presets/<Vendor>/<Plugin>/` was **not** indexed in our test.
+  Use the User Library.
+- You can make a `.vstpreset` in Live on a Mac (save the plugin's preset from
+  the device). Some plugins can also export one. For a plugin that cannot, see
+  [Presets for another plugin](#presets-for-another-plugin).
+
+### Load a preset from Push Manager
+
+Push's own browser does not list plugins, so it does not show the preset
+either. Push Manager does. Select a track first. The plugin and its preset load
+on the selected track.
+
+**Shadow UI (on the Push):** open the **PLUGINS** tab. A plugin that has presets
+shows `(N presets)` after its name.
+
+1. Move to the plugin. Press the jog wheel or D-pad right to open it. The first
+   row is `(default patch)`. The presets follow it.
+2. Move to a preset. Press the jog wheel or **Load** (button 1). The preset
+   loads on the selected track.
+3. Press **Back** (D-pad left or button 2) to return to the plugin list.
+
+**Load** on a plugin in the list loads the default patch at once. A plugin with
+no presets also loads when you press the jog wheel. Press **Refresh** (button 3)
+about 40 seconds after you copy new files.
+
+**Web (`http://push.local:7701`):** open the **Browser** tool. The **Plugins**
+list is above the preset rows. Each plugin has **Load**, which loads the default
+patch. A plugin that has presets also has a menu with **Load preset**. Type in
+the search box to find a plugin by name.
+
+**HTTP:** `POST /api/live/load` is for Live's own presets. For a plugin, call
+`GET /api/live/plugins` for the list. The PushHack Remote Script loads one with
+`browser.load_plugin`:
+
+```
+-> {"id":1,"ns":"browser","cmd":"list_plugins"}
+-> {"id":2,"ns":"browser","cmd":"load_plugin","plugin":"Surge XT","preset":"Surge-Bass1"}
+```
+
+An empty or missing `preset` loads the default patch. The command returns when
+Live has loaded the item, or with an error such as `not_found`. See
+[pushhack-remote-script.md](pushhack-remote-script.md).
+
+Tested on 2026-11-14 (AbletonOS v3.23, Live 12.4b17). Live listed all 1877
+`.vstpreset` files in the User Library, in nested folders: Dexed 1052, Surge XT
+633 and JE8086 192. `load_plugin` with the plugin `Surge XT` and the preset
+`Basses - Attacky` loaded the preset on an empty MIDI track. We did not test the
+PLUGINS tab and the web Browser steps on this unit.
+
+### If a preset does not show
+
+- The plugin must be in the list. If it is not, read the scanner log
+  ([step 4](#4-check-the-scan)).
+- The file must have the extension `.vstpreset`, and its class ID must match the
+  plugin. A preset made for another plugin or another version can be listed
+  under the wrong plugin or not at all.
+- The PushHack Remote Script must run. The PLUGINS tab and the web list are
+  empty without it.
 
 ## Plugin folders
 
