@@ -7,20 +7,21 @@ between minor versions).
 
 ## [Unreleased]
 
+## [0.2.0-alpha] - 2026-11-15
+
+This release lets a hack show its sound engines as devices in Live, and adds clip selection to the PushHack Remote Script. Run `./scripts/install.sh` once on the computer: the new `push_hook.so` loads at the next Push3 restart, and the Remote Script needs a Live restart. **Pung** (a separate hack) is the first to use the new device layer.
+
 ### Added
 
 - PushHack Remote Script: `arrangement.select_clip {track, start}` selects the arrangement clip on a track that starts at `start` (beats). The track becomes the selected track and the clip shows in Live's Detail view. Errors: `bad_track`, `bad_arg`, `no_clip`. For the Arrangement hack (clip selection, a first step toward editing). After the update, restart Live.
-
-### Changed
-
-- `docs/vst3-on-push3.md`: the guide now starts from Push Manager. It covers the VST3 scanning switch, where to copy `.vstpreset` files (the User Library), and how to load a plugin or a preset from the PLUGINS tab, the web Browser or `browser.load_plugin`. It also lists Shrub as a plugin that cannot load (needs glibc 2.38; Push has 2.35 on AbletonOS v4.2 with Live 13.0b25) and adds a check of the glibc version before you copy a plugin. The old `load_plugin:` text command in that guide is replaced by the JSON command.
-
-### Added
-
 - `core/livedevice`: a hack can show its engines in Live as normal devices. Push's browser lists them, Push's device view edits them (each of the hack's banks is one of Push's "Bank" pages), the pads play them, and Live saves them with the Set. The engine runs in the hack's own process, so a crash in a hack does not take Live down. It includes the `livedevice` VST3 plugin (one binary for every hack), an example hack (`cmd/ldexample`) and a tool that restarts Live with no one at the Push (`tools/restart-live.sh`). Guide: `docs/live-devices.md`. Pung (Schwung modules on Push) is the first hack that uses it. Hacks get it with the next `core/v0.6.0` tag.
 - Push Hack Home: an app with Live devices can stand in for Push's device view (`hack.json` `surface.device_view`). While one of its devices is selected and Push shows its device view, the app opens by itself and closes when you select something else. Device View in it shows Push's own device view; Mixer, Clip, Session, Add, Swap, Settings, Set, User and New close it and go on to Push; another track (the app's lower row and arrows, as on Push) keeps it open on a device of the app and closes it on any other. An app learns it stands in from `pmclient.SurfaceHandler.OnFocusInfo` (new). Switch it per app with Home's new `DEVICE` button or on the Display → Tabs page. On for an app that offers it.
 - Push Hack Catalog: `push-catalog remove` also removes the Push browser entries of a hack that has Live devices (`hack.json`'s `live_devices`). It keeps the hack's plugin bundle, so Sets that use its devices still open.
 - Catalog: **Net MIDI** (`rgeissen/push-hack-netmidi`, release `v0.1.1`, core `core/v0.5.6`). It puts the Push's MIDI on the network as Apple MIDI (RTP-MIDI), for an iPad, iPhone or Mac.
+
+### Changed
+
+- `docs/vst3-on-push3.md`: the guide now starts from Push Manager. It covers the VST3 scanning switch, where to copy `.vstpreset` files (the User Library), and how to load a plugin or a preset from the PLUGINS tab, the web Browser or `browser.load_plugin`. It also lists Shrub as a plugin that cannot load (needs glibc 2.38; Push has 2.35 on AbletonOS v4.2 with Live 13.0b25) and adds a check of the glibc version before you copy a plugin. The old `load_plugin:` text command in that guide is replaced by the JSON command.
 
 ## [0.1.24-alpha] - 2026-11-12
 
