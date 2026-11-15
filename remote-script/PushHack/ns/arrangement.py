@@ -7,6 +7,8 @@
 # which is cheap and sent when it changes, so a loop toggle or a knob turn
 # shows up almost at once.
 
+from ..errors import CommandError
+
 SNAPSHOT_EVERY_TICKS = 10         # update_display runs ~10x/s -> ~1 build/s
 BUILD_BUDGET_TICKS_PER_SEC = 200  # wait (build seconds x 200) ticks: <= ~5% of the time
 
@@ -124,6 +126,24 @@ def _toggle(attr):
     return fn
 
 
+def _select_clip(song, msg):
+    """Select the arrangement clip on a track that starts at `start` (beats):
+    the track becomes the selected track and the clip shows in the Detail view.
+    Raises bad_track, bad_arg, or no_clip."""
+    from .common import track_of, to_float
+    track = track_of(song, msg.get("track"))
+    start = to_float(msg.get("start"))
+    found = None
+    for c in _safe(lambda: list(track.arrangement_clips), []):
+        if abs(float(c.start_time) - start) < 1e-3:
+            found = c
+            break
+    if found is None:
+        raise CommandError("no_clip")
+    song.view.selected_track = track
+    song.view.detail_clip = found
+
+
 # The arrangement commands that are not in transport: Back to
 # Arrangement and the loop/punch toggles.
 def _toggles():
@@ -136,6 +156,7 @@ def register(reg):
     reg.command("arrangement", "snapshot", lambda song, msg: build_snapshot(song))
     reg.command("arrangement", "position", lambda song, msg: feed.position(song))
     reg.command("arrangement", "bta", _bta)
+    reg.command("arrangement", "select_clip", _select_clip)
     for name, fn in _toggles().items():
         reg.command("arrangement", name, fn)
     reg.topic("arrangement", feed.snapshot)

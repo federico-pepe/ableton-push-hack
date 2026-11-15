@@ -132,7 +132,9 @@ pads that hold a chain), `set_drum_pad {note, mute, solo}`, `select_drum_pad {no
 `get`, `on {port}`, `off`: the silent MIDI track that follows the selected track (used by Stacks).
 
 ### arrangement
-`snapshot`, `position`, `bta`, `loop_toggle`, `punch_in_toggle`, `punch_out_toggle`.
+`snapshot`, `position`, `bta`, `loop_toggle`, `punch_in_toggle`, `punch_out_toggle`,
+`select_clip {track, start}`: selects the arrangement clip on `track` (an index) that starts at `start` (beats). The
+track becomes the selected track and the clip shows in the Detail view. Errors: `bad_track`, `bad_arg`, `no_clip`.
 
 ### modes
 `get`, `focus {view}`, `show {view}`, `hide {view}`, `toggle_browse`, `set {follow_song, draw_mode}`.
