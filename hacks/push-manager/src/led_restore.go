@@ -42,10 +42,37 @@ func trackModeButton(cc uint8) {
 	if cc != CCNote && cc != CCSession {
 		return
 	}
-	if filt := ensureMidiFilt(); filt == nil || filt[4] == 1 {
-		return
+	if filt := ensureMidiFilt(); filt == nil || filt[4] == 1 && !padsToLive() {
+		return // Push3 did not see it -- unless an app leaves it the pads
 	}
 	lastModeCC.Store(uint32(cc))
+}
+
+// padsToLive: an app owns the surface and leaves Live the pads (midipass).
+func padsToLive() bool {
+	data := ensureMidiPass()
+	return data != nil && data[midiPassPads] == 1
+}
+
+// repaintLivePads makes Push3 light its pads again (a pad-mode change away
+// and back): after Home, whose pads were drawn here, hands the surface to
+// an app that leaves the pads to Live. Needs the pad-mode buttons in the
+// app's pass list, or the taps are held back like any other button.
+func repaintLivePads() {
+	liveTaps.Lock()
+	defer liveTaps.Unlock()
+	p, ok := alsaseq.FindByName(appInputPortName, alsaseq.CapWrite)
+	if !ok {
+		return
+	}
+	cur, other := byte(CCNote), byte(CCSession)
+	if uint8(lastModeCC.Load()) == CCSession {
+		cur, other = CCSession, CCNote
+	}
+	tapAppButton(p.Addr, other)
+	time.Sleep(150 * time.Millisecond)
+	tapAppButton(p.Addr, cur)
+	log.Printf("led_restore: pads to Live, pad mode %d -> %d -> %d", cur, other, cur)
 }
 
 func tapAppButton(dst alsaseq.Addr, cc byte) {

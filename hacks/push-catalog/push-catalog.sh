@@ -23,6 +23,10 @@ set -euo pipefail
 # this script. Standalone CLI use: export PUSH_CATALOG_REGISTRY yourself.
 REGISTRY_URL="${PUSH_CATALOG_REGISTRY:-}"
 PUSH_HACK_DIR="${PUSH_HACK_DIR:-/data/push-hack}"
+# Where a hack with Live devices (core/livedevice) puts its plugin and its
+# browser entries. Overridable for --self-test only.
+VST3_DIR="${PUSH_CATALOG_VST3_DIR:-/data/.vst3}"
+PRESETS_DIR="${PUSH_CATALOG_PRESETS_DIR:-/data/Music/Ableton/User Library/Presets}"
 
 # ── tiny helpers ──────────────────────────────────────────────────────────────
 die() { echo "error: $*" >&2; exit 1; }
@@ -472,12 +476,52 @@ case "\$1" in start) start;; stop) stop;; restart) stop; start;;
 EOF
 }
 
+# The browser folders of a hack's Live devices (core/livedevice,
+# docs/live-devices.md): hack.json's "live_devices" names the plugin bundle,
+# whose livedevice.json lists the folders the hack wrote. Prints only folders
+# that sit directly in Instruments/ or Audio Effects/ of the User Library
+# presets, one per line: a bad or hostile list removes nothing else.
+live_device_folders() {
+  python3 - "$1" "$VST3_DIR" "$PRESETS_DIR" <<'PY'
+import json, os, re, sys
+hack, vst3, presets = sys.argv[1:4]
+try:
+    name = json.load(open(hack)).get("live_devices", "")
+except Exception:
+    sys.exit(0)
+if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]*", name):
+    sys.exit(0)
+try:
+    cfg = json.load(open(os.path.join(vst3, name + ".vst3", "Contents", "Resources", "livedevice.json")))
+except Exception:
+    sys.exit(0)
+root = os.path.realpath(presets)
+for f in cfg.get("presets") or []:
+    if not isinstance(f, str):
+        continue
+    real = os.path.realpath(f)
+    rel = os.path.relpath(real, root)
+    parts = rel.split(os.sep)
+    if len(parts) == 2 and parts[0] in ("Instruments", "Audio Effects") and parts[1] not in ("", ".", ".."):
+        print(real)
+PY
+}
+
 cmd_remove() {
   local id="$1"; [ -n "$id" ] || die "usage: push-catalog remove <id>"
   local svc="push-hack-$id" dir="$PUSH_HACK_DIR/hacks/$id"
   as_root "/etc/init.d/$svc" stop 2>/dev/null || true
   command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
   as_root rm -f "/etc/init.d/$svc" /etc/rc*.d/S*"$svc"
+  # A hack with Live devices: its entries leave Push's browser with it. Its
+  # plugin bundle stays (with its class file): Sets that use its devices
+  # still load them, silent, instead of as missing plugins, which Live
+  # 13.0b25 crashed on while recovering a Set (docs/live-devices.md).
+  if [ -f "$dir/hack.json" ]; then
+    live_device_folders "$dir/hack.json" | while IFS= read -r f; do
+      [ -n "$f" ] && as_root rm -rf "$f" && info "removed browser entries $f"
+    done
+  fi
   # Clean up a non-hacks/<id> install_path (e.g. a Remote Script in Live's
   # User Library) before the source hack.json that names it is gone.
   if [ -f "$dir/hack.json" ]; then
@@ -696,6 +740,25 @@ JSON
   ip="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('install_path',''))" "$fake_dir/hack.json")"
   [ -z "$ip" ] || die "self-test: install_path should default empty"
   rm -rf "$fake_dir"
+
+  # 4. live_device_folders: only folders right under Instruments/ or Audio
+  #    Effects/ of the presets dir, read from the bundle the hack names.
+  local ld; ld="$(mktemp -d)"
+  mkdir -p "$ld/vst3/My Hack.vst3/Contents/Resources" "$ld/presets/Instruments/My Hack" "$ld/presets/Audio Effects/My Hack" "$ld/keep"
+  printf '{"id":"my-hack","live_devices":"My Hack"}\n' > "$ld/hack.json"
+  printf '{"socket":"/s","presets":["%s","%s","%s","%s","%s"]}\n' \
+    "$ld/presets/Instruments/My Hack" "$ld/presets/Audio Effects/My Hack" \
+    "$ld/keep" "$ld/presets/Instruments" "$ld/presets/Instruments/My Hack/../../../keep" \
+    > "$ld/vst3/My Hack.vst3/Contents/Resources/livedevice.json"
+  local got; got="$(VST3_DIR="$ld/vst3" PRESETS_DIR="$ld/presets" live_device_folders "$ld/hack.json" | wc -l | tr -d ' ')"
+  [ "$got" = 2 ] || die "self-test: live_device_folders gave $got folders, want 2"
+  printf '{"id":"my-hack","live_devices":"../vst3/My Hack"}\n' > "$ld/hack.json"
+  got="$(VST3_DIR="$ld/vst3" PRESETS_DIR="$ld/presets" live_device_folders "$ld/hack.json" | wc -l | tr -d ' ')"
+  [ "$got" = 0 ] || die "self-test: live_device_folders followed a bad bundle name"
+  printf '{"id":"no-devices"}\n' > "$ld/hack.json"
+  got="$(VST3_DIR="$ld/vst3" PRESETS_DIR="$ld/presets" live_device_folders "$ld/hack.json" | wc -l | tr -d ' ')"
+  [ "$got" = 0 ] || die "self-test: live_device_folders without live_devices"
+  rm -rf "$ld"
 
   rm -f "$reg"
   echo "self-test: OK"

@@ -44,6 +44,25 @@ int main(void) {
     if (memcmp(b + 84, "\xf0\x00\x21\x1d\x06\xf7", 6) != 0) { puts("SysEx payload changed"); bad = 1; }
     if (led_held != 3) { printf("held %lu, want 3\n", led_held); bad = 1; }
     if (mirror_test()) bad = 1;
-    puts(bad ? "FAIL" : "PASS: mirror frame copied, notes and CC 20 held, Play passed, SysEx and its payload untouched");
+
+    /* midipass: pads and CC 88+ that stay Live's */
+    static push_midi_pass_t mp; memset(&mp, 0, sizeof mp); mp.magic = MIDI_PASS_MAGIC;
+    midi_pass = &mp; midi_pass_retry = time(NULL) + 3600;
+    unsigned char p[28*4]; size_t q = 0;
+    ev(p+q, 6, 0, 0); p[q+17] = 60; q += 28;   /* pad note: passed with pads on */
+    ev(p+q, 6, 0, 0); p[q+17] = 3;  q += 28;   /* knob touch note: held */
+    ev(p+q, 10, 0, 118); q += 28;              /* Delete (118): passed with its bit */
+    ev(p+q, 10, 0, 110); q += 28;              /* Device View (110): held */
+    unsigned char p2[sizeof p]; memcpy(p2, p, sizeof p);
+    filter_seq_write(p, q);                    /* pads off, no bits: all held */
+    for (int i = 0; i < 4; i++) if (p[i*28] != 0) { printf("midipass off: event %d passed\n", i); bad = 1; }
+    mp.pads = 1; mp.pass_hi[(118-88)/8] |= 1 << ((118-88) % 8);
+    filter_seq_write(p2, q);
+    unsigned char want2[4] = {6, 0, 10, 0};
+    for (int i = 0; i < 4; i++) if (p2[i*28] != want2[i]) { printf("midipass on: event %d type %u, want %u\n", i, p2[i*28], want2[i]); bad = 1; }
+    if (!pass_cc_num(118) || pass_cc_num(110) || !pass_cc_num(85) || pass_cc_num(200)) { puts("pass_cc_num"); bad = 1; }
+    mp.magic = 0; /* a file that is not ours yet */
+    if (pass_pads() || pass_cc_num(118)) { puts("midipass without magic passed"); bad = 1; }
+    puts(bad ? "FAIL" : "PASS: mirror frame copied, notes and CC 20 held, Play passed, SysEx and its payload untouched, midipass pads and CC 88+");
     return bad;
 }

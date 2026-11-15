@@ -17,6 +17,9 @@ between minor versions).
 
 ### Added
 
+- `core/livedevice`: a hack can show its engines in Live as normal devices. Push's browser lists them, Push's device view edits them (each of the hack's banks is one of Push's "Bank" pages), the pads play them, and Live saves them with the Set. The engine runs in the hack's own process, so a crash in a hack does not take Live down. It includes the `livedevice` VST3 plugin (one binary for every hack), an example hack (`cmd/ldexample`) and a tool that restarts Live with no one at the Push (`tools/restart-live.sh`). Guide: `docs/live-devices.md`. Pung (Schwung modules on Push) is the first hack that uses it. Hacks get it with the next `core/v0.6.0` tag.
+- Push Hack Home: an app with Live devices can stand in for Push's device view (`hack.json` `surface.device_view`). While one of its devices is selected and Push shows its device view, the app opens by itself and closes when you select something else. Device View in it shows Push's own device view; Mixer, Clip, Session, Add, Swap, Settings, Set, User and New close it and go on to Push; another track (the app's lower row and arrows, as on Push) keeps it open on a device of the app and closes it on any other. An app learns it stands in from `pmclient.SurfaceHandler.OnFocusInfo` (new). Switch it per app with Home's new `DEVICE` button or on the Display → Tabs page. On for an app that offers it.
+- Push Hack Catalog: `push-catalog remove` also removes the Push browser entries of a hack that has Live devices (`hack.json`'s `live_devices`). It keeps the hack's plugin bundle, so Sets that use its devices still open.
 - Catalog: **Net MIDI** (`rgeissen/push-hack-netmidi`, release `v0.1.1`, core `core/v0.5.6`). It puts the Push's MIDI on the network as Apple MIDI (RTP-MIDI), for an iPad, iPhone or Mac.
 
 ## [0.1.24-alpha] - 2026-11-12

@@ -117,6 +117,25 @@ Do not ship a script that only does what PushHack already does.
   `hack.json` before deleting `hacks/<id>/`, and removes it too — the
   daemon owns the full lifecycle of anything it put on disk.
 
+## Hacks with Live devices (`hack.json`'s `live_devices`)
+
+A hack that shows its engines in Live as devices (`core/livedevice`, see
+`docs/live-devices.md`) names its plugin bundle:
+
+```jsonc
+{
+  "live_devices": "Pung"   // the hack installs /data/.vst3/Pung.vst3
+}
+```
+
+`push-catalog remove` then removes the hack's entries from Push's browser:
+the folders listed in the bundle's `livedevice.json` (`"presets"`), and only
+folders that sit directly in `Instruments/` or `Audio Effects/` of the User
+Library presets. It keeps the plugin bundle, with its class file: a Set that
+uses the hack's devices still loads them (silent) instead of as missing
+plugins, which Live 13.0b25 crashed on while recovering a Set. Delete
+`/data/.vst3/<name>.vst3` by hand once no Set needs it.
+
 ## Navigation hooks (`hack.json`'s `web_ui` and `shadow_ui`)
 
 A hack can put itself in either of push-manager's two navigations. Both
@@ -196,6 +215,7 @@ the surface (push-manager's README, "Push Hack Home", has the protocol;
 |-------|---------|
 | `label` | The name on the app's card in Home. ASCII; at most 7 letters fit the large type. Defaults to the hack's `name`. |
 | `color` | A name from Push's palette (`core/push3` `NamedColors`, for example `sky`, `amber`, `lime`, `violet`): the card's stripe and the pad column's LEDs. |
+| `device_view` | `true`: the app can show its own view instead of Push's device view while one of its Live devices is selected. Needs `live_devices` (above). On by default; the user switches it per app (Home's `DEVICE` button, or Display → Tabs). See push-manager's README, "The device view". |
 
 `surface` needs the hack's `port` like the other two hooks, and a running
 service: Home starts a stopped app through push-catalog's `enable`. Like

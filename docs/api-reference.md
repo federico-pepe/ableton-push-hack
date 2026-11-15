@@ -49,7 +49,9 @@ Help. Full behaviour: push-manager's README, "Push Hack Home".
   surface is "outside" (Live, the Shadow UI, an older hack).
 - **State.** `GET /api/surface`: the owner (`outside`, `home`, `app`), the
   app, the last app and Home's entries. 404 on a push-manager without
-  Home.
+  Home. `device_view`: Push's view as its lights show it, the selected
+  device, and whether an app stands in for Push's device view (push-manager's
+  README, "The device view").
 
 `core/pmclient` does all of it: `Client.App`, `RunSurface`,
 `SurfaceStatus`, `SurfaceInput`, `SurfaceLeave`, `SurfaceOpen`,

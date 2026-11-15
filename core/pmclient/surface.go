@@ -42,6 +42,15 @@ var ErrNoSwitcher = errors.New("push-manager has no Push Hack Home (GET /api/sur
 type SurfaceHandler struct {
 	OnFocus func() // the app owns the surface: draw, and act on presses
 	OnBlur  func() // it does not: stop drawing, ignore presses
+	// OnFocusInfo, if set, also runs on every focus, with what push-manager
+	// says about it. Optional: an app that needs none of it leaves it nil.
+	OnFocusInfo func(FocusInfo)
+	// Pads: while the app owns the surface, the pads, their pressure and the
+	// touch strip stay Live's (Push's own playing UX under the app). Put the
+	// pad-mode buttons (Note, Session, Layout, Scale, Repeat, Accent, the
+	// octaves and the repeat rates) in the pass list too. Needs push-manager
+	// and push-display from push-hack 0.1.25 on; an older one ignores it.
+	Pads bool
 }
 
 // HasSwitcher reports whether push-manager has Push Hack Home.
@@ -79,6 +88,9 @@ func (c *Client) RunSurface(ctx context.Context, passCC []int, h SurfaceHandler)
 		pass = append(pass, strconv.Itoa(cc))
 	}
 	u := c.Base + "/api/surface/session?app=" + url.QueryEscape(c.App) + "&pass_cc=" + strings.Join(pass, ",")
+	if h.Pads {
+		u += "&pads=1"
+	}
 	wait := 500 * time.Millisecond
 	for ctx.Err() == nil {
 		if c.session(ctx, u, h) {
@@ -130,7 +142,7 @@ func (c *Client) session(ctx context.Context, u string, h SurfaceHandler) bool {
 	}()
 	quiet := time.NewTimer(sessionQuiet)
 	defer quiet.Stop()
-	name := ""
+	name, data := "", ""
 	for {
 		select {
 		case <-quiet.C:
@@ -143,6 +155,8 @@ func (c *Client) session(ctx context.Context, u string, h SurfaceHandler) bool {
 			switch {
 			case strings.HasPrefix(line, "event: "):
 				name = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				data = strings.TrimPrefix(line, "data: ")
 			case line == "" && name != "":
 				switch name {
 				case "ready":
@@ -152,16 +166,34 @@ func (c *Client) session(ctx context.Context, u string, h SurfaceHandler) bool {
 						h.OnFocus()
 					}
 					focused = true
+					if h.OnFocusInfo != nil {
+						var fi FocusInfo
+						json.Unmarshal([]byte(data), &fi) //nolint:errcheck
+						h.OnFocusInfo(fi)
+					}
 				case "blur":
 					if focused && h.OnBlur != nil {
 						h.OnBlur()
 					}
 					focused = false
 				}
-				name = ""
+				name, data = "", ""
 			}
 		}
 	}
+}
+
+// FocusInfo is the data of a focus event.
+type FocusInfo struct {
+	// Input: the app has the buttons and pads too, not only the screen.
+	Input bool `json:"input"`
+	// DeviceView: push-manager opened the app in place of Push's device
+	// view, because one of the app's Live devices is selected (hack.json
+	// surface.device_view). It closes it again when the selection moves on.
+	// Navigate the way Push's device view does (tracks on the lower row and
+	// the left and right arrows); Device View, Help and the view buttons
+	// are push-manager's.
+	DeviceView bool `json:"device_view"`
 }
 
 func (c *Client) surfacePost(path string, body any) error {

@@ -21,6 +21,8 @@ type fakeIO struct {
 	view                     homeView
 	helpTaps, heldTaps       int
 	covers                   int
+	liveTaps                 []uint8
+	oldHack                  bool // an old hack holds the screen through /api/display/mode
 }
 
 func (f *fakeIO) take(pass []int)    { f.intercept, f.display, f.pass = true, true, pass }
@@ -48,6 +50,10 @@ func (f *fakeIO) releaseHeld() {
 	}
 }
 func (f *fakeIO) now() time.Time { return f.t }
+func (f *fakeIO) liveOwns() bool {
+	return !f.intercept && !f.display && f.tool == "" && !f.oldHack
+}
+func (f *fakeIO) tapLive(cc uint8) { f.liveTaps = append(f.liveTaps, cc) }
 func (f *fakeIO) closeTool() {
 	if f.tool != "" {
 		f.tool, f.display = "", false // the Shadow UI gives the screen back when it stops
@@ -405,9 +411,13 @@ func TestSurfaceRandom(t *testing.T) {
 				ss := old[rng.IntN(len(old))]
 				what = "session closed " + ss.app
 				owned := b.own == ownApp && b.app == ss.app && b.sessions[ss.app] == ss
+				auto := owned && b.auto
 				b.SessionClosed(ss)
-				if owned && b.own != ownHome {
+				if owned && !auto && b.own != ownHome {
 					t.Fatalf("run %d step %d: the owning app's session ended and the owner is %s", run, step, b.own)
+				}
+				if auto && b.own != ownOutside {
+					t.Fatalf("run %d step %d: an app standing in for the device view ended and the owner is %s", run, step, b.own)
 				}
 			case k < 55:
 				what = "top button"
@@ -446,6 +456,31 @@ func TestSurfaceRandom(t *testing.T) {
 			default:
 				what = "star"
 				b.setStar([]string{"riffs", "stacks", "browser", "files"}[rng.IntN(4)], rng.IntN(2) == 0, rng.IntN(3) == 0)
+			}
+			// the device view (devview.go), as often again as the rest
+			if rng.IntN(6) == 0 {
+				was, wasApp := b.own, b.app
+				target := []string{"", "riffs", "stacks", "nope"}[rng.IntN(4)]
+				key := []string{"t0/0/a", "t1/0/b"}[rng.IntN(2)]
+				dv := rng.IntN(3) > 0
+				b.io.oldHack = rng.IntN(8) == 0
+				if rng.IntN(5) == 0 {
+					what += "; view button"
+					b.ViewButton([]uint8{CCDeviceView, CCMixerView, CCClipView}[rng.IntN(3)])
+				} else {
+					what += "; follow " + target + " " + key
+					b.Follow(target, key, dv)
+					if was != ownOutside && was != b.own && !(was == ownApp && b.own == ownOutside) {
+						t.Fatalf("run %d step %d: follow took the surface from %s %s to %s", run, step, was, wasApp, b.own)
+					}
+					if b.auto && (b.own != ownApp || b.app != target) {
+						t.Fatalf("run %d step %d: auto with owner %s %s, target %q", run, step, b.own, b.app, target)
+					}
+				}
+				if b.auto && b.own != ownApp {
+					t.Fatalf("run %d step %d: auto set while %s owns the surface", run, step, b.own)
+				}
+				b.rules(t, "run "+itoa(run)+" step "+itoa(step)+" ("+what+")")
 			}
 			b.rules(t, "run "+itoa(run)+" step "+itoa(step)+" ("+what+")")
 			seen[b.own]++
@@ -771,4 +806,155 @@ func (g *helpGesture) reset() {
 	defer g.mu.Unlock()
 	g.shift, g.spoiled, g.taps, g.alone = false, false, 0, false
 	g.gen++
+}
+
+// ---- the device view (devview.go) ----------------------------------------------
+
+func TestDeviceViewFollow(t *testing.T) {
+	b := newBench()
+	b.SessionOpen("riffs", []int{85})
+	b.Follow("riffs", "a", false) // Push shows another view
+	if b.own != ownOutside {
+		t.Fatalf("opened outside Push's device view: %s", b.own)
+	}
+	b.Follow("riffs", "a", true)
+	if b.own != ownApp || b.app != "riffs" || !b.auto || !b.io.intercept {
+		t.Fatalf("device view: owner %s %s auto %v", b.own, b.app, b.auto)
+	}
+	if ev := b.events("riffs"); !slices.Equal(ev, []string{"focus"}) {
+		t.Fatalf("riffs got %v", ev)
+	}
+	b.rules(t, "auto")
+	b.Follow("", "b", true) // another device selected: Push's own view again
+	if b.own != ownOutside || b.hold != "" || b.io.intercept {
+		t.Fatalf("selection moved: owner %s hold %q", b.own, b.hold)
+	}
+	b.Follow("riffs", "a", true)
+	b.HelpAlone() // the user wants Push's view of this device
+	if b.own != ownOutside || b.hold != "a" {
+		t.Fatalf("Help from the auto app: owner %s hold %q", b.own, b.hold)
+	}
+	b.Follow("riffs", "a", true)
+	if b.own != ownOutside {
+		t.Fatal("opened again on the held selection")
+	}
+	b.Follow("riffs", "a", false) // Push left its device view...
+	b.Follow("riffs", "a", true)  // ...and came back: the hold is gone
+	if b.own != ownApp {
+		t.Fatal("not opened after Push left its device view")
+	}
+	b.HelpAlone()
+	b.Follow("riffs", "c", true) // another device of the app
+	if b.own != ownApp {
+		t.Fatal("not opened on a new selection")
+	}
+}
+
+func TestDeviceViewNeverTakes(t *testing.T) {
+	b := newBench()
+	b.SessionOpen("riffs", nil)
+	b.SessionOpen("stacks", nil)
+	b.Gesture(1) // Home
+	b.Follow("riffs", "a", true)
+	if b.own != ownHome {
+		t.Fatalf("took the surface from Home: %s", b.own)
+	}
+	b.HomeCC(CCScreenTop1+1, 127) // the user opens stacks
+	b.Follow("riffs", "a", true)
+	if b.own != ownApp || b.app != "stacks" || b.auto {
+		t.Fatalf("took the surface from an app the user opened: %s %s", b.own, b.app)
+	}
+	b.Follow("", "b", true)
+	if b.own != ownApp || b.app != "stacks" {
+		t.Fatal("closed an app the user opened")
+	}
+	b.HelpAlone()
+	b.io.oldHack = true
+	b.Follow("riffs", "a", true)
+	if b.own != ownOutside {
+		t.Fatal("took the surface from an old hack")
+	}
+	b.io.oldHack = false
+	b.Follow("nope", "x", true) // not running: never started for this
+	if b.own != ownOutside || len(b.io.started) != 0 {
+		t.Fatalf("a stopped app: owner %s, started %v", b.own, b.io.started)
+	}
+}
+
+func TestDeviceViewButtons(t *testing.T) {
+	b := newBench()
+	b.SessionOpen("riffs", nil)
+	b.SessionOpen("stacks", nil)
+	b.Follow("riffs", "a", true)
+	b.Follow("stacks", "b", true) // a device of another app
+	if b.own != ownApp || b.app != "stacks" || !b.auto {
+		t.Fatalf("switch: %s %s auto %v", b.own, b.app, b.auto)
+	}
+	b.ViewButton(CCDeviceView) // the press that opened it, read late
+	if b.own != ownApp {
+		t.Fatal("the opening press closed the app again")
+	}
+	b.io.t = b.io.t.Add(time.Second)
+	b.ViewButton(CCMixerView)
+	if b.own != ownOutside || !slices.Equal(b.io.liveTaps, []uint8{CCMixerView}) || b.hold != "" {
+		t.Fatalf("Mixer: owner %s taps %v hold %q", b.own, b.io.liveTaps, b.hold)
+	}
+	b.Follow("stacks", "b", true)
+	b.io.t = b.io.t.Add(time.Second)
+	b.ViewButton(CCDeviceView)
+	if b.own != ownOutside || b.hold != "b" || len(b.io.liveTaps) != 1 {
+		t.Fatalf("Device View: owner %s hold %q taps %v", b.own, b.hold, b.io.liveTaps)
+	}
+	b.ClearHold() // Device View pressed in Push's own device view
+	b.Follow("stacks", "b", true)
+	if b.own != ownApp || !b.auto {
+		t.Fatal("Device View in Push's own device view did not bring the app back")
+	}
+	b.HelpAlone()
+	b.Follow("stacks", "b", true)
+	b.io.t = b.io.t.Add(time.Second)
+	b.ViewButton(CCClipView) // not standing in: nothing
+	if b.own != ownOutside || len(b.io.liveTaps) != 1 {
+		t.Fatal("a view button acted outside the device view")
+	}
+	b.ClearHold()
+	ss := b.SessionOpen("riffs", nil)
+	b.Follow("riffs", "c", true)
+	b.SessionClosed(ss)
+	if b.own != ownOutside {
+		t.Fatalf("the auto app stopped: owner %s, want Live", b.own)
+	}
+}
+
+func TestHomeDeviceButton(t *testing.T) {
+	b := newBench()
+	b.entries[0].HasDeviceView, b.entries[0].DeviceView = true, true // riffs
+	var got []string
+	b.setDevView = func(id string, on bool) {
+		got = append(got, id+map[bool]string{true: " on", false: " off"}[on])
+		for i := range b.entries {
+			if b.entries[i].ID == id {
+				b.entries[i].DeviceView = on
+			}
+		}
+	}
+	b.SessionOpen("riffs", nil)
+	b.Gesture(1) // Home, cursor on riffs
+	b.HomeCC(CCScreenBotN(2), 127)
+	b.HomeCC(CCScreenBotN(2), 127)
+	if !slices.Equal(got, []string{"riffs off", "riffs on"}) {
+		t.Fatalf("DEVICE presses: %v", got)
+	}
+	_, ccs := homeLEDs(b.view())
+	if ccs[CCScreenBotN(2)] == 0 {
+		t.Fatal("DEVICE not lit for an app that has a device view")
+	}
+	b.HomeCC(CCJogWheel, 1) // the next entry, which has none
+	b.HomeCC(CCScreenBotN(2), 127)
+	if len(got) != 2 {
+		t.Fatalf("DEVICE acted on an entry without a device view: %v", got)
+	}
+	if _, ccs := homeLEDs(b.view()); ccs[CCScreenBotN(2)] != 0 {
+		t.Fatal("DEVICE lit for an entry without a device view")
+	}
 }

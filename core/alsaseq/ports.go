@@ -13,6 +13,7 @@ package alsaseq
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -149,4 +150,42 @@ func FindByName(substr string, requireCaps uint32) (Port, bool) {
 		}
 	}
 	return Port{}, false
+}
+
+// Subscribed reports whether dst is subscribed to src's events, from the
+// kernel's own list (/proc/asound/seq/clients: src's port, "Connecting
+// To: c:p, ..."). An ioctl's EBUSY could not tell a live subscription from
+// a lost one (a restarted client took the old address back).
+func Subscribed(src, dst Addr) bool {
+	raw, err := os.ReadFile("/proc/asound/seq/clients")
+	if err != nil {
+		return false
+	}
+	return subscribedIn(string(raw), src, dst)
+}
+
+func subscribedIn(text string, src, dst Addr) bool {
+	client, port := -1, -1
+	want := fmt.Sprintf("%d:%d", dst.Client, dst.Port)
+	for _, line := range strings.Split(text, "\n") {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "Client "):
+			fmt.Sscanf(strings.TrimPrefix(t, "Client "), "%d", &client)
+			port = -1
+		case strings.HasPrefix(t, "Port "):
+			fmt.Sscanf(strings.TrimPrefix(t, "Port "), "%d", &port)
+		case strings.HasPrefix(t, "Connecting To:") && client == int(src.Client) && port == int(src.Port):
+			for _, a := range strings.Split(strings.TrimPrefix(t, "Connecting To:"), ",") {
+				a = strings.TrimSpace(a)
+				if i := strings.IndexByte(a, '['); i >= 0 {
+					a = a[:i]
+				}
+				if a == want {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

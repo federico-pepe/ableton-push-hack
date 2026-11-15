@@ -54,11 +54,16 @@ func Walk(buf []byte, h Handler) {
 
 // ReadLoop blocks reading c's fd in a loop, calling Walk(buf, h) on each
 // read, until Read returns an error (e.g. the fd was closed to interrupt a
-// subscription change).
+// subscription change). Two errors are not the end and it reads on:
+// ENOSPC, the kernel's input queue overflowed and dropped events (a burst:
+// Live repainting every light at once), and EINTR.
 func (c *Client) ReadLoop(h Handler) error {
 	buf := make([]byte, 8192)
 	for {
 		n, err := syscall.Read(c.fd, buf)
+		if err == syscall.ENOSPC || err == syscall.EINTR {
+			continue
+		}
 		if err != nil {
 			return err
 		}

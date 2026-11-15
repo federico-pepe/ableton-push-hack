@@ -45,8 +45,16 @@ type uiEntry struct {
 	Star   bool   `json:"star"`            // Home: among the favorites, first
 	Super  bool   `json:"super"`           // Home: the superstar, Shift + Help, Help
 
+	// The app replaces Push's device view while one of its Live devices is
+	// selected (devview.go). Has: the hack offers it ("surface.device_view"
+	// and "live_devices"); DeviceView: the switch, on unless the user turned
+	// it off.
+	HasDeviceView bool   `json:"has_device_view"`
+	DeviceView    bool   `json:"device_view"`
+	liveDevices   string // the hack's plugin bundle name
+
 	HasWeb   bool   `json:"has_web"`
-	Web      bool   `json:"web"`       // switch: show in the web menu bar
+	Web      bool   `json:"web"` // switch: show in the web menu bar
 	WebLabel string `json:"web_label,omitempty"`
 	WebPath  string `json:"web_path,omitempty"`
 	Port     int    `json:"port,omitempty"`
@@ -62,6 +70,8 @@ type uiPref struct {
 	Web    bool   `json:"web"`
 	Star   bool   `json:"star,omitempty"`
 	Super  bool   `json:"super,omitempty"`
+	// DeviceView: nil keeps the hack's default (on).
+	DeviceView *bool `json:"device_view,omitempty"`
 }
 
 var (
@@ -123,6 +133,9 @@ func candidateEntries() []uiEntry {
 			if h.Surface.Label != "" {
 				e.Label = h.Surface.Label
 			}
+			if h.Surface.DeviceView && h.LiveDevices != "" {
+				e.HasDeviceView, e.liveDevices = true, h.LiveDevices
+			}
 		}
 		if h.WebUI != nil {
 			e.HasWeb = true
@@ -155,7 +168,7 @@ func resolveUIEntries() []uiEntry {
 	cand := candidateEntries()
 	byID := make(map[string]uiEntry, len(cand))
 	for _, e := range cand {
-		e.Shadow, e.Web = true, true
+		e.Shadow, e.Web, e.DeviceView = true, true, e.HasDeviceView
 		byID[e.ID] = e
 	}
 
@@ -172,6 +185,9 @@ func resolveUIEntries() []uiEntry {
 			continue // stale config entry: hack removed, or duplicate
 		}
 		e.Shadow, e.Web, e.Star, e.Super = p.Shadow, p.Web, p.Star || p.Super, p.Super && !super
+		if p.DeviceView != nil {
+			e.DeviceView = e.HasDeviceView && *p.DeviceView
+		}
 		super = super || e.Super // one superstar: the first one saved
 		seen[p.ID] = true
 		out = append(out, e)
@@ -269,7 +285,8 @@ func homeEntries() []homeEntry {
 	}
 	var out []homeEntry
 	for _, e := range resolveUIEntries() {
-		he := homeEntry{ID: e.ID, Label: e.Label, Star: e.Star, Super: e.Super}
+		he := homeEntry{ID: e.ID, Label: e.Label, Star: e.Star, Super: e.Super,
+			HasDeviceView: e.HasDeviceView, DeviceView: e.DeviceView}
 		switch {
 		case e.HasApp && e.Available:
 			he.App, he.Color = true, e.Color
@@ -302,21 +319,65 @@ func homeEntries() []homeEntry {
 // order in ui_tabs.json.
 func setStarPref(id string, star, super bool) {
 	entries := resolveUIEntries()
+	prefs := prefsOf(entries)
+	for i := range prefs {
+		if super {
+			prefs[i].Super = false
+		}
+		if prefs[i].ID == id {
+			prefs[i].Star, prefs[i].Super = star || super, super
+		}
+	}
+	storePrefs(prefs, "stars")
+}
+
+// setDeviceViewPref switches an app's device view (Home's DEVICE button).
+func setDeviceViewPref(id string, on bool) {
+	prefs := prefsOf(resolveUIEntries())
+	for i := range prefs {
+		if prefs[i].ID == id {
+			prefs[i].DeviceView = &on
+		}
+	}
+	storePrefs(prefs, "device view")
+}
+
+// prefsOf is the saved half of the resolved entries, in their order. A
+// device-view switch is saved only where the hack offers one.
+func prefsOf(entries []uiEntry) []uiPref {
 	prefs := make([]uiPref, 0, len(entries))
 	for _, e := range entries {
 		p := uiPref{ID: e.ID, Shadow: e.Shadow, Web: e.Web, Star: e.Star, Super: e.Super}
-		if super {
-			p.Super = false
-		}
-		if e.ID == id {
-			p.Star, p.Super = star || super, super
+		if e.HasDeviceView {
+			on := e.DeviceView
+			p.DeviceView = &on
 		}
 		prefs = append(prefs, p)
 	}
+	return prefs
+}
+
+func storePrefs(prefs []uiPref, what string) {
 	uiTabsMu.Lock()
 	uiPrefs = prefs
 	uiTabsMu.Unlock()
 	if err := saveUITabs(prefs); err != nil {
-		log.Printf("ui_tabs: save stars: %v", err)
+		log.Printf("ui_tabs: save %s: %v", what, err)
 	}
+}
+
+// deviceViewApp is an app whose view replaces Push's device view.
+type deviceViewApp struct {
+	ID, Bundle string
+}
+
+// deviceViewApps: the apps with the device view switched on (devview.go).
+func deviceViewApps() []deviceViewApp {
+	var out []deviceViewApp
+	for _, e := range resolveUIEntries() {
+		if e.HasApp && e.Available && e.HasDeviceView && e.DeviceView {
+			out = append(out, deviceViewApp{ID: e.ID, Bundle: e.liveDevices})
+		}
+	}
+	return out
 }

@@ -168,6 +168,16 @@ frames from anyone but the owning app (`X-Push-Hack-App` header). Design:
 `plans/2026-10-17-push-hack-switcher.md`; behaviour: push-manager's README,
 "Push Hack Home".
 
+**The device view:** an app with Live devices (`hack.json`
+`surface.device_view` + `live_devices`) stands in for Push's device view while
+one of its devices is selected and Push shows that view (push-manager
+`devview.go`, README "The device view"). Push's view is read from Push3's
+own lights on its output port, never from presses alone: the press reaches
+Push3 and push-manager at once, and an app taking the buttons before Push3
+read it left Push in its old view (seen on device). A light value of 0 is a
+repaint, not a view. It never takes the surface from Home, a user-opened
+app, the Shadow UI or an old hack.
+
 **Watching the screen:** `GET /api/display/mirror` (a canvas page; frames from
 `/api/display/mirror/frame`) shows what the panel really shows, Live's own UI
 included. Its source is the hook's `mirror` file: the hook is the only writer,
@@ -237,6 +247,34 @@ One Live Remote Script serves every hack (`remote-script/PushHack/`; reference:
 - Tracks are never deleted by the script. Hardware settings (brightness, pad curves)
   are out of scope.
 
+## Live devices from hacks
+
+A hack that wants its engines in Live as devices uses `core/livedevice`
+(guide: [docs/live-devices.md](docs/live-devices.md); design:
+`plans/2026-11-14-live-devices.md`). Rules:
+
+- The engine stays in the hack's process. Live loads only the `livedevice`
+  plugin (`core/livedevice/vst3/livedevice.so`, one binary for every hack,
+  installed as `/data/.vst3/<Name>.vst3` by `InstallBundle`). Never ship a
+  plugin of your own for this. A change under `core/livedevice/vst3/source/`
+  means: run `core/livedevice/vst3/build.sh` and commit the new
+  `livedevice.so` in the same commit, as for `push_hook.so`.
+- `Device.Process` runs on a realtime thread at Live's audio priority: no
+  blocking, no logging, no file access, little allocation. The plugin waits
+  half a block, then plays silence.
+- A class UID never changes: Live saves it in every Set. A `Param.Default` is
+  the engine's real starting value: Live sends it into the device on load.
+- Push pages a plugin's parameters 8 at a time ("Bank N"). Lay banks out with
+  `PadBanks`, and list a parameter only once (Live keeps a value per entry).
+- Live on Push has no slot for a MIDI-effect plugin (13.0b25 scans one as an
+  audio effect). Use the `MIDI` kind and Live's *MIDI From*.
+- Live scans plugins only when it starts. On a device, restart it with
+  `core/livedevice/tools/restart-live.sh`, never `killall Live` alone. Do not
+  remove a plugin that the open Set has used: Live crashes when it recovers
+  the Set. For the same reason the class file lives inside the bundle, and
+  `push-catalog remove` removes only a hack's browser folders (`hack.json`'s
+  `live_devices`), never its bundle.
+
 ## Adding a New Hack
 
 New optional hacks live in their **own repo** (`push-hack-<id>`), not in
@@ -299,6 +337,7 @@ Framework and API (`docs/`):
 - `docs/architecture.md` — framework layer, hack structure convention, `core/` shared library, per-hack file layout, deployed directory layout, Push 3 hardware/OS facts
 - `docs/api-reference.md` — HTTP routes for push-manager and push-catalog, the RemotePanel contract, the push-display shared-memory protocol
 - `docs/vst3-on-push3.md` — load Linux VST3 plugins in Live on Push 3 (scan flag, preset generator `scripts/VST/make-vst3-preset.py`)
+- `docs/live-devices.md` — `core/livedevice`: a hack's engines as Live devices (the plugin, the block protocol, banks, MIDI devices, tests, measured Live facts)
 - `docs/pushhack-remote-script.md` — PushHack Remote Script: how a hack connects to Live (JSON over `127.0.0.1:7704` or `/tmp/push-hack.sock`), references, every namespace and topic, error codes
 - `docs/harmony-sync.md` — Push Hack Harmony: how one hack tells others what it plays over MIDI (ports, the SysEx message, timing), and how a follower uses it
 - `docs/scripts.md` — every flag for `discover.sh`, `install.sh`, `uninstall.sh`, `package-release.sh`, and `hacks/push-display/deploy.sh`

@@ -15,6 +15,9 @@ from there, with no SSH. You can also load a plugin from a saved preset file
 > Live set is lost, so save it first. Push Manager makes a backup of the file
 > before it changes it. The steps below never write to `/opt`, `/boot`, or `/etc`.
 
+A hack can also bring its own sound engines into Live as VST3 devices,
+without a third-party plugin: see [Live devices from hacks](live-devices.md).
+
 The fast path:
 
 1. Copy the plugin to `/data/.vst3` ([step 2](#2-copy-the-plugin)).

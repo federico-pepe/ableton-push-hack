@@ -76,6 +76,11 @@ type hackUI struct {
 type hackSurface struct {
 	Label string `json:"label"`
 	Color string `json:"color"`
+	// DeviceView: the app can replace Push's device view while one of its
+	// Live devices is selected (devview.go). Needs "live_devices" too. The
+	// user switches it per app in Home or on the Display page; this is the
+	// default.
+	DeviceView bool `json:"device_view,omitempty"`
 }
 
 // hackNav is one installed hack as the UI layer sees it: id for gating a
@@ -88,6 +93,9 @@ type hackNav struct {
 	WebUI    *hackUI      `json:"web_ui,omitempty"`
 	ShadowUI *hackUI      `json:"shadow_ui,omitempty"`
 	Surface  *hackSurface `json:"surface,omitempty"`
+	// LiveDevices names the hack's plugin bundle (core/livedevice):
+	// /data/.vst3/<LiveDevices>.vst3, whose class file lists its devices.
+	LiveDevices string `json:"live_devices,omitempty"`
 
 	// Enabled is computed, not decoded from hack.json — see hackEnabled.
 	Enabled bool `json:"enabled"`

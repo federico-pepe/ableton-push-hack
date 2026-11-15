@@ -45,3 +45,7 @@ dist/
 
 # Python
 __pycache__/
+
+# livedevice plugin build: the VST3 SDK (fetched) and the CMake tree
+core/livedevice/vst3/.sdk/
+core/livedevice/vst3/.build/
