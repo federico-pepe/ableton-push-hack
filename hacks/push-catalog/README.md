@@ -22,7 +22,7 @@ for how to get your own hack into the catalog.
 | `/api/catalog` | GET | The catalog as JSON: `id`, `name`, `description`, `author`, `homepage`, `requires` from the catalog entry, plus `version` and `released_at` fetched live from each hack's own `release.json` (`null` if that hack's repo is unreachable — degrades per-entry, never fails the whole listing). Also `installed_version` (read from that hack's locally installed `hack.json`, `null` if not installed) and `update_available` (`true` when `installed_version` differs from the live `version`). |
 | `/api/installed` | GET | JSON array of `{id, enabled}` for every hack currently present under `/data/push-hack/hacks/` — `enabled` reflects the init.d service's actual running state (`true` for a binary-less hack, which has nothing to disable). |
 | `/api/install?id=<id>` | POST | Fetches the hack's `release.json`, downloads + extracts its release tarball, registers and starts its init.d service. Returns `{ok, output}` (the shell output, for the log pane). |
-| `/api/remove?id=<id>` | POST | Stops the service, removes it from init.d, deletes the hack's directory. |
+| `/api/remove?id=<id>` | POST | Stops the service, removes it from init.d, deletes the hack's directory. A hack with `live_devices` in its `hack.json` also loses its entries in Push's browser; its plugin bundle stays (see `catalog/schema.md`). |
 | `/api/disable?id=<id>` | POST | Stops the service and removes its boot-autostart links, but keeps the installed files — reversible via `/api/enable`, unlike remove. For saving CPU/RAM on a hack you want to keep around but aren't using right now. |
 | `/api/enable?id=<id>` | POST | Re-adds boot-autostart links and restarts the service — the inverse of disable. |
 

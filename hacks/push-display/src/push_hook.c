@@ -181,6 +181,35 @@ typedef struct __attribute__((packed)) {
 
 #define MIDI_FILT_PASS_MAX 88   /* 11 bytes x 8 bits */
 
+/* ── MIDI pass-through extension (midipass) ─────────────────────────────────
+ *
+ * What a hack that owns the surface still leaves to Live, beyond pass_cc:
+ *
+ *   pads     the pads (notes 36-99), their pressure and the touch strip
+ *            reach Live, and Live keeps lighting the pads. An app that only
+ *            draws the screen and owns the encoders and the buttons above
+ *            and below it (a device editor) keeps Push's whole playing UX:
+ *            scales, layouts, Note Repeat, drum racks, the sequencer.
+ *   pass_hi  bit n: CC 88 + n still reaches Live (Duplicate, Delete, ...),
+ *            and keeps its light. pass_cc stops at CC 87.
+ *
+ * A separate file, never a longer midiflt: push-manager truncates midiflt
+ * to its 16 bytes, so a longer struct would be read past the end of the
+ * file -- SIGBUS in Push3. This one is created by push-manager (the hook
+ * never creates or resizes it), only ever grows, and is mapped read-only
+ * after its size is checked. No file, an old push-manager: nothing passes,
+ * as before. */
+
+#define MIDI_PASS_FILE  "/data/push-hack/hacks/push-display/midipass"
+#define MIDI_PASS_MAGIC 0x5341504Du  /* "MPAS" */
+
+typedef struct __attribute__((packed)) {
+    uint32_t magic;       /* 0x5341504D */
+    uint8_t  pads;        /* 1: pads, pressure and touch strip go to Live */
+    uint8_t  pass_hi[5];  /* bit n of pass_hi[n/8]: CC 88+n reaches Live */
+    uint8_t  reserved[6];
+} push_midi_pass_t;
+
 /* ── Display overlay — orange bar ───────────────────────────────────────── */
 
 #define BAR_Y   0    /* top row of bar */
@@ -198,6 +227,7 @@ static seq_event_input_fn  real_seq_input = NULL;
 static FILE               *log_fp         = NULL;
 static push_display_shm_t *shm            = NULL;
 static push_midi_filt_t   *midi_filt      = NULL;
+static const push_midi_pass_t *midi_pass  = NULL;
 static push_mirror_t      *mirror         = NULL;
 
 static pthread_mutex_t log_mutex     = PTHREAD_MUTEX_INITIALIZER;
@@ -432,6 +462,46 @@ static void midi_filt_init(void) {
     midi_filt_failed = 0;
 }
 
+/* ── midipass: map it once it exists ──────────────────────────────────────── */
+
+static time_t midi_pass_retry = 0;
+
+static void midi_pass_try(void) {
+    time_t now = time(NULL);
+    if (now < midi_pass_retry) return;
+    midi_pass_retry = now + MIDI_FILT_RETRY_SECS;
+    int fd = open(MIDI_PASS_FILE, O_RDONLY);
+    if (fd < 0) return; /* an older push-manager: no file, nothing passes */
+    struct stat st;
+    if (fstat(fd, &st) != 0 || (size_t)st.st_size < sizeof(push_midi_pass_t)) {
+        close(fd);      /* too short to map safely: try again later */
+        return;
+    }
+    void *m = mmap(NULL, sizeof(push_midi_pass_t), PROT_READ, MAP_SHARED, fd, 0);
+    close(fd);
+    if (m == MAP_FAILED) return;
+    midi_pass = (const push_midi_pass_t *)m;
+    hook_logf("midi_pass: mapped %s\n", MIDI_PASS_FILE);
+}
+
+static int pass_pads(void) {
+    return midi_pass && midi_pass->magic == MIDI_PASS_MAGIC && midi_pass->pads;
+}
+
+/* A CC (a button) that still reaches Live, and keeps its light. */
+static int pass_cc_num(uint32_t cc) {
+    if (cc < MIDI_FILT_PASS_MAX)
+        return (midi_filt->pass_cc[cc / 8] >> (cc % 8)) & 1;
+    if (cc < 128 && midi_pass && midi_pass->magic == MIDI_PASS_MAGIC) {
+        uint32_t n = cc - MIDI_FILT_PASS_MAX;
+        return (midi_pass->pass_hi[n / 8] >> (n % 8)) & 1;
+    }
+    return 0;
+}
+
+/* A pad: notes 36-99. Lower notes are the encoders' and knobs' touches. */
+static int is_pad_note(uint8_t note) { return note >= 36 && note <= 99; }
+
 /* Called from the MIDI input path (RtMidi's thread, never the audio one):
  * one open() attempt every MIDI_FILT_RETRY_SECS while the filter is missing. */
 static void midi_filt_retry_maybe(void) {
@@ -520,17 +590,18 @@ static int fd_is_seq(int fd) {
 
 static void filter_seq_write(unsigned char *b, size_t n) {
     size_t off = 0;
+    if (!midi_pass) midi_pass_try(); /* at most every 2 s while it is missing */
     while (off + 28 <= n) {
         unsigned char type = b[off], flags = b[off + 1];
         uint32_t ext = 0;
         if (flags & 0x04) memcpy(&ext, b + off + 16, sizeof ext); /* variable length */
         int hold = 0;
         if (type == 6 || type == 7) {            /* NOTEON / NOTEOFF: a pad LED */
-            hold = 1;
+            hold = !(pass_pads() && is_pad_note(b[off + 17])); /* data.note.note */
         } else if (type == 10) {                 /* CONTROLLER: a button LED */
             uint32_t cc;
             memcpy(&cc, b + off + 20, sizeof cc);
-            hold = !(cc < MIDI_FILT_PASS_MAX && (midi_filt->pass_cc[cc / 8] & (1u << (cc % 8))));
+            hold = !pass_cc_num(cc);
         }
         if (hold) { b[off] = 0; led_held++; }
         off += 28 + ((flags & 0x04) ? ext : 0);
@@ -574,6 +645,7 @@ int snd_seq_event_input(void *seq, void **ev) {
     if (!midi_filt) midi_filt_retry_maybe();
     if (ret < 0 || !ev || !*ev) return ret;
     if (!midi_filt || !midi_filt->enabled) return ret;
+    if (!midi_pass) midi_pass_try();
 
     /* snd_seq_event_t: type byte is at offset 0 */
     uint8_t *type_ptr = (uint8_t *)*ev;
@@ -583,9 +655,7 @@ int snd_seq_event_input(void *seq, void **ev) {
          * 16 to the data union, then channel + 3 bytes of padding. */
         uint32_t cc;
         memcpy(&cc, type_ptr + 20, sizeof cc);
-        int pass = cc < MIDI_FILT_PASS_MAX &&
-                   (midi_filt->pass_cc[cc / 8] & (1u << (cc % 8)));
-        if (pass)
+        if (pass_cc_num(cc))
             break;               /* a pass-through button: Live gets it */
         type_ptr[0] = 0;
         break;
@@ -593,10 +663,19 @@ int snd_seq_event_input(void *seq, void **ev) {
     case  6: /* SND_SEQ_EVENT_NOTEON    */
     case  7: /* SND_SEQ_EVENT_NOTEOFF   */
     case  8: /* SND_SEQ_EVENT_KEYPRESS  */
-    case  9: /* (unused)                */
-    case 11: /* SND_SEQ_EVENT_PGMCHANGE  */
+        /* data.note.note at offset 17: 16 to the data union, then channel */
+        if (pass_pads() && is_pad_note(type_ptr[17]))
+            break;               /* a pad: Live plays it */
+        type_ptr[0] = 0;
+        break;
     case 12: /* SND_SEQ_EVENT_CHANPRESS  */
     case 13: /* SND_SEQ_EVENT_PITCHBEND  */
+        if (pass_pads())
+            break;               /* pad pressure, the touch strip */
+        type_ptr[0] = 0;
+        break;
+    case  9: /* (unused)                */
+    case 11: /* SND_SEQ_EVENT_PGMCHANGE  */
         type_ptr[0] = 0; /* SND_SEQ_EVENT_NONE — RtMidi skips type-0 events */
         break;
     default:

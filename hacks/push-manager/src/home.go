@@ -13,6 +13,8 @@
 //	bottom 1  < LAST          back to the app you came from
 //	bottom 2  STAR            star or unstar the chosen entry
 //	Shift + STAR              make it the superstar (again: none)
+//	bottom 3  DEVICE          an app with Live devices: its view replaces
+//	                          Push's device view, or not (devview.go)
 //	bottom 8  LIVE            back to Live
 //	Help (no Shift)           back to Live (surface_io.go, as from an app)
 package main
@@ -35,7 +37,10 @@ type homeEntry struct {
 	Color     string // a push3 palette name
 	Star      bool
 	Super     bool
-	About     [2]string // a tool's own lines
+	// HasDeviceView: an app with Live devices; DeviceView: its view
+	// replaces Push's device view (devview.go).
+	HasDeviceView, DeviceView bool
+	About                     [2]string // a tool's own lines
 	// An app's live state, filled by Surface.view.
 	Running, Starting bool
 	Status            [2]string
@@ -199,9 +204,17 @@ func renderHome(v homeView) *image.NRGBA {
 		}
 		homeCenter(img, homeColW, homeColW, homeBotY+13, "STAR", sc)
 	}
+	if v.Cursor < len(v.Entries) && v.Entries[v.Cursor].HasDeviceView {
+		label, dc := "DEVICE OFF", homeInk
+		if v.Entries[v.Cursor].DeviceView {
+			gfx.FillRect(img, 2*homeColW+8, homeBotY+2, homeColW-16, 15, homeAmber)
+			label, dc = "DEVICE ON", homeGround
+		}
+		homeCenter(img, 2*homeColW, homeColW, homeBotY+13, label, dc)
+	}
 	if v.Notice != "" {
-		gfx.FillRect(img, 2*homeColW+4, homeBotY+2, 5*homeColW-8, 15, homeAmber)
-		homeCenter(img, 2*homeColW, 5*homeColW, homeBotY+13, text.Truncate(v.Notice, 80), homeGround)
+		gfx.FillRect(img, 3*homeColW+4, homeBotY+2, 4*homeColW-8, 15, homeAmber)
+		homeCenter(img, 3*homeColW, 4*homeColW, homeBotY+13, text.Truncate(v.Notice, 64), homeGround)
 	} else {
 		hint := ""
 		for _, e := range v.Entries {
@@ -212,7 +225,7 @@ func renderHome(v homeView) *image.NRGBA {
 		if v.pages() > 1 {
 			hint += "     PAGE " + itoa(v.page()+1) + "/" + itoa(v.pages())
 		}
-		homeCenter(img, 2*homeColW, 5*homeColW, homeBotY+13, strings.TrimSpace(hint), homeDim)
+		homeCenter(img, 3*homeColW, 4*homeColW, homeBotY+13, text.Truncate(strings.TrimSpace(hint), 64), homeDim)
 	}
 	homeCenter(img, 7*homeColW, homeColW, homeBotY+13, "LIVE", homeInk)
 	return img
@@ -307,7 +320,11 @@ func homeLEDs(v homeView) (pads map[uint8]uint8, ccs map[uint8]uint8) {
 		ccs[CCScreenBotN(0)] = idx("white_btn")
 	}
 	if v.Cursor < len(v.Entries) {
-		ccs[CCScreenBotN(1)] = map[bool]uint8{true: idx("amber"), false: idx("white_btn")}[v.Entries[v.Cursor].Star]
+		e := v.Entries[v.Cursor]
+		ccs[CCScreenBotN(1)] = map[bool]uint8{true: idx("amber"), false: idx("white_btn")}[e.Star]
+		if e.HasDeviceView {
+			ccs[CCScreenBotN(2)] = map[bool]uint8{true: idx("amber"), false: idx("white_btn")}[e.DeviceView]
+		}
 	}
 	ccs[CCScreenBotN(7)] = idx("white_btn")
 	ccs[CCPageLeft] = map[bool]uint8{true: 127, false: 0}[v.page() > 0]
@@ -368,6 +385,12 @@ func (s *Surface) HomeCC(cc, val uint8) bool {
 				s.setStar(id, !e.Star, e.Super && !e.Star)
 			}
 			s.cursor = max(s.find(id), 0) // the entry moves with its star
+			s.redraw()
+		}
+	case cc == CCScreenBotN(2):
+		if s.cursor < len(v.Entries) && v.Entries[s.cursor].HasDeviceView && s.setDevView != nil {
+			e := v.Entries[s.cursor]
+			s.setDevView(e.ID, !e.DeviceView)
 			s.redraw()
 		}
 	case cc == CCScreenBotN(7):

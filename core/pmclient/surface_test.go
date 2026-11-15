@@ -29,7 +29,11 @@ func TestRunSurface(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(w, "event: ready\ndata: {}\n\n")
 		f.Flush()
-		fmt.Fprint(w, "event: focus\ndata: {\"input\":true}\n\n")
+		if n == 1 {
+			fmt.Fprint(w, "event: focus\ndata: {\"input\":true}\n\n")
+		} else { // the second time in place of Push's device view
+			fmt.Fprint(w, "event: focus\ndata: {\"input\":true,\"device_view\":true}\n\n")
+		}
 		f.Flush()
 		if n == 1 {
 			fmt.Fprint(w, ": ping\n\nevent: blur\ndata: {}\n\n")
@@ -48,7 +52,7 @@ func TestRunSurface(t *testing.T) {
 
 	c := New(srv.URL)
 	c.App = "riffs"
-	var focus, blur atomic.Int32
+	var focus, blur, standIn atomic.Int32
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	done := make(chan error)
@@ -56,6 +60,11 @@ func TestRunSurface(t *testing.T) {
 		done <- c.RunSurface(ctx, []int{85, 86}, SurfaceHandler{
 			OnFocus: func() { focus.Add(1) },
 			OnBlur:  func() { blur.Add(1) },
+			OnFocusInfo: func(fi FocusInfo) {
+				if fi.Input && fi.DeviceView {
+					standIn.Add(1)
+				}
+			},
 		})
 	}()
 	deadline := time.Now().Add(1500 * time.Millisecond)
@@ -69,6 +78,9 @@ func TestRunSurface(t *testing.T) {
 	// session 1: focus, blur; session 2: focus, then the stream ended: blur
 	if focus.Load() < 2 || blur.Load() < 2 {
 		t.Errorf("focus %d, blur %d", focus.Load(), blur.Load())
+	}
+	if standIn.Load() != 1 {
+		t.Errorf("FocusInfo.DeviceView seen %d times, want 1", standIn.Load())
 	}
 	if err := c.SurfaceStatus("FUNK", "PLAYING"); err != nil {
 		t.Fatal(err)

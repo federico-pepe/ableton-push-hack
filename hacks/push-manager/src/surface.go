@@ -66,6 +66,8 @@ type surfaceIO interface {
 	closeTool()              // stop the Shadow UI, if it runs
 	releaseHeld()            // the Shadow UI or an old hack holds the screen or the buttons: give them back to Live; nothing held, nothing done
 	startApp(id string)      // ask push-catalog to start a stopped app
+	liveOwns() bool          // Live has screen and buttons: no tool or old hack holds them
+	tapLive(cc uint8)        // press and release a button in Live, once it has the buttons again
 	now() time.Time
 }
 
@@ -99,6 +101,17 @@ type Surface struct {
 	startAt  time.Time
 	cursor   int // Home's chosen entry, an index into entries()
 	shift    bool
+
+	// The device view (devview.go): an app's view replacing Push's own
+	// while one of its Live devices is selected and Push shows its device
+	// view. auto: the owning app was opened that way. autoKey: the
+	// selection it shows. hold: the selection the user left the app on
+	// (Help, Home, Device View); it does not open again for that one until
+	// the selection changes or Push leaves its device view.
+	setDevView    func(id string, on bool)
+	auto          bool
+	autoKey, hold string
+	autoAt        time.Time // when Follow opened the app
 }
 
 func newSurface(io surfaceIO, entries func() []homeEntry, setStar func(string, bool, bool)) *Surface {
@@ -256,6 +269,11 @@ func (s *Surface) SessionClosed(ss *session) {
 	delete(s.sessions, ss.app)
 	log.Printf("surface: %s disconnected", ss.app)
 	if s.own == ownApp && s.app == ss.app {
+		if s.auto { // it was only standing in for Push's device view
+			s.auto = false
+			s.toLive()
+			return
+		}
 		s.toHome(strings.ToUpper(s.label(ss.app)) + " STOPPED -- PRESS IT TO START AGAIN")
 		return
 	}
@@ -356,9 +374,120 @@ func (s *Surface) Tick() {
 	}
 }
 
+// ---- the device view (devview.go) ----------------------------------------------
+
+// Follow is what Live and Push show now: target is the app whose device is
+// selected, with its device view switched on ("" for none), key names the
+// selection, deviceView is whether Push shows its own device view. While
+// all three hold, the app's view replaces Push's: Follow opens it if Live
+// has the surface, and closes it when they stop holding. It never takes
+// the surface from Home, an app the user opened, the Shadow UI or an old
+// hack.
+func (s *Surface) Follow(target, key string, deviceView bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !deviceView || key != s.hold {
+		s.hold = "" // a new selection, or Push left its device view
+	}
+	if s.own == ownApp && s.auto {
+		switch {
+		case target == "" || s.sessions[target] == nil:
+			s.auto = false // closed by Live's side: no hold
+			s.toLive()
+		case target != s.app:
+			s.focusAs(target, true)
+			s.autoKey = key
+		default:
+			s.autoKey = key
+		}
+		return
+	}
+	if target == "" || !deviceView || s.hold != "" {
+		return
+	}
+	if s.own != ownOutside || s.sessions[target] == nil || !s.io.liveOwns() {
+		return
+	}
+	s.io.take(s.sessions[target].pass)
+	s.focusAs(target, true)
+	s.autoKey, s.autoAt = key, s.io.now()
+	log.Printf("surface: %s stands in for Push's device view", target)
+}
+
+// ClearHold: the user asked for the app's view again (Device View pressed in
+// Push's own device view); the next Follow opens it.
+func (s *Surface) ClearHold() {
+	s.mu.Lock()
+	s.hold = ""
+	s.mu.Unlock()
+}
+
+// standInButtons leave Push's device view in Push itself; while an app stands
+// in for that view they are push-manager's (ViewButton), never the app's.
+// Track navigation (lower row, arrows) stays the app's: it moves Live's
+// selection, and Follow does the rest.
+var standInButtons = map[uint8]bool{
+	CCDeviceView: true, CCMixerView: true, CCClipView: true, CCSessionView: true,
+	CCAdd: true, CCSwap: true, CCSettings: true, CCSet: true, CCUserMode: true, CCNew: true,
+}
+
+// viewPressGrace: a view button this soon after Follow opened the app is
+// the press that opened it.
+const viewPressGrace = 300 * time.Millisecond
+
+// AutoOwns reports whether an app opened by Follow owns the surface: then
+// Push's view buttons are ViewButton's.
+func (s *Surface) AutoOwns() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.own == ownApp && s.auto
+}
+
+// ViewButton is a button that leaves Push's device view, pressed while an
+// app stands in for it (standInButtons). Device View: Push's own device
+// view, for this device (held). Any other: back to Live, and the press goes
+// on to Push, which then does what it does (another view, its browser,
+// settings, the Set menu).
+func (s *Surface) ViewButton(cc uint8) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.own != ownApp || !s.auto {
+		return
+	}
+	// The press that switched Push to its device view, read late: it opened
+	// the app, it must not close it again.
+	if s.io.now().Sub(s.autoAt) < viewPressGrace {
+		return
+	}
+	if cc == CCDeviceView {
+		s.toLive()
+		return
+	}
+	s.auto = false
+	s.toLive()
+	s.io.tapLive(cc)
+}
+
+// DeviceViewState is what /api/surface reports about it.
+func (s *Surface) DeviceViewState() map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return map[string]any{"auto": s.own == ownApp && s.auto, "key": s.autoKey, "hold": s.hold}
+}
+
+// leaveAuto: the owning app opened by Follow is being left by the user, so
+// its selection is held. (Follow's own closing clears auto first.)
+func (s *Surface) leaveAuto() {
+	if s.own == ownApp && s.auto {
+		s.hold = s.autoKey
+	}
+	s.auto = false
+}
+
 // ---- transitions (s.mu held) --------------------------------------------------
 
 func (s *Surface) toHome(notice string) {
+	s.leaveAuto()
 	switch s.own {
 	case ownApp:
 		s.send(s.app, surfaceEvent{Name: "blur"})
@@ -389,6 +518,7 @@ func (s *Surface) homeCursor() {
 }
 
 func (s *Surface) toLive() {
+	s.leaveAuto()
 	if s.own == ownApp {
 		s.send(s.app, surfaceEvent{Name: "blur"})
 	}
@@ -408,6 +538,7 @@ func (s *Surface) open(id string) {
 	}
 	e := s.entries()[i]
 	if !e.App {
+		s.leaveAuto()
 		if s.own == ownApp {
 			s.send(s.app, surfaceEvent{Name: "blur"})
 		}
@@ -436,7 +567,12 @@ func (s *Surface) open(id string) {
 	s.focus(id)
 }
 
-func (s *Surface) focus(id string) {
+func (s *Surface) focus(id string) { s.focusAs(id, false) }
+
+// focusAs: standIn, the app opens in place of Push's device view (Follow),
+// and its focus event says so (pmclient.FocusInfo.DeviceView).
+func (s *Surface) focusAs(id string, standIn bool) {
+	s.auto = standIn
 	if s.own == ownApp && s.app != id {
 		s.send(s.app, surfaceEvent{Name: "blur"})
 	}
@@ -445,7 +581,7 @@ func (s *Surface) focus(id string) {
 	}
 	s.io.setPass(s.sessions[id].pass)
 	s.own, s.app, s.input, s.last, s.notice = ownApp, id, true, id, ""
-	s.send(id, surfaceEvent{Name: "focus", Data: map[string]bool{"input": true}})
+	s.send(id, surfaceEvent{Name: "focus", Data: map[string]bool{"input": true, "device_view": standIn}})
 	log.Printf("surface: %s has the surface", id)
 }
 

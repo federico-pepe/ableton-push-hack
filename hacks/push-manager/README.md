@@ -77,7 +77,7 @@ Web-based file browser for Ableton Push 3. Lets you browse, upload, download, re
 | `POST` | `/api/live/play` | Starts Live's transport. Sends `transport.play` to the PushHack Remote Script. Returns `{ok:true}`. |
 | `POST` | `/api/live/stop` | Stops Live's transport. Sends `transport.stop` to the PushHack Remote Script. Returns `{ok:true}`. |
 | `GET` | `/api/presets/facets` | Distinct facet values for the Browser filter UI: `{categories, devices, sources, tags}`. |
-| `GET` | `/api/surface` | Push Hack Home: who owns the surface (`owner`: `outside`, `home` or `app`), the app that owns it, the last app, and Home's `entries` in order (`ID`, `Label`, `App`, `Color`, `Star`, `Super`, `Running`, `Status`...). A 404 here means a push-manager without Home. See [Push Hack Home](#push-hack-home-the-switcher). |
+| `GET` | `/api/surface` | Push Hack Home: who owns the surface (`owner`: `outside`, `home` or `app`), the app that owns it, the last app, Home's `entries` in order (`ID`, `Label`, `App`, `Color`, `Star`, `Super`, `HasDeviceView`, `DeviceView`, `Running`, `Status`...), and `device_view` (an app standing in for Push's device view, see [The device view](#the-device-view)). A 404 here means a push-manager without Home. See [Push Hack Home](#push-hack-home-the-switcher). |
 | `GET` | `/api/surface/session?app=<id>&pass_cc=<cc,...>` | An app's session: server-sent events kept open while the app runs. Events: `ready`, `focus` (`{"input": true}`: the app owns the surface), `blur` (it does not), and a `: ping` comment every second. `pass_cc` are the buttons that still reach Live while the app owns the surface. 404 for an id that is not an installed, enabled hack with `surface` in its `hack.json`. A new session for the same app replaces the old one. |
 | `POST` | `/api/surface/status` | `{"app", "lines": ["...", "..."]}`: the two lines on the app's card in Home (ASCII, about 14 characters show). 409 without a session. |
 | `POST` | `/api/surface/input` | `{"app", "input": false}`: the owning app keeps the screen and gives the pads and buttons to Live (Stacks' listen mode); `true` takes them back. Giving them to Live switches every LED off first, and Live repaints its own. 409 if the app does not own the surface. |
@@ -676,6 +676,7 @@ the first presses.
 | Bottom 1, `< LAST` | Back to the app you came from. |
 | Bottom 2, `STAR` | Star or unstar the chosen entry. Lit amber while it is starred. |
 | Shift + `STAR` | Make the chosen entry the superstar. Again: no superstar. There is only one. |
+| Bottom 3, `DEVICE` | Only for an app with Live devices: `DEVICE ON` shows the app instead of Push's device view (see below), `DEVICE OFF` keeps Push's. Lit amber while on. |
 | Bottom 8, `LIVE` | Back to Live. |
 | Help | Back to Live, as from an app. |
 
@@ -683,6 +684,51 @@ Opening a **tool** opens the Shadow UI on that panel. Opening an **app**
 lends it the surface: push-manager switches the display and the MIDI
 intercept (with the buttons the app lets through to Live, such as Play and
 Record), and the app draws until you leave it.
+
+### The device view
+
+An app with Live devices (`core/livedevice`, for example Pung) can stand
+in for Push's own device view. It declares `"device_view": true` in its
+`surface` and `live_devices` in `hack.json`, and it is on until you switch
+it off (Home's `DEVICE`, or the web UI's Display → Tabs, "device view").
+Then, while
+
+- Push shows its device view, and
+- the device selected in Live is one of the app's,
+
+the app opens by itself, as if you had picked it in Home, and closes again
+when you select another kind of device or a track without one. It never
+takes the surface from Home, from an app you opened, from the Shadow UI or
+from an older hack, and it never starts a stopped app.
+
+| Press, while the app stands in | Then |
+|---|---|
+| Device View | Push's own device view of the same device. Device View again: the app again. |
+| Help | The same: Push's own device view, until you select another device or leave the device view. |
+| Mixer, Clip, Session View | Push's mixer, clip or session view (the press goes on to Push). |
+| Add, Swap, Settings, Set, User, New | The app closes and the press goes on to Push: its browser, its settings, the Set menu. |
+| Another track (the app's lower row or left and right arrows, as on Push's device view) | The app selects it in Live. A device of the app there: the app shows it. Any other: the app closes and Push shows its device view of that track. |
+| Shift + Help | Home. |
+
+The app knows it stands in: its focus event carries `"device_view": true`
+(`core/pmclient`'s `SurfaceHandler.OnFocusInfo`). It then leaves the buttons
+above to push-manager and navigates tracks the way Push's device view does.
+
+How push-manager knows (`devview.go`): Push3 lights the button of the view
+it shows (127; the others 14; 0 while it repaints, which counts for
+nothing) and sends its lights to every subscriber of its output port
+(`Ableton Internal Output`), so push-manager reads them without touching
+push_hook. The app opens on the light, not on the press: the press reaches
+Push3 and push-manager at once, and taking the buttons before Push3 has read
+it left Push in its old view. The selected device comes from the PushHack
+Remote Script's `device` topic and is matched by name against the class
+file in the app's bundle (`/data/.vst3/<live_devices>.vst3`). A
+view button within 300 ms of the app opening is the press that opened it.
+
+`GET /api/surface` reports it under `device_view`: `push_view` (`device`,
+`other`, `unknown` until Push has lit a view button since push-manager
+started), `selected`, `app` (whose device it is), `auto` (an app stands in
+now), `hold` (the selection you left the app on).
 
 ### When an app stops or does not start
 

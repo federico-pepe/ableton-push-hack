@@ -516,6 +516,7 @@ func main() {
 		initMidiOut()
 		startMidiReader()
 		go watchInterceptOff()
+		startDeviceView() // an app's view in place of Push's device view (devview.go)
 		if restoreLEDsAtStart {
 			time.Sleep(ledRestoreDelay)
 			restorePushLEDs()

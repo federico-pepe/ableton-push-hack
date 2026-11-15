@@ -19,6 +19,8 @@ import (
 // surface is push-manager's one owner of Push's surface (surface.go).
 var surface = newSurface(&deviceIO{}, homeEntries, setStarPref)
 
+func init() { surface.setDevView = setDeviceViewPref } // Home's DEVICE button
+
 // ---- the gesture ----------------------------------------------------------------
 
 // helpGesture recognises Shift + Help and Shift + Help, Help: hold Shift,
@@ -118,6 +120,17 @@ func surfaceInputCC(cc, val uint8) bool {
 		down := val > 0
 		queueSurface(func() { surface.SetShift(down) })
 	}
+	if standInButtons[cc] && surface.AutoOwns() {
+		if val > 0 {
+			queueSurface(func() { surface.ViewButton(cc) })
+		}
+		return true // its release too: Live never saw the press
+	}
+	if val > 0 && (cc == CCDeviceView || cc == CCMixerView || cc == CCClipView || cc == CCSessionView) {
+		if data := ensureMidiFilt(); data != nil && data[4] == 0 {
+			devView.pressed(cc) // Live has the buttons: Push switches its view
+		}
+	}
 	switch taps := gesture.cc(cc, val); {
 	case taps > 0:
 		queueSurface(func() { surface.Gesture(taps) })
@@ -188,9 +201,10 @@ func runSurface() {
 // deviceIO is surfaceIO on Push: the intercept (midiflt), the display shm,
 // the LEDs, the Shadow UI and push-catalog.
 type deviceIO struct {
-	mu   sync.Mutex
-	pads map[uint8]uint8 // what Home last lit, so a redraw sends only changes
-	ccs  map[uint8]uint8
+	mu       sync.Mutex
+	pads     map[uint8]uint8 // what Home last lit, so a redraw sends only changes
+	ccs      map[uint8]uint8
+	padsLive bool // the owner leaves the pads to Live: they show Live's lights
 }
 
 func (d *deviceIO) intercept(on bool, pass []int) {
@@ -199,6 +213,11 @@ func (d *deviceIO) intercept(on bool, pass []int) {
 		return
 	}
 	setMidiFiltPass(data, pass)
+	if on {
+		setMidiPass(pass) // the pads and CCs above 87 (midipass.go), before the intercept goes on
+	} else {
+		setMidiPass(nil)
+	}
 	data[4] = map[bool]byte{true: 1, false: 0}[on]
 }
 
@@ -251,11 +270,29 @@ func (d *deviceIO) take(pass []int) {
 	settleLive()
 	d.intercept(true, pass)
 	d.forget()
-	clearAllLEDs(CCHelp) // the owner paints its own; Help stays lit
+	// The owner paints its own; Help stays lit. What the session leaves to
+	// Live (its pass list, the pads) keeps Live's lights: Live does not
+	// paint them again until they change.
+	pads, ccs := passKeeps(pass)
+	if pads || len(ccs) > 0 {
+		clearLEDsBut(CCHelp, ccs, pads)
+	} else {
+		clearAllLEDs(CCHelp)
+	}
+	d.padsLive = pads
 	takeDisplay()
 }
 
-func (d *deviceIO) setPass(pass []int) { d.intercept(true, pass) }
+// setPass: a new owner's pass list. Pads that go to Live after Home drew
+// them show Home's lights until Live paints them again.
+func (d *deviceIO) setPass(pass []int) {
+	pads, _ := passKeeps(pass)
+	d.intercept(true, pass)
+	if pads && !d.padsLive {
+		go repaintLivePads()
+	}
+	d.padsLive = pads
+}
 
 // screenOnly gives the pads and buttons to Live, the screen stays the
 // app's. Every LED goes dark first, as release does: Push3's repaint (a
@@ -265,6 +302,7 @@ func (d *deviceIO) setPass(pass []int) { d.intercept(true, pass) }
 // layout: "multi-colored pads". The clear marks them cleared, so the
 // repaint runs when the intercept goes off.
 func (d *deviceIO) screenOnly() {
+	d.padsLive = false
 	d.forget()
 	clearAllLEDs(0)
 	d.intercept(false, nil)
@@ -281,6 +319,7 @@ func (d *deviceIO) screenOnly() {
 // no change and would not repaint: Live's LEDs stayed dark. Repaint here
 // then, the same way and after the same delay.
 func (d *deviceIO) release() {
+	d.padsLive = false
 	d.forget()
 	data := ensureMidiFilt()
 	wasOn := data != nil && data[4] != 0
@@ -403,6 +442,31 @@ func (d *deviceIO) startApp(id string) {
 	}()
 }
 
+// liveOwns: Live has the screen and the buttons. Not the Shadow UI, not an
+// old hack through /api/display/mode or /api/midi/filter, not direct display.
+func (d *deviceIO) liveOwns() bool {
+	data := ensureMidiFilt()
+	return data != nil && data[4] == 0 && shmGetMode() == 0 && !shadowUIIsActive() && !directDisplayOn()
+}
+
+// tapLive presses a button in Live once the surface is back: the press the
+// user meant for Push (Mixer, Clip) while an app stood in for its device
+// view. After the release's own settling, and never inside the LED
+// repaint's taps (liveTaps).
+func (d *deviceIO) tapLive(cc uint8) {
+	go func() {
+		time.Sleep(liveSettle)
+		p, ok := alsaseq.FindByName(appInputPortName, alsaseq.CapWrite)
+		if !ok {
+			log.Printf("surface: %q not found, the view button is lost", appInputPortName)
+			return
+		}
+		liveTaps.Lock()
+		defer liveTaps.Unlock()
+		tapAppButton(p.Addr, cc)
+	}()
+}
+
 func (d *deviceIO) now() time.Time { return time.Now() }
 
 // ---- HTTP -------------------------------------------------------------------------------
@@ -415,7 +479,11 @@ func surfaceState() map[string]any {
 	surface.mu.Lock()
 	v := surface.view()
 	surface.mu.Unlock()
-	return map[string]any{"owner": o.String(), "app": app, "last": v.Last, "entries": v.Entries}
+	dv := devView.status()
+	for k, v := range surface.DeviceViewState() {
+		dv[k] = v
+	}
+	return map[string]any{"owner": o.String(), "app": app, "last": v.Last, "entries": v.Entries, "device_view": dv}
 }
 
 // GET /api/surface
@@ -446,9 +514,12 @@ func handleSurfaceSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var pass []int
 	for _, f := range strings.Split(r.URL.Query().Get("pass_cc"), ",") {
-		if n, err := strconv.Atoi(strings.TrimSpace(f)); err == nil && n >= 0 && n < midiFiltPassMax {
-			pass = append(pass, n)
+		if n, err := strconv.Atoi(strings.TrimSpace(f)); err == nil && n >= 0 && n < 128 {
+			pass = append(pass, n) // above 87 through midipass (midipass.go)
 		}
+	}
+	if r.URL.Query().Get("pads") == "1" {
+		pass = append(pass, passPads) // the pads stay Live's (midipass.go)
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -477,6 +548,10 @@ func handleSurfaceSession(w http.ResponseWriter, r *http.Request) {
 	if event("ready", map[string]string{"owner": o.String(), "app": owning}) != nil {
 		return
 	}
+	// An app that restarted (an update, a crash) while it stood in for
+	// Push's device view: nothing else changes when it is back (the same
+	// selection, the same view), so look again now (devview.go).
+	go devView.evaluate()
 	ping := time.NewTicker(time.Second)
 	defer ping.Stop()
 	for {

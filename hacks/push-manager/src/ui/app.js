@@ -2077,8 +2077,10 @@ async function loadUITabs() {
 }
 
 async function saveUITabs() {
+  // device_view only where the app offers one: absent keeps the default (on)
   const body = UITABS.entries.map(e => ({id: e.id, shadow: !!e.shadow, web: !!e.web,
-    star: !!e.star, super: !!e.super}));
+    star: !!e.star, super: !!e.super,
+    device_view: e.has_device_view ? !!e.device_view : undefined}));
   $('tabs-msg').textContent = 'Saving…';
   try {
     UITABS = await api('POST', '/api/ui/tabs', body);
@@ -2133,10 +2135,10 @@ function renderUITabs() {
       over ? `over the ${max}-tab limit` : '',
       clash ? `<span class="tabs-clash">${clash}</span>` : '',
     ].filter(Boolean).join(' · ');
-    const sw = (kind, has, on) => has
+    const sw = (kind, has, on, label = kind) => has
       ? `<label class="tabs-sw"><input type="checkbox" data-i="${i}" data-k="${kind}"` +
-        `${on ? ' checked' : ''}>${kind}</label>`
-      : `<label class="tabs-sw na">${kind} —</label>`;
+        `${on ? ' checked' : ''}>${label}</label>`
+      : `<label class="tabs-sw na">${label} —</label>`;
     return `<div class="tabs-row${over ? ' overflow' : ''}">
       <button class="tabs-move" onclick="moveUITab(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
       <button class="tabs-move" onclick="moveUITab(${i},1)" ${i === UITABS.entries.length - 1 ? 'disabled' : ''}>↓</button>
@@ -2148,6 +2150,11 @@ function renderUITabs() {
         ? `<label class="tabs-sw"><input type="radio" name="tabs-super" data-i="${i}" data-k="super"` +
           `${e.super ? ' checked' : ''}>superstar</label>`
         : '<label class="tabs-sw na">superstar —</label>'}
+      ${e.has_device_view
+        ? sw('device_view', true, e.device_view, 'device view')
+          .replace('<label class="tabs-sw">', '<label class="tabs-sw" title="Show this app instead of ' +
+            'Push\'s device view while one of its devices is selected">')
+        : ''}
     </div>`;
   }).join('');
   $('tabs-list').querySelectorAll('input[type=checkbox]').forEach(cb => {

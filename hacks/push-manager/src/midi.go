@@ -1448,6 +1448,34 @@ var allButtonCCs = []uint8{
 // every LED dark.
 // Also resets ledToggleState, preserving exceptCC if it was active.
 // Intended to be called in a goroutine.
+// clearLEDsBut is clearAllLEDs leaving the buttons in keep, and the pads if
+// pads, as they are: an app leaves those to Live, which keeps lighting them.
+func clearLEDsBut(exceptCC uint8, keep map[uint8]bool, pads bool) {
+	ledsCleared.Store(true)
+	for _, cc := range allButtonCCs {
+		if cc == exceptCC || keep[cc] {
+			continue
+		}
+		if err := sendSeqCC(0, cc, 0); err != nil {
+			log.Printf("clearLEDsBut cc=%d: %v", cc, err)
+		}
+	}
+	if !pads {
+		for note := uint8(PadNoteMin); note <= PadNoteMax; note++ {
+			sendSeqNote(0, note, 0) //nolint:errcheck
+		}
+	}
+	if exceptCC != 0 {
+		sendSeqCC(0, exceptCC, 127) //nolint:errcheck
+	}
+	ledToggleMu.Lock()
+	ledToggleState = map[uint8]uint8{}
+	if exceptCC != 0 {
+		ledToggleState[exceptCC] = 127
+	}
+	ledToggleMu.Unlock()
+}
+
 func clearAllLEDs(exceptCC uint8) {
 	ledsCleared.Store(true) // see led_restore.go
 	// CC buttons
