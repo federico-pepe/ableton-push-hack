@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	mathrand "math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -87,7 +88,12 @@ func NewServer(cfg Config, p Provider, classes []*Class) *Server {
 	if cfg.Logf == nil {
 		cfg.Logf = log.Printf
 	}
-	s := &Server{cfg: cfg, prov: p, classes: map[string]*Class{}, list: map[int]*device{}, next: 1}
+	// Device ids start at a random point, never at 1: a plugin in Live that
+	// has not yet noticed the service restarted still calls with its old id,
+	// and from 1 again that id could be another device's now (a state read
+	// that way restored one module's patch into another's device, 2026-11-15).
+	// Below 1<<30: the plugin keeps it in an int.
+	s := &Server{cfg: cfg, prov: p, classes: map[string]*Class{}, list: map[int]*device{}, next: 1 + mathrand.IntN(1<<30)}
 	for _, c := range classes {
 		s.classes[c.UID] = c
 	}

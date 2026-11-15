@@ -433,7 +433,10 @@ private:
             uint8_t* m = shm_.load();
             if (!m) {
                 Reply r;
-                if (link_.call("{\"op\":\"create\",\"uid\":\"" + ci_->uid + "\"}", r, 2000) && r.ok && map(r.shm)) {
+                // creating a device loads its engine, which can take seconds (a
+                // large module, a ROM boot): 2 s gave up on a device that was
+                // still loading, and the retry loaded it a second time
+                if (link_.call("{\"op\":\"create\",\"uid\":\"" + ci_->uid + "\"}", r, 20000) && r.ok && map(r.shm)) {
                     id_ = r.id;
                     std::string st;
                     {

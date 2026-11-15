@@ -2,6 +2,7 @@ package alsaseq
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -132,5 +133,29 @@ func TestParseClientsDeviceV323(t *testing.T) {
 	// Pool lines ("Pool size : 500") must not become ports.
 	if len(ports) != 14 {
 		t.Errorf("parsed %d ports, want 14", len(ports))
+	}
+}
+
+// Subscribed reads the kernel's list: our port among a source port's
+// "Connecting To" entries, whatever the [r:0] suffixes.
+func TestSubscribedIn(t *testing.T) {
+	text := `Client  16 : "Ableton Push 3" [Kernel]
+  Port   0 : "Ableton Push 3 Live Port" (RWeX)
+    Connecting To: 137:0, 142:0, 132:0
+    Connected From: 129:0[r:0]
+Client 129 : "RtMidi Output Client" [User]
+  Port   0 : "Ableton Internal Output" (R-e-)
+    Connecting To: 16:0[r:0], 133:0
+  Output pool :
+`
+	if !subscribedIn(text, Addr{Client: 129, Port: 0}, Addr{Client: 133, Port: 0}) {
+		t.Fatal("133:0 is subscribed to 129:0")
+	}
+	if subscribedIn(text, Addr{Client: 129, Port: 0}, Addr{Client: 137, Port: 0}) {
+		t.Fatal("137:0 is subscribed to 16:0, not to 129:0")
+	}
+	lost := strings.Replace(text, "16:0[r:0], 133:0", "16:0[r:0]", 1)
+	if subscribedIn(lost, Addr{Client: 129, Port: 0}, Addr{Client: 133, Port: 0}) {
+		t.Fatal("a lost subscription reads as present")
 	}
 }

@@ -154,14 +154,19 @@ func (d *devViewState) watchLights() {
 					break
 				}
 				// A restarted Push3 gets the same client number back (the
-				// kernel reuses it), and its new port has no subscriber:
-				// subscribe again. EBUSY: still subscribed.
-				if err := c.Subscribe(p.Addr); err == nil {
+				// kernel reuses it), and its new port has no subscriber. The
+				// kernel's own list says whether we are still on it (an
+				// EBUSY from the ioctl did not: the watcher stayed deaf after
+				// a Live restart, 2026-11-15).
+				if alsaseq.Subscribed(p.Addr, c.Addr()) {
+					break
+				}
+				if err := c.Subscribe(p.Addr); err == nil || errors.Is(err, syscall.EBUSY) {
 					log.Printf("devview: subscribed again to %d:%d (Push3 restarted)", p.Addr.Client, p.Addr.Port)
 					d.mu.Lock()
 					d.pushKnown = false
 					d.mu.Unlock()
-				} else if !errors.Is(err, syscall.EBUSY) {
+				} else {
 					log.Printf("devview: subscribe to %d:%d: %v (starting over)", p.Addr.Client, p.Addr.Port, err)
 					watching = false
 				}
