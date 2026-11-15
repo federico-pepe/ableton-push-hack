@@ -102,6 +102,25 @@ class ArrangementCommandsTest(unittest.TestCase):
         self.call("loop_toggle")
         self.assertFalse(self.song.loop)
 
+    def test_select_clip_selects_track_and_detail_clip(self):
+        class View(object):
+            selected_track = None
+            detail_clip = None
+        self.song.view = View()
+        self.assertTrue(self.call("select_clip", track=1, start=0.0)["ok"])
+        self.assertIs(self.song.view.selected_track, self.song.tracks[1])
+        self.assertIs(self.song.view.detail_clip, self.song.tracks[1].arrangement_clips[0])
+
+    def test_select_clip_errors(self):
+        class View(object):
+            selected_track = None
+            detail_clip = None
+        self.song.view = View()
+        self.assertFalse(self.call("select_clip", track=1, start=3.0)["ok"])    # no clip there
+        self.assertFalse(self.call("select_clip", track=99, start=0.0)["ok"])   # bad track
+        self.assertFalse(self.call("select_clip", track=1)["ok"])               # no start
+        self.assertIsNone(self.song.view.detail_clip)
+
     def test_topics_stream_snapshot_and_position_when_subscribed(self):
         self.hub.on_line("c", b'{"cmd":"subscribe","topics":["arrangement","position"]}')
         self.sent = []

@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- PushHack Remote Script: `arrangement.select_clip {track, start}` selects the arrangement clip on a track that starts at `start` (beats). The track becomes the selected track and the clip shows in Live's Detail view. Errors: `bad_track`, `bad_arg`, `no_clip`. For the Arrangement hack (clip selection, a first step toward editing). After the update, restart Live.
+
 ### Changed
 
 - `docs/vst3-on-push3.md`: the guide now starts from Push Manager. It covers the VST3 scanning switch, where to copy `.vstpreset` files (the User Library), and how to load a plugin or a preset from the PLUGINS tab, the web Browser or `browser.load_plugin`. It also lists Shrub as a plugin that cannot load (needs glibc 2.38; Push has 2.35 on AbletonOS v4.2 with Live 13.0b25) and adds a check of the glibc version before you copy a plugin. The old `load_plugin:` text command in that guide is replaced by the JSON command.
