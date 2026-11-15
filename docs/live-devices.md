@@ -135,8 +135,18 @@ All measured on a Push 3 with Live 13.0b25 on 2026-11-14.
 
 ## Remove a hack
 
-`push-catalog remove` deletes the hack and its browser folders (the
-`presets` list in the bundle's `livedevice.json`). The plugin bundle
+`push-catalog remove` deletes the hack and the browser entries it wrote in
+its folders (the `presets` list in the bundle's `livedevice.json`). It
+removes only the files that a `.livedevice-presets` manifest lists, in those
+folders or in any folder under them, then the folders left empty. A rack the
+user saved there stays: Push's Save puts a device preset beside the rack it
+came from. `WritePresets` keeps the manifest of each folder it writes, and
+removes a class's old entry only when the manifest lists it. A hack that
+writes racks of its own under its folders (Pung writes one rack per user
+sound) lists them in a `.livedevice-presets` of that folder
+(`livedevice.PresetManifest`). In a folder that an older core wrote, with no
+manifest yet, a rack whose plugin has no state is one push-hack wrote, and a
+rack Live saved is not. The plugin bundle
 `/data/.vst3/<Name>.vst3` stays, with its class file. Delete it by hand only
 when no Set uses the hack's devices any more, and not just before Live
 restarts after a crash: Live 13.0b25 crashed when it recovered a Set whose

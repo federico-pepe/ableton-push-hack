@@ -507,20 +507,96 @@ for f in cfg.get("presets") or []:
 PY
 }
 
+# What `remove` deletes in a hack's browser folders: only what the hack
+# wrote. A folder (the hack's own, or any folder under it) holding a
+# .livedevice-presets manifest (core/livedevice PresetManifest, a JSON array
+# of file names) loses the files it lists and the manifest. A hack's folder
+# from before the manifest loses the racks with no plugin state in them, which
+# is what livedevice writes; a rack Live saved there (Push's Save puts a
+# device preset beside the rack it came from) has the plugin's state, and
+# stays. Then a folder left with nothing but Live's "Ableton Folder Info"
+# goes, deepest first. Prints "F <file>", "I <folder info>" and "D <folder>",
+# in the order they are to be removed.
+live_device_removals() {
+  live_device_folders "$1" | python3 -c '
+import gzip, json, os, sys
+MANIFEST = ".livedevice-presets"
+INFO = "Ableton Folder Info"
+def listed(d):
+    try:
+        names = json.load(open(os.path.join(d, MANIFEST)))
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return set()
+    if not isinstance(names, list):
+        return set()
+    return {n for n in names if isinstance(n, str) and n not in ("", ".", "..") and "/" not in n and "\\" not in n}
+def bare(p):
+    try:
+        x = gzip.open(p).read(16 << 20)
+    except Exception:
+        return False
+    return b"<ProcessorState />" in x and b"<ProcessorState>" not in x
+files, infos, dirs = [], [], []
+for top in sys.stdin.read().splitlines():
+    if not top or not os.path.isdir(top) or os.path.islink(top):
+        continue
+    gone = set()
+    for d, subs, names in os.walk(top, topdown=False):
+        if INFO in os.path.relpath(d, top).split(os.sep):
+            continue  # Live'"'"'s cache: goes with the folder it describes
+        own = listed(d)
+        for n in names:
+            p = os.path.join(d, n)
+            if os.path.islink(p):
+                continue
+            if own is not None:
+                mine = n in own or n == MANIFEST
+            else:
+                mine = d == top and n.endswith(".adg") and bare(p)
+            if mine:
+                files.append(p); gone.add(p)
+        left = [n for n in names if os.path.join(d, n) not in gone]
+        info = os.path.join(d, INFO)
+        rest = [s for s in subs if os.path.join(d, s) not in gone and s != INFO]
+        if not left and not rest:
+            if INFO in subs and not os.path.islink(info):
+                infos.append(info)
+            dirs.append(d); gone.add(d)
+for p in files: print("F " + p)
+for p in infos: print("I " + p)
+for p in dirs: print("D " + p)
+'
+}
+
+# remove_listed RUNNER: carries out live_device_removals' list (stdin), each
+# command through RUNNER (as_root; `command` in --self-test).
+remove_listed() {
+  local run="$1" line f
+  while IFS= read -r line; do
+    f="${line#? }"
+    case "$line" in
+      "F "*) "$run" rm -f "$f" ;;
+      "I "*) "$run" rm -rf "$f" ;;
+      "D "*) "$run" rmdir "$f" 2>/dev/null && info "removed browser entries $f" ;;
+    esac
+  done
+}
+
 cmd_remove() {
   local id="$1"; [ -n "$id" ] || die "usage: push-catalog remove <id>"
   local svc="push-hack-$id" dir="$PUSH_HACK_DIR/hacks/$id"
   as_root "/etc/init.d/$svc" stop 2>/dev/null || true
   command -v update-rc.d >/dev/null 2>&1 && as_root update-rc.d -f "$svc" remove >/dev/null 2>&1 || true
   as_root rm -f "/etc/init.d/$svc" /etc/rc*.d/S*"$svc"
-  # A hack with Live devices: its entries leave Push's browser with it. Its
+  # A hack with Live devices: its entries leave Push's browser with it, and
+  # the user's racks saved beside them stay (live_device_removals). Its
   # plugin bundle stays (with its class file): Sets that use its devices
   # still load them, silent, instead of as missing plugins, which Live
   # 13.0b25 crashed on while recovering a Set (docs/live-devices.md).
   if [ -f "$dir/hack.json" ]; then
-    live_device_folders "$dir/hack.json" | while IFS= read -r f; do
-      [ -n "$f" ] && as_root rm -rf "$f" && info "removed browser entries $f"
-    done
+    live_device_removals "$dir/hack.json" | remove_listed as_root
   fi
   # Clean up a non-hacks/<id> install_path (e.g. a Remote Script in Live's
   # User Library) before the source hack.json that names it is gone.
@@ -758,6 +834,41 @@ JSON
   printf '{"id":"no-devices"}\n' > "$ld/hack.json"
   got="$(VST3_DIR="$ld/vst3" PRESETS_DIR="$ld/presets" live_device_folders "$ld/hack.json" | wc -l | tr -d ' ')"
   [ "$got" = 0 ] || die "self-test: live_device_folders without live_devices"
+  rm -rf "$ld"
+
+  # 5. remove takes only what the hack wrote: the files its manifests list
+  #    (here and in folders under it), the stateless racks of a folder from
+  #    before the manifest, then the folders left empty but for Live's
+  #    "Ableton Folder Info". The user's racks, with the plugin's state in
+  #    them, stay, and so do their folders.
+  ld="$(mktemp -d)"
+  local inst="$ld/presets/Instruments/My Hack" afx="$ld/presets/Audio Effects/My Hack"
+  mkdir -p "$ld/vst3/My Hack.vst3/Contents/Resources" "$inst/Sounds/Ableton Folder Info" "$inst/Ableton Folder Info" "$inst/Mine" "$afx/Ableton Folder Info"
+  printf '{"id":"my-hack","live_devices":"My Hack"}\n' > "$ld/hack.json"
+  printf '{"socket":"/s","presets":["%s","%s"]}\n' "$inst" "$afx" > "$ld/vst3/My Hack.vst3/Contents/Resources/livedevice.json"
+  python3 - "$ld" <<'PY'
+import gzip, sys
+ld = sys.argv[1]
+inst, afx = ld + "/presets/Instruments/My Hack", ld + "/presets/Audio Effects/My Hack"
+bare = b"<Ableton><ProcessorState /></Ableton>"
+full = b"<Ableton><ProcessorState>\n0A000000\n</ProcessorState></Ableton>"
+for path, xml in [(inst + "/Synth.adg", bare), (inst + "/Saved.adg", full), (inst + "/Unlisted.adg", bare),
+                  (inst + "/Sounds/Pad.adg", full), (inst + "/Mine/Bare.adg", bare),
+                  (afx + "/Verb.adg", bare), (afx + "/Old.adg", bare)]:
+    open(path, "wb").write(gzip.compress(xml))
+open(inst + "/.livedevice-presets", "w").write('["Synth.adg", "../x", "Gone.adg"]')
+open(inst + "/Sounds/.livedevice-presets", "w").write('["Pad.adg"]')
+for d in (inst, inst + "/Sounds", afx):
+    open(d + "/Ableton Folder Info/cache", "w").write("x")
+PY
+  VST3_DIR="$ld/vst3" PRESETS_DIR="$ld/presets" live_device_removals "$ld/hack.json" | remove_listed command >/dev/null
+  local want
+  for want in "$inst/Saved.adg" "$inst/Unlisted.adg" "$inst/Mine/Bare.adg" "$inst/Ableton Folder Info/cache"; do
+    [ -e "$want" ] || die "self-test: remove took a file the hack did not write (${want#$ld/})"
+  done
+  for want in "$inst/Synth.adg" "$inst/.livedevice-presets" "$inst/Sounds" "$afx"; do
+    [ -e "$want" ] && die "self-test: remove left ${want#$ld/}"
+  done
   rm -rf "$ld"
 
   rm -f "$reg"

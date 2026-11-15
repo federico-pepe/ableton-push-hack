@@ -7,6 +7,11 @@ between minor versions).
 
 ## [Unreleased]
 
+### Fixed
+
+- `core/livedevice`: `WritePresets` removed every rack in a hack's browser folder that was not one of the hack's classes. Push's Save puts a device preset beside the rack it came from, so the user's saved presets of a hack's device were deleted the next time the hack started. Each folder now has a `.livedevice-presets` manifest (`livedevice.PresetManifest`) of the racks written there, and only those are replaced or removed. A folder from an older core loses only racks with no plugin state in them. Hacks get it with the next `core` tag.
+- Push Hack Catalog: `push-catalog remove` deleted a hack's browser folders with everything in them, the user's saved presets too. It now removes only what the folders' manifests list (or, without one, racks with no plugin state), then the folders left empty.
+
 ## [0.2.0-alpha] - 2026-11-15
 
 This release lets a hack show its sound engines as devices in Live, and adds clip selection to the PushHack Remote Script. Run `./scripts/install.sh` once on the computer: the new `push_hook.so` loads at the next Push3 restart, and the Remote Script needs a Live restart. **Pung** (a separate hack) is the first to use the new device layer.
