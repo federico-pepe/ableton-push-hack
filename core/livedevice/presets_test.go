@@ -80,11 +80,14 @@ func TestRenderEffect(t *testing.T) {
 
 func TestWritePresets(t *testing.T) {
 	dir := t.TempDir()
-	stale := filepath.Join(dir, "Instruments", "Vend", "Gone.adg")
-	os.MkdirAll(filepath.Dir(stale), 0o755)
-	os.WriteFile(stale, []byte("x"), 0o644)
 	inst, fx, midi := testClass(Instrument), testClass(Effect), testClass(MIDIEffect)
 	fx.Name = "Verb"
+	gone := testClass(Instrument)
+	gone.Name = "Gone"
+	if n, err := WritePresets(dir, "Vend", []*Class{gone}); err != nil || n != 1 {
+		t.Fatal(n, err)
+	}
+	stale := filepath.Join(dir, "Instruments", "Vend", "Gone.adg")
 	n, err := WritePresets(dir, "Vend", []*Class{inst, fx, midi})
 	if err != nil || n != 3 { // 2 written, 1 removed
 		t.Fatal(n, err)
@@ -106,6 +109,69 @@ func TestWritePresets(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "Instruments", "Vend", "Test _X_ _ Co.adg")); err != nil {
 		t.Fatal("instrument entry:", err)
+	}
+}
+
+// A rack Live saved in a hack's folder (Push's Save puts a device preset
+// beside the rack it came from) is the user's: WritePresets never removes it,
+// with a manifest or without one (a folder an older core wrote).
+func TestWritePresetsKeepsUserRacks(t *testing.T) {
+	inst := testClass(Instrument)
+	saved := func(path, state string) {
+		x, err := RenderPreset(inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x = strings.Replace(x, "<ProcessorState />", "<ProcessorState>"+state+"</ProcessorState>", 1)
+		data, _ := gzipBytes([]byte(x))
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		os.WriteFile(path, data, 0o644)
+	}
+	bare := func(path string, c *Class) {
+		x, _ := RenderPreset(c)
+		data, _ := gzipBytes([]byte(x))
+		os.WriteFile(path, data, 0o644)
+	}
+	for _, withManifest := range []bool{false, true} {
+		dir := t.TempDir()
+		folder := filepath.Join(dir, "Instruments", "Vend")
+		mine := filepath.Join(folder, "My Sound.adg")
+		saved(mine, "0A000000")
+		junk := filepath.Join(folder, "Not a rack.adg")
+		os.WriteFile(junk, []byte("x"), 0o644)
+		old := filepath.Join(folder, "Old.adg") // a class's entry an older core wrote
+		oc := testClass(Instrument)
+		oc.Name = "Old"
+		bare(old, oc)
+		if withManifest {
+			os.WriteFile(filepath.Join(folder, PresetManifest), []byte(`["Old.adg"]`), 0o644)
+		}
+		if _, err := WritePresets(dir, "Vend", []*Class{inst}); err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range []string{mine, junk} {
+			if _, err := os.Stat(p); err != nil {
+				t.Fatalf("manifest %v: removed the user's %s", withManifest, filepath.Base(p))
+			}
+		}
+		if _, err := os.Stat(old); err == nil {
+			t.Fatalf("manifest %v: kept the entry of a class that is gone", withManifest)
+		}
+		raw, _ := os.ReadFile(filepath.Join(folder, PresetManifest))
+		if string(raw) != `["Test _X_ _ Co.adg"]` {
+			t.Fatalf("manifest %s", raw)
+		}
+	}
+	// With a manifest, a bare rack it does not list is not WritePresets' either.
+	dir := t.TempDir()
+	folder := filepath.Join(dir, "Instruments", "Vend")
+	WritePresets(dir, "Vend", []*Class{inst})
+	other := testClass(Instrument)
+	other.Name = "Other"
+	bare(filepath.Join(folder, "Other.adg"), other)
+	WritePresets(dir, "Vend", []*Class{inst})
+	if _, err := os.Stat(filepath.Join(folder, "Other.adg")); err != nil {
+		t.Fatal("removed a rack the manifest does not list")
 	}
 }
 

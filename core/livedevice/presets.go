@@ -6,8 +6,10 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,10 +36,13 @@ var instrumentTemplate string
 //	effect:           Audio Effects/<folder>/<name>.adg (an Audio Effect Rack)
 //
 // <folder> is the class's Folder, else vendor. A MIDIEffect class gets no
-// entry (Live has no slot for one). The folders are the hack's own: an entry
-// for a class that no longer exists is removed. New files and folders get the
-// owner of presets (Live runs as ableton, a hack as root). Returns how many
-// files changed.
+// entry (Live has no slot for one). An entry for a class that no longer
+// exists is removed, and only that: each folder lists the entries written
+// there in PresetManifest, and a rack WritePresets did not write is left
+// alone. Push's Save puts a device preset beside the rack it came from, so
+// the folders hold the user's racks too. New files and folders get the owner
+// of presets (Live runs as ableton, a hack as root). Returns how many files
+// changed.
 func WritePresets(presets, vendor string, classes []*Class) (int, error) {
 	if vendor == "" {
 		return 0, errors.New("livedevice: WritePresets needs a vendor")
@@ -85,15 +90,94 @@ func WritePresets(presets, vendor string, classes []*Class) (int, error) {
 		changed++
 	}
 	for dir, files := range want {
+		wrote, known := readPresetManifest(dir)
 		ents, _ := os.ReadDir(dir)
 		for _, e := range ents {
-			if strings.HasSuffix(e.Name(), ".adg") && !files[e.Name()] {
-				os.Remove(filepath.Join(dir, e.Name()))
+			name := e.Name()
+			if e.IsDir() || !strings.HasSuffix(name, ".adg") || files[name] {
+				continue
+			}
+			path := filepath.Join(dir, name)
+			// A folder from before the manifest: an entry WritePresets wrote
+			// is a rack with no plugin state in it; a rack Live saved has
+			// the plugin's state.
+			if wrote[name] || (!known && isBareRack(path)) {
+				os.Remove(path)
 				changed++
 			}
 		}
+		if err := writePresetManifest(dir, files, uid, gid); err != nil {
+			return changed, err
+		}
 	}
 	return changed, nil
+}
+
+// PresetManifest is the file, in a folder of browser entries, that lists the
+// entries a hack wrote there: a JSON array of file names. WritePresets keeps
+// one in each folder it writes, and push-catalog remove deletes the files it
+// lists (in that folder and in any folder under it), never anything else. A
+// hack that writes racks of its own in a folder under its preset folders
+// lists them in a PresetManifest there.
+const PresetManifest = ".livedevice-presets"
+
+// readPresetManifest: the files a folder's manifest lists, and whether it has
+// one. A damaged manifest lists nothing.
+func readPresetManifest(dir string) (map[string]bool, bool) {
+	raw, err := os.ReadFile(filepath.Join(dir, PresetManifest))
+	if err != nil {
+		return nil, false
+	}
+	out := map[string]bool{}
+	var files []string
+	if json.Unmarshal(raw, &files) == nil {
+		for _, f := range files {
+			if f != "" && f != "." && f != ".." && !strings.ContainsAny(f, `/\`) {
+				out[f] = true
+			}
+		}
+	}
+	return out, true
+}
+
+func writePresetManifest(dir string, files map[string]bool, uid, gid int) error {
+	list := make([]string, 0, len(files))
+	for f := range files {
+		list = append(list, f)
+	}
+	sort.Strings(list)
+	raw, _ := json.Marshal(list)
+	path := filepath.Join(dir, PresetManifest)
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, raw) {
+		return nil
+	}
+	if err := writeAtomic(path, raw, 0o644); err != nil {
+		return err
+	}
+	if uid >= 0 {
+		os.Chown(path, uid, gid)
+	}
+	return nil
+}
+
+// isBareRack: a gzipped rack whose plugins carry no state, as WritePresets
+// writes them. A rack Live saves keeps each plugin's state in
+// <ProcessorState>; anything that does not read as a rack is not one.
+func isBareRack(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	z, err := gzip.NewReader(f)
+	if err != nil {
+		return false
+	}
+	xml, err := io.ReadAll(io.LimitReader(z, 16<<20))
+	if err != nil {
+		return false
+	}
+	return bytes.Contains(xml, []byte("<ProcessorState />")) && !bytes.Contains(xml, []byte("<ProcessorState>"))
 }
 
 // presetFolder: where a class's browser entry goes; "" for none.
