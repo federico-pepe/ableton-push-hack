@@ -49,9 +49,10 @@ type uiEntry struct {
 	// selected (devview.go). Has: the hack offers it ("surface.device_view"
 	// and "live_devices"); DeviceView: the switch, on unless the user turned
 	// it off.
-	HasDeviceView bool   `json:"has_device_view"`
-	DeviceView    bool   `json:"device_view"`
-	liveDevices   string // the hack's plugin bundle name
+	HasDeviceView bool    `json:"has_device_view"`
+	DeviceView    bool    `json:"device_view"`
+	liveDevices   string  // the hack's plugin bundle name
+	keep          []uint8 // buttons it keeps while standing in (hack.json surface.device_view_keep)
 
 	HasWeb   bool   `json:"has_web"`
 	Web      bool   `json:"web"` // switch: show in the web menu bar
@@ -135,6 +136,7 @@ func candidateEntries() []uiEntry {
 			}
 			if h.Surface.DeviceView && h.LiveDevices != "" {
 				e.HasDeviceView, e.liveDevices = true, h.LiveDevices
+				e.keep = keepCCs(h.Surface.DeviceViewKeep)
 			}
 		}
 		if h.WebUI != nil {
@@ -286,7 +288,7 @@ func homeEntries() []homeEntry {
 	var out []homeEntry
 	for _, e := range resolveUIEntries() {
 		he := homeEntry{ID: e.ID, Label: e.Label, Star: e.Star, Super: e.Super,
-			HasDeviceView: e.HasDeviceView, DeviceView: e.DeviceView}
+			HasDeviceView: e.HasDeviceView, DeviceView: e.DeviceView, Keep: e.keep}
 		switch {
 		case e.HasApp && e.Available:
 			he.App, he.Color = true, e.Color

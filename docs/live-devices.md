@@ -108,8 +108,9 @@ Hack Home app, `surface` in `hack.json`). With `"device_view": true` in
 `surface` and `live_devices` set, push-manager shows that view instead of
 Push's device view whenever one of the hack's devices is selected, and the
 user switches it per app (Home's `DEVICE` button). Device View, pressed in
-it, goes to Push's own device view and back. Details: push-manager's
-README, "The device view".
+it, goes to Push's own device view and back. Add, Swap and New go on to
+Push unless the view keeps them (`"device_view_keep": ["swap"]`). Details:
+push-manager's README, "The device view".
 
 ## Rules that come from measurements
 

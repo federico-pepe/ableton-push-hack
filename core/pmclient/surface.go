@@ -194,6 +194,13 @@ type FocusInfo struct {
 	// the left and right arrows); Device View, Help and the view buttons
 	// are push-manager's.
 	DeviceView bool `json:"device_view"`
+	// Keep: the buttons (CC numbers) the app keeps while it stands in,
+	// from its hack.json surface.device_view_keep ("add", "swap", "new"):
+	// push-manager leaves these presses to the app instead of closing it
+	// and passing them on to Push. Empty from a push-manager that does not
+	// know the key: then they are push-manager's, and the app must not act
+	// on them.
+	Keep []int `json:"keep,omitempty"`
 }
 
 func (c *Client) surfacePost(path string, body any) error {

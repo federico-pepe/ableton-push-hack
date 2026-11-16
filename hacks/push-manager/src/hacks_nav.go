@@ -81,6 +81,12 @@ type hackSurface struct {
 	// user switches it per app in Home or on the Display page; this is the
 	// default.
 	DeviceView bool `json:"device_view,omitempty"`
+	// DeviceViewKeep: buttons the app keeps for itself while it stands in
+	// for Push's device view, instead of push-manager closing it and
+	// passing the press on to Push: "add", "swap", "new" (keepableButtons,
+	// surface.go). The buttons that LEAVE the device view (the view
+	// buttons, Settings, Set, User) can never be kept.
+	DeviceViewKeep []string `json:"device_view_keep,omitempty"`
 }
 
 // hackNav is one installed hack as the UI layer sees it: id for gating a

@@ -32,6 +32,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -423,7 +424,8 @@ func (s *Surface) ClearHold() {
 }
 
 // standInButtons leave Push's device view in Push itself; while an app stands
-// in for that view they are push-manager's (ViewButton), never the app's.
+// in for that view they are push-manager's (ViewButton), never the app's,
+// except the ones the app keeps (keepableButtons, StandInTakes).
 // Track navigation (lower row, arrows) stays the app's: it moves Live's
 // selection, and Follow does the rest.
 var standInButtons = map[uint8]bool{
@@ -431,17 +433,47 @@ var standInButtons = map[uint8]bool{
 	CCAdd: true, CCSwap: true, CCSettings: true, CCSet: true, CCUserMode: true, CCNew: true,
 }
 
+// keepableButtons: what an app may keep of standInButtons while it stands
+// in (hack.json surface.device_view_keep): the ones that act ON the device.
+// Pung's Swap opens its sounds, as Push's Swap offers another sound for a
+// device. The buttons that leave the device view are not here: the user
+// must always get out with them.
+var keepableButtons = map[string]uint8{"add": CCAdd, "swap": CCSwap, "new": CCNew}
+
+// keepCCs: the buttons a hack.json names, the unknown ones left out.
+func keepCCs(names []string) []uint8 {
+	var out []uint8
+	for _, n := range names {
+		if cc, ok := keepableButtons[strings.ToLower(strings.TrimSpace(n))]; ok && !slices.Contains(out, cc) {
+			out = append(out, cc)
+		}
+	}
+	return out
+}
+
+// keeps: the buttons app id keeps while it stands in.
+func (s *Surface) keeps(id string) []uint8 {
+	for _, e := range s.entries() {
+		if e.ID == id {
+			return e.Keep
+		}
+	}
+	return nil
+}
+
+// StandInTakes reports whether button cc is push-manager's now: an app
+// stands in for Push's device view, cc is one that leaves that view
+// (standInButtons), and the app does not keep it. The press is then
+// ViewButton's, and never the app's or Live's.
+func (s *Surface) StandInTakes(cc uint8) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return standInButtons[cc] && s.own == ownApp && s.auto && !slices.Contains(s.keeps(s.app), cc)
+}
+
 // viewPressGrace: a view button this soon after Follow opened the app is
 // the press that opened it.
 const viewPressGrace = 300 * time.Millisecond
-
-// AutoOwns reports whether an app opened by Follow owns the surface: then
-// Push's view buttons are ViewButton's.
-func (s *Surface) AutoOwns() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.own == ownApp && s.auto
-}
 
 // ViewButton is a button that leaves Push's device view, pressed while an
 // app stands in for it (standInButtons). Device View: Push's own device
@@ -581,8 +613,20 @@ func (s *Surface) focusAs(id string, standIn bool) {
 	}
 	s.io.setPass(s.sessions[id].pass)
 	s.own, s.app, s.input, s.last, s.notice = ownApp, id, true, id, ""
-	s.send(id, surfaceEvent{Name: "focus", Data: map[string]bool{"input": true, "device_view": standIn}})
+	data := map[string]any{"input": true, "device_view": standIn}
+	if keep := s.keeps(id); standIn && len(keep) > 0 {
+		data["keep"] = keep2ints(keep) // these presses are the app's (pmclient.FocusInfo.Keep)
+	}
+	s.send(id, surfaceEvent{Name: "focus", Data: data})
 	log.Printf("surface: %s has the surface", id)
+}
+
+func keep2ints(ccs []uint8) []int {
+	out := make([]int, len(ccs))
+	for i, c := range ccs {
+		out[i] = int(c)
+	}
+	return out
 }
 
 func (s *Surface) send(app string, ev surfaceEvent) {

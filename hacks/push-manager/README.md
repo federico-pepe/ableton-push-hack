@@ -706,13 +706,22 @@ from an older hack, and it never starts a stopped app.
 | Device View | Push's own device view of the same device. Device View again: the app again. |
 | Help | The same: Push's own device view, until you select another device or leave the device view. |
 | Mixer, Clip, Session View | Push's mixer, clip or session view (the press goes on to Push). |
-| Add, Swap, Settings, Set, User, New | The app closes and the press goes on to Push: its browser, its settings, the Set menu. |
+| Add, Swap, Settings, Set, User, New | The app closes and the press goes on to Push: its browser, its settings, the Set menu. Except Add, Swap or New where the app keeps them (below): then the press is the app's. |
 | Another track (the app's lower row or left and right arrows, as on Push's device view) | The app selects it in Live. A device of the app there: the app shows it. Any other: the app closes and Push shows its device view of that track. |
 | Shift + Help | Home. |
 
 The app knows it stands in: its focus event carries `"device_view": true`
 (`core/pmclient`'s `SurfaceHandler.OnFocusInfo`). It then leaves the buttons
 above to push-manager and navigates tracks the way Push's device view does.
+
+An app can keep the buttons that act on the device: `"device_view_keep":
+["swap"]` in its `surface` (any of `add`, `swap`, `new`). push-manager then
+leaves those presses to the app while it stands in, and the focus event
+lists them (`"keep": [33]`, `FocusInfo.Keep`), so the app acts on them only
+under a push-manager that hands them over. Pung keeps Swap for its sound
+browser, as Push's own Swap offers another sound for a device. The buttons
+that leave the device view (Device View, Mixer, Clip, Session View,
+Settings, Set, User) cannot be kept: the user always gets out with them.
 
 How push-manager knows (`devview.go`): Push3 lights the button of the view
 it shows (127; the others 14; 0 while it repaints, which counts for

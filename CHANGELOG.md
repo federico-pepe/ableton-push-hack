@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- Push Hack Home: an app that stands in for Push's device view can keep Add, Swap or New for itself (`hack.json` `surface.device_view_keep`, for example `["swap"]`). push-manager then leaves those presses to the app instead of closing it and passing them on to Push, and the app's focus event lists them (`pmclient.FocusInfo.Keep`, new). The buttons that leave the device view cannot be kept. For Pung, whose Swap opens its sound browser. Hacks get `FocusInfo.Keep` with the next `core` tag.
+
 ### Fixed
 
 - `core/livedevice`: `WritePresets` removed every rack in a hack's browser folder that was not one of the hack's classes. Push's Save puts a device preset beside the rack it came from, so the user's saved presets of a hack's device were deleted the next time the hack started. Each folder now has a `.livedevice-presets` manifest (`livedevice.PresetManifest`) of the racks written there, and only those are replaced or removed. A folder from an older core loses only racks with no plugin state in them. Hacks get it with the next `core` tag.

@@ -40,7 +40,9 @@ type homeEntry struct {
 	// HasDeviceView: an app with Live devices; DeviceView: its view
 	// replaces Push's device view (devview.go).
 	HasDeviceView, DeviceView bool
-	About                     [2]string // a tool's own lines
+	// Keep: the buttons the app keeps while it stands in (keepableButtons).
+	Keep  []uint8   `json:",omitempty"`
+	About [2]string // a tool's own lines
 	// An app's live state, filled by Surface.view.
 	Running, Starting bool
 	Status            [2]string

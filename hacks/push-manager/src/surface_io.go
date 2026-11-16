@@ -120,7 +120,7 @@ func surfaceInputCC(cc, val uint8) bool {
 		down := val > 0
 		queueSurface(func() { surface.SetShift(down) })
 	}
-	if standInButtons[cc] && surface.AutoOwns() {
+	if surface.StandInTakes(cc) {
 		if val > 0 {
 			queueSurface(func() { surface.ViewButton(cc) })
 		}

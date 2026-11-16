@@ -881,6 +881,56 @@ func TestDeviceViewNeverTakes(t *testing.T) {
 	}
 }
 
+// An app may keep Add, Swap or New while it stands in (hack.json
+// surface.device_view_keep): those presses are then the app's, and its
+// focus event says which. The buttons that leave the device view are
+// never kept.
+func TestDeviceViewKeptButtons(t *testing.T) {
+	if got := keepCCs([]string{"swap", " Add ", "swap", "device", "settings", ""}); !slices.Equal(got, []uint8{CCSwap, CCAdd}) {
+		t.Fatalf("keepCCs: %v", got)
+	}
+	b := newBench()
+	for i := range b.entries {
+		if b.entries[i].ID == "stacks" {
+			b.entries[i].Keep = keepCCs([]string{"swap"})
+		}
+	}
+	ss := b.SessionOpen("stacks", nil)
+	b.SessionOpen("riffs", nil)
+	b.Follow("stacks", "a", true)
+	var focus surfaceEvent
+	for len(ss.events) > 0 {
+		if ev := <-ss.events; ev.Name == "focus" {
+			focus = ev
+		}
+	}
+	data, _ := focus.Data.(map[string]any)
+	if keep, _ := data["keep"].([]int); !slices.Equal(keep, []int{int(CCSwap)}) || data["device_view"] != true {
+		t.Fatalf("the focus event does not say what is kept: %v", focus.Data)
+	}
+	if b.StandInTakes(CCSwap) {
+		t.Fatal("Swap is kept by the app, and push-manager took it")
+	}
+	for _, cc := range []uint8{CCAdd, CCNew, CCDeviceView, CCMixerView, CCSettings, CCSet} {
+		if !b.StandInTakes(cc) {
+			t.Fatalf("button %d is not kept, and push-manager left it", cc)
+		}
+	}
+	// an app that keeps nothing, and the same app opened from Home
+	b.Follow("riffs", "b", true)
+	if !b.StandInTakes(CCSwap) {
+		t.Fatal("an app that keeps nothing kept Swap")
+	}
+	b.Gesture(1) // Home
+	b.Open("stacks")
+	if b.own != ownApp || b.app != "stacks" {
+		t.Fatalf("opened from Home: %s %s", b.own, b.app)
+	}
+	if b.StandInTakes(CCSwap) || b.StandInTakes(CCMixerView) {
+		t.Fatal("not standing in: no button is push-manager's")
+	}
+}
+
 func TestDeviceViewButtons(t *testing.T) {
 	b := newBench()
 	b.SessionOpen("riffs", nil)
