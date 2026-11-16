@@ -168,6 +168,16 @@
       "requires": [
         "push-audio-loopback"
       ]
+    },
+    {
+      "id": "pung",
+      "name": "Pung",
+      "description": "Schwung modules (Ableton Move's module ecosystem) on Push 3 as devices in Live, with their own view on the Push screen.",
+      "author": "rgeissen",
+      "homepage": "https://github.com/rgeissen/push-hack-pung",
+      "github_repo": "rgeissen/push-hack-pung",
+      "default_branch": "main",
+      "asset_name": "pung.tar.gz"
     }
   ]
 }
