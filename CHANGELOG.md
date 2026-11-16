@@ -9,6 +9,7 @@ between minor versions).
 
 ### Fixed
 
+- Push Hack Home: every LED could stay dark after an app gave the surface back. push-manager switches the LEDs off on the way out and asks Push to repaint them, but the repaint was triggered by a 100 ms poll of the button intercept, which missed an app that held the surface for less than that. It happens when a device is loaded from Push's browser while an app stands in for the device view: the app opens on the old selection and closes again at once. The pads then stayed dark until each was played. The repaint is now asked for on every hand-back.
 - `core/livedevice`: `WritePresets` removed every rack in a hack's browser folder that was not one of the hack's classes. Push's Save puts a device preset beside the rack it came from, so the user's saved presets of a hack's device were deleted the next time the hack started. Each folder now has a `.livedevice-presets` manifest (`livedevice.PresetManifest`) of the racks written there, and only those are replaced or removed. A folder from an older core loses only racks with no plugin state in them. Hacks get it with the next `core` tag.
 - Push Hack Catalog: `push-catalog remove` deleted a hack's browser folders with everything in them, the user's saved presets too. It now removes only what the folders' manifests list (or, without one, racks with no plugin state), then the folders left empty.
 
