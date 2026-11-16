@@ -216,6 +216,7 @@ the surface (push-manager's README, "Push Hack Home", has the protocol;
 | `label` | The name on the app's card in Home. ASCII; at most 7 letters fit the large type. Defaults to the hack's `name`. |
 | `color` | A name from Push's palette (`core/push3` `NamedColors`, for example `sky`, `amber`, `lime`, `violet`): the card's stripe and the pad column's LEDs. |
 | `device_view` | `true`: the app can show its own view instead of Push's device view while one of its Live devices is selected. Needs `live_devices` (above). On by default; the user switches it per app (Home's `DEVICE` button, or Display → Tabs). See push-manager's README, "The device view". |
+| `device_view_keep` | Buttons the app keeps while it stands in for Push's device view, any of `"add"`, `"swap"`, `"new"`. push-manager leaves those presses to the app instead of closing it and passing them on to Push. The buttons that leave the device view cannot be kept. See push-manager's README, "The device view". |
 
 `surface` needs the hack's `port` like the other two hooks, and a running
 service: Home starts a stopped app through push-catalog's `enable`. Like
