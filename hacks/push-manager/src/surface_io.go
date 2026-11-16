@@ -315,22 +315,25 @@ func (d *deviceIO) screenOnly() {
 // pads (reported: "when exiting the Home, most of the time all the LEDs
 // are still lit"). The clear also marks them cleared, so the repaint runs.
 //
-// From screen-only the intercept is off already, so watchInterceptOff sees
-// no change and would not repaint: Live's LEDs stayed dark. Repaint here
-// then, the same way and after the same delay.
+// The repaint is asked for here, always, and not left to watchInterceptOff:
+// that polls every 100 ms and sees no change in two cases, and Live's LEDs
+// then stayed dark until each was next changed. From screen-only the
+// intercept is off already. And an app can hold the surface for less than
+// one poll: a device loaded from Push's browser while an app stood in for
+// the device view makes Push light Device View a moment before Live reports
+// the new device, so the app opens on the old selection and closes again
+// at once (seen on a Push with Pung: every pad dark after the load, each
+// lighting again only once played). restorePushLEDs runs once however
+// often it is asked (ledsCleared), so the poller's call is harmless.
 func (d *deviceIO) release() {
 	d.padsLive = false
 	d.forget()
-	data := ensureMidiFilt()
-	wasOn := data != nil && data[4] != 0
 	clearAllLEDs(0)
-	releaseSurface() // release.go; watchInterceptOff repaints Live's LEDs
-	if !wasOn {
-		go func() {
-			time.Sleep(ledRestoreDelay)
-			restorePushLEDs()
-		}()
-	}
+	releaseSurface() // release.go
+	go func() {
+		time.Sleep(ledRestoreDelay)
+		restorePushLEDs()
+	}()
 }
 
 // closeLiveHelp taps Help into Live's own input, after Live has read the
