@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 // Provider makes the engine side of devices. New runs off the audio path,
@@ -36,6 +37,33 @@ type Device interface {
 	// Close frees the device. Process is never called again.
 	Close()
 }
+
+// Looper is an optional extra: a device that serves its own blocks, on a
+// thread it makes outside the Go runtime. Process then never runs.
+//
+// Go's scheduler takes any goroutine off its processor now and then, a
+// realtime one too (sysmon preempts what has not passed through the
+// scheduler for 10 ms, and a goroutine that only sleeps in a futex between
+// blocks never does), and it runs again only when an ordinary thread hands
+// it a processor back. On a busy Push 3 that took up to a millisecond, past
+// the half block Live waits, and Live played silence (Pung with OsTIrus,
+// 2026-11-21). A thread of the device's own, in C, never waits for Go.
+type Looper interface {
+	// Loop starts serving the block in mem: the device's whole shared memory
+	// (size bytes, laid out as livedevice_ipc.h, version Version), mapped
+	// until StopLoop returns. Each request is the device's to answer: write
+	// the output, done = req, wake done. Read req before returning: the
+	// plugin may send its first block the moment create answers. priority: the realtime priority
+	// its thread should run at. false: it cannot, and the server serves
+	// the device through Process as usual.
+	Loop(mem unsafe.Pointer, size int, version uint32, priority int) bool
+	// StopLoop stops the thread and returns once it is gone. Close follows.
+	StopLoop()
+}
+
+// Version of the block layout (livedevice_ipc.h's LD_IPC_VERSION), for a
+// Looper to check against its own copy of the header.
+const Version = ipcVersion
 
 // Statser is an optional extra for /api/devices.
 type Statser interface {
@@ -75,6 +103,8 @@ type device struct {
 	path  string
 	quit  atomic.Bool
 	done  chan struct{}
+	// looper: the device serves its own blocks (Looper); nil: run does
+	looper Looper
 
 	blocks, notesIn, notesOut atomic.Uint64
 	inPeak, outPeak           atomic.Uint32 // float32 bits: the last second's peak
@@ -165,7 +195,16 @@ func (s *Server) create(uid string) (*device, error) {
 	s.mu.Lock()
 	s.list[id] = d
 	s.mu.Unlock()
-	go s.run(d)
+	if l, ok := dev.(Looper); ok && l.Loop(unsafe.Pointer(&mem[0]), len(mem), ipcVersion, s.cfg.Priority) {
+		d.looper = l
+		close(d.done)
+		s.cfg.Logf("livedevice: %d %s (its own block thread)", id, c.Name)
+		return d, nil
+	}
+	// the block counter as it is now, read before create answers: read in
+	// run, a first request sent the moment the plugin heard back was taken
+	// for one already done, and never answered
+	go s.run(d, atomic.LoadUint32(b.u32(offReq)))
 	s.cfg.Logf("livedevice: %d %s", id, c.Name)
 	return d, nil
 }
@@ -179,8 +218,12 @@ func (s *Server) destroy(id int) {
 		return
 	}
 	d.quit.Store(true)
-	futexWake((&Block{mem: d.mem}).u32(offReq))
-	<-d.done
+	if d.looper != nil {
+		d.looper.StopLoop()
+	} else {
+		futexWake((&Block{mem: d.mem}).u32(offReq))
+		<-d.done
+	}
 	d.dev.Close()
 	shmFree(d.mem, d.path)
 	s.cfg.Logf("livedevice: %d %s closed", id, d.class.Name)
@@ -193,7 +236,7 @@ func (s *Server) get(id int) *device {
 }
 
 // run serves one device's blocks as the plugin asks for them.
-func (s *Server) run(d *device) {
+func (s *Server) run(d *device, last uint32) {
 	defer close(d.done)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -201,7 +244,6 @@ func (s *Server) run(d *device) {
 	b := &Block{mem: d.mem, class: d.class}
 	req, done := b.u32(offReq), b.u32(offDone)
 	alive := b.u32(offAlive)
-	last := atomic.LoadUint32(req)
 	for !d.quit.Load() {
 		r := atomic.LoadUint32(req)
 		if r == last {
@@ -241,7 +283,8 @@ func (d *device) peak(dst *atomic.Uint32, bufs [2][]float32) {
 	dst.Store(math.Float32bits(max(old, p)))
 }
 
-// Stats is one device as /api/devices lists it.
+// Stats is one device as /api/devices lists it. A Looper's own counts
+// (blocks, notes_in, notes_out, in_peak, out_peak) come from its Statser.
 func (s *Server) Stats() []map[string]any {
 	s.mu.Lock()
 	var out []map[string]any

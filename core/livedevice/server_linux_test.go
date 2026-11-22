@@ -9,10 +9,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 // testDevice: an effect that multiplies its input by the gain parameter and
@@ -178,5 +180,122 @@ func TestServerBlock(t *testing.T) {
 	}
 	if _, err := os.Stat(r["shm"].(string)); err == nil {
 		t.Fatal("shared memory file left behind")
+	}
+}
+
+// loopDevice serves its own blocks (Looper), here on a goroutine: the output
+// is the input times three. decline: it says it cannot, and Process serves.
+type loopDevice struct {
+	decline   bool
+	mem       []byte
+	quit      atomic.Bool
+	done      chan struct{}
+	processed atomic.Int32
+	order     *[]string
+}
+
+func (d *loopDevice) Loop(mem unsafe.Pointer, size int, version uint32, priority int) bool {
+	if d.decline || version != Version || size != ipcSize || priority != 70 {
+		return false
+	}
+	d.mem = unsafe.Slice((*byte)(mem), size)
+	d.done = make(chan struct{})
+	b := &Block{mem: d.mem}
+	req, done := b.u32(offReq), b.u32(offDone)
+	last := atomic.LoadUint32(req) // before Loop returns: the first request may come at once
+	go func() {
+		defer close(d.done)
+		for !d.quit.Load() {
+			r := atomic.LoadUint32(req)
+			if r == last {
+				futexWait(req, r, 20*time.Millisecond)
+				continue
+			}
+			last = r
+			b.load()
+			for ch := range 2 {
+				for i := range b.Frames {
+					b.Out[ch][i] = b.In[ch][i] * 3
+				}
+			}
+			b.finish()
+			atomic.StoreUint32(done, r)
+			futexWake(done)
+		}
+	}()
+	return true
+}
+func (d *loopDevice) StopLoop() {
+	d.quit.Store(true)
+	futexWake((&Block{mem: d.mem}).u32(offReq))
+	<-d.done
+	*d.order = append(*d.order, "stop")
+}
+func (d *loopDevice) Process(b *Block) {
+	d.processed.Add(1)
+	for ch := range 2 {
+		for i := range b.Frames {
+			b.Out[ch][i] = b.In[ch][i] * 2
+		}
+	}
+}
+func (d *loopDevice) State() (string, error) { return "", nil }
+func (d *loopDevice) SetState(string) error  { return nil }
+func (d *loopDevice) Close()                 { *d.order = append(*d.order, "close") }
+
+type loopProvider struct{ dev *loopDevice }
+
+func (p *loopProvider) New(c *Class) (Device, error) { return p.dev, nil }
+
+func TestServerLooper(t *testing.T) {
+	if _, err := os.Stat("/dev/shm"); err != nil {
+		t.Skip("no /dev/shm")
+	}
+	for _, decline := range []bool{false, true} {
+		var order []string
+		dev := &loopDevice{decline: decline, order: &order}
+		sock := filepath.Join(t.TempDir(), "dev.sock")
+		cls := &Class{UID: ClassUID("t", Effect, "loop"), Name: "Loop", Kind: Effect,
+			Params: []Param{{Name: "Gain", Type: "float", Max: 1}}, Banks: [][]int{{0}}}
+		PadBanks(cls)
+		s := NewServer(Config{Name: "ldloop", Socket: sock, Logf: t.Logf}, &loopProvider{dev}, []*Class{cls})
+		if err := s.Listen(); err != nil {
+			t.Fatal(err)
+		}
+		c, err := net.Dial("unix", sock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := &fakePlugin{t: t, enc: json.NewEncoder(c), dec: bufio.NewReader(c)}
+		r := p.call(map[string]any{"op": "create", "uid": cls.UID})
+		f, err := os.OpenFile(r["shm"].(string), os.O_RDWR, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mem, _ := syscall.Mmap(int(f.Fd()), 0, ipcSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		f.Close()
+		p.b = &Block{mem: mem}
+		p.block(128, 0.25, nil, nil)
+		want := float32(0.75) // its own thread
+		if decline {
+			want = 0.5 // Process
+		}
+		if got := p.b.f32s(offOutL, 128)[7]; got != want {
+			t.Fatalf("decline=%v: out %v, want %v", decline, got, want)
+		}
+		if !decline && dev.processed.Load() != 0 {
+			t.Fatal("Process ran beside the device's own loop")
+		}
+		p.call(map[string]any{"op": "destroy", "id": r["id"]})
+		syscall.Munmap(mem)
+		c.Close()
+		s.Close()
+		wantOrder := "stop close"
+		if decline {
+			wantOrder = "close"
+		}
+		if got := strings.Join(order, " "); got != wantOrder {
+			t.Fatalf("decline=%v: %q, want %q", decline, got, wantOrder)
+		}
 	}
 }
