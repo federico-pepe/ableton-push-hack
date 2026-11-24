@@ -186,7 +186,8 @@ typedef struct __attribute__((packed)) {
  * What a hack that owns the surface still leaves to Live, beyond pass_cc:
  *
  *   pads     the pads (notes 36-99), their pressure and the touch strip
- *            reach Live, and Live keeps lighting the pads. An app that only
+ *            (pitch bend, and CC 1 in its mod wheel mode) reach Live, and
+ *            Live keeps lighting the pads. An app that only
  *            draws the screen and owns the encoders and the buttons above
  *            and below it (a device editor) keeps Push's whole playing UX:
  *            scales, layouts, Note Repeat, drum racks, the sequencer.
@@ -632,6 +633,37 @@ ssize_t write(int fd, const void *buf, size_t n) {
     return real_write(fd, buf, n);
 }
 
+/* STRIP_MOD_CC: the touch strip in its mod wheel mode (Select + tap on the
+ * strip) sends its position as CC 1, where it otherwise sends pitch bend. */
+#define STRIP_MOD_CC 1
+
+/* input_passes: whether an event from Push's hardware still reaches Live
+ * while a hack owns the surface (snd_seq_event_t: type at offset 0, a
+ * note's number at 17, a controller's number, a uint32, at 20: 16 to the
+ * data union, then channel and 3 bytes of padding). */
+static int input_passes(const uint8_t *e) {
+    switch (e[0]) {
+    case 10: { /* SND_SEQ_EVENT_CONTROLLER */
+        uint32_t cc;
+        memcpy(&cc, e + 20, sizeof cc);
+        /* a pass-through button, or the touch strip as a mod wheel */
+        return pass_cc_num(cc) || (pass_pads() && cc == STRIP_MOD_CC);
+    }
+    case  6: /* SND_SEQ_EVENT_NOTEON    */
+    case  7: /* SND_SEQ_EVENT_NOTEOFF   */
+    case  8: /* SND_SEQ_EVENT_KEYPRESS  */
+        return pass_pads() && is_pad_note(e[17]); /* a pad: Live plays it */
+    case 12: /* SND_SEQ_EVENT_CHANPRESS  */
+    case 13: /* SND_SEQ_EVENT_PITCHBEND  */
+        return pass_pads();          /* pad pressure, the touch strip */
+    case  9: /* (unused)                */
+    case 11: /* SND_SEQ_EVENT_PGMCHANGE  */
+        return 0;
+    default:
+        return 1; /* SysEx, Active Sensing, clock, etc. always pass through */
+    }
+}
+
 /* ── Hook: snd_seq_event_input (ALSA sequencer — intercept MIDI to Live) ─── */
 
 int snd_seq_event_input(void *seq, void **ev) {
@@ -649,38 +681,8 @@ int snd_seq_event_input(void *seq, void **ev) {
 
     /* snd_seq_event_t: type byte is at offset 0 */
     uint8_t *type_ptr = (uint8_t *)*ev;
-    switch (type_ptr[0]) {
-    case 10: { /* SND_SEQ_EVENT_CONTROLLER */
-        /* data.control.param (the CC number) is a uint32 at offset 20:
-         * 16 to the data union, then channel + 3 bytes of padding. */
-        uint32_t cc;
-        memcpy(&cc, type_ptr + 20, sizeof cc);
-        if (pass_cc_num(cc))
-            break;               /* a pass-through button: Live gets it */
-        type_ptr[0] = 0;
-        break;
-    }
-    case  6: /* SND_SEQ_EVENT_NOTEON    */
-    case  7: /* SND_SEQ_EVENT_NOTEOFF   */
-    case  8: /* SND_SEQ_EVENT_KEYPRESS  */
-        /* data.note.note at offset 17: 16 to the data union, then channel */
-        if (pass_pads() && is_pad_note(type_ptr[17]))
-            break;               /* a pad: Live plays it */
-        type_ptr[0] = 0;
-        break;
-    case 12: /* SND_SEQ_EVENT_CHANPRESS  */
-    case 13: /* SND_SEQ_EVENT_PITCHBEND  */
-        if (pass_pads())
-            break;               /* pad pressure, the touch strip */
-        type_ptr[0] = 0;
-        break;
-    case  9: /* (unused)                */
-    case 11: /* SND_SEQ_EVENT_PGMCHANGE  */
+    if (!input_passes(type_ptr))
         type_ptr[0] = 0; /* SND_SEQ_EVENT_NONE — RtMidi skips type-0 events */
-        break;
-    default:
-        break; /* SysEx, Active Sensing, clock, etc. always pass through */
-    }
     return ret;
 }
 

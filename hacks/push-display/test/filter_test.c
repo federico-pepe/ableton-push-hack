@@ -61,8 +61,26 @@ int main(void) {
     unsigned char want2[4] = {6, 0, 10, 0};
     for (int i = 0; i < 4; i++) if (p2[i*28] != want2[i]) { printf("midipass on: event %d type %u, want %u\n", i, p2[i*28], want2[i]); bad = 1; }
     if (!pass_cc_num(118) || pass_cc_num(110) || !pass_cc_num(85) || pass_cc_num(200)) { puts("pass_cc_num"); bad = 1; }
+    /* the input from Push's hardware (input_passes), pads on: the pads, their
+     * pressure, the touch strip as pitch bend and as a mod wheel (CC 1) pass;
+     * other notes and controllers without their bit are held */
+    struct { unsigned char type; uint32_t n; int want; } in[] = {
+        {6, 60, 1}, {7, 60, 1}, {8, 60, 1}, {6, 12, 0}, {6, 3, 0},
+        {10, 1, 1}, {10, 20, 0}, {10, 118, 1}, {12, 0, 1}, {13, 0, 1}, {11, 0, 0}, {130, 0, 1},
+    };
+    for (size_t i = 0; i < sizeof in / sizeof in[0]; i++) {
+        unsigned char e[28]; ev(e, in[i].type, 0, in[i].n);
+        if (in[i].type >= 6 && in[i].type <= 8) e[17] = (unsigned char)in[i].n;
+        if (input_passes(e) != in[i].want) { printf("input type %u n %u: %d, want %d\n", in[i].type, in[i].n, input_passes(e), in[i].want); bad = 1; }
+    }
+    mp.pads = 0; /* pads off: the strip, its mod wheel and the pads stay the hack's */
+    {
+        unsigned char e[28];
+        ev(e, 10, 0, 1); if (input_passes(e)) { puts("CC 1 passed with pads off"); bad = 1; }
+        ev(e, 13, 0, 0); if (input_passes(e)) { puts("pitch bend passed with pads off"); bad = 1; }
+    }
     mp.magic = 0; /* a file that is not ours yet */
     if (pass_pads() || pass_cc_num(118)) { puts("midipass without magic passed"); bad = 1; }
-    puts(bad ? "FAIL" : "PASS: mirror frame copied, notes and CC 20 held, Play passed, SysEx and its payload untouched, midipass pads and CC 88+");
+    puts(bad ? "FAIL" : "PASS: mirror frame copied, notes and CC 20 held, Play passed, SysEx and its payload untouched, midipass pads and CC 88+, the input (the touch strip's mod wheel with the pads)");
     return bad;
 }
