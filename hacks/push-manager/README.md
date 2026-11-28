@@ -944,6 +944,19 @@ On the first successful shm connection, `scheduleStartupSplash()` (guarded by `s
 
 The hook ignores the display mode for its first 8 seconds (`BOOT_GRACE_SECS`), and at a cold boot Push3 starts after push-manager. A splash that ran inside that time was never drawn, and the hook then showed the last frame, frozen. So the splash waits for Push3 to run (up to 90 s), writes its first frame and sets `mode=2` while the hook still ignores it, and starts the starfield when Push3 is 8 seconds old. It reads Push3's age from `/proc` (`src/hookage.go`), so the hook needs no change. When push-manager restarts alone and Push3 is already old, the splash starts at once. If Push3 never appears, it is skipped.
 
+### A hack's own start-up picture
+
+A hack may show the picture itself. Its `hack.json` says `"startup_picture": true`. If exactly one
+installed, enabled hack says so, push-manager leaves the starfield out: when Push3 runs it sets the display
+back to passthrough (the hook's own "Push Hack loaded..." frame would otherwise stay up) and logs
+`startup splash: left to <id>`. `GET /api/display/status` then names the hack in `startup_picture`.
+With no such hack, or with more than one, push-manager shows its own as before.
+
+The hack draws with the display calls every hack has (`POST /api/display/mode` 2, frames, mode 0), and must
+wait for the hook's grace: a frame sent while Push3 is younger than 8 seconds is never drawn. It should
+show nothing where the mode is not 0 or a call is refused (Push Hack Home or an app has the surface), and
+give the display back when it is done.
+
 ### Fallback
 
 If push-manager never starts (push-display deployed but push-manager not running), the C fallback timer resets `mode=0` after 10 seconds, so Push's own UI always returns.

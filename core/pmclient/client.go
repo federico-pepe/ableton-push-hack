@@ -128,6 +128,11 @@ type Status struct {
 	// 2 takeover. A hack that holds takeover can see a Push3 restart (the
 	// hook starts in 0) and take the display again.
 	Mode int `json:"mode"`
+	// StartupPicture is the id of the hack this start's picture was left to
+	// (its hack.json says "startup_picture": true), "" where push-manager
+	// showed its own. A hack that finds its own id here may show its picture
+	// as soon as the hook's grace is over (Push3 8 s old) and Mode is 0.
+	StartupPicture string `json:"startup_picture,omitempty"`
 }
 
 // DisplayStatus reports whether push-display's shared-memory framebuffer is

@@ -110,3 +110,61 @@ func TestHackInstalledPushHackScript(t *testing.T) {
 		t.Fatal("PushHack in the User Library not seen")
 	}
 }
+
+// A hack may bring the start-up picture (hack.json "startup_picture"):
+// push-manager leaves its own out for exactly one such hack that is
+// installed and enabled, and shows its own in every other case.
+func TestStartupPictureOwner(t *testing.T) {
+	dir := t.TempDir()
+	write := func(id, body string) {
+		if err := os.MkdirAll(filepath.Join(dir, id), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, id, "hack.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hacksDir = dir
+	initdDir = filepath.Join(dir, "init.d")
+	rcdGlob = filepath.Join(dir, "rc*.d")
+	defer func() {
+		hacksDir = "/data/push-hack/hacks"
+		initdDir, rcdGlob = "/etc/init.d", "/etc/rc*.d"
+	}()
+
+	write("plain", `{"id":"plain","name":"Plain","port":7710}`)
+	if got := startupPictureOwner(); got != "" {
+		t.Errorf("no hack asks for it: %q", got)
+	}
+	write("one", `{"id":"one","name":"One","port":7711,"startup_picture":true}`)
+	if got := startupPictureOwner(); got != "one" {
+		t.Errorf("one hack brings the picture: %q", got)
+	}
+	write("no", `{"id":"no","name":"No","port":7712,"startup_picture":false}`)
+	if got := startupPictureOwner(); got != "one" {
+		t.Errorf("a hack that says false does not count: %q", got)
+	}
+	// a hack that is switched off (a service with no autostart link) does not bring it
+	if err := os.MkdirAll(initdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(initdDir, "push-hack-one"), nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := startupPictureOwner(); got != "" {
+		t.Errorf("the only hack that brings it is disabled: %q", got)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "rc5.d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "rc5.d", "S90push-hack-one"), nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := startupPictureOwner(); got != "one" {
+		t.Errorf("enabled again: %q", got)
+	}
+	write("two", `{"id":"two","name":"Two","port":7713,"startup_picture":true}`)
+	if got := startupPictureOwner(); got != "" {
+		t.Errorf("two hacks bring one: nobody's, push-manager shows its own: %q", got)
+	}
+}

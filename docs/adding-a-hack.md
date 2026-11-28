@@ -80,6 +80,16 @@ hack either: push-manager takes it while your hack owns the surface.
 
 push-manager switches the display and the MIDI intercept for you. Pass the
 buttons that Live should keep (such as Play and Record) to `RunSurface`.
+
+### A start-up picture of your own
+
+When the Push starts, push-manager shows "Push Hack loaded..." over a starfield for five seconds. A hack
+can show its own picture instead: put `"startup_picture": true` into `hack.json`. push-manager then shows
+none (if yours is the only installed, enabled hack that asks) and frees the display.
+`pmclient.Client.DisplayStatus()` says so: `StartupPicture` is your hack's id. Wait until Push3 is 8
+seconds old (the hook draws nothing before that) and `Mode` is 0, then `SetMode(2)`, send your frames with
+`Push`, and `SetMode(0)`. Do this without `Client.App`: you are not an app at that moment. If a call is
+refused, the display is someone else's: show nothing.
 If your hack stops while it owns the surface, push-manager shows Home and
 says so. See push-manager's README, "Push Hack Home", for the details.
 
