@@ -26,6 +26,7 @@ import (
 	"math/rand"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	coredisplay "github.com/federico-pepe/ableton-push-hack/core/display"
@@ -173,6 +174,9 @@ func handleDisplayStatus(w http.ResponseWriter, r *http.Request) {
 		"frame_seq": frameSeq,
 		"width":     dispVisW,
 		"height":    dispH,
+		// the hack this start's picture was left to ("" where push-manager
+		// showed its own): it can begin when the hook's grace ends
+		"startup_picture": startupPictureLeftTo.Load(),
 	})
 }
 
@@ -350,11 +354,31 @@ func handleDisplayFrame(w http.ResponseWriter, r *http.Request) {
 
 const splashDuration = 5 * time.Second
 
+// startupPictureLeftTo: the hack this start's picture was left to (a string;
+// "" until then, and for good where push-manager showed its own)
+var startupPictureLeftTo atomic.Value
+
+func init() { startupPictureLeftTo.Store("") }
+
 func scheduleStartupSplash() {
 	startupSplashOnce.Do(func() {
 		const msg = "Push Hack loaded..."
 		if !waitHookAge(hookLoaded, 90*time.Second) {
 			log.Printf("startup splash: Push3 not running, skipping")
+			return
+		}
+		// A hack that brings the start-up picture (hack.json
+		// "startup_picture") shows it itself, with the display calls every
+		// hack has. Free the display for it: the hook put its own "Push Hack
+		// loaded..." frame up in takeover when it loaded, and nothing else
+		// would take that down. The hack begins when the hook's grace is over.
+		if id := startupPictureOwner(); id != "" {
+			if shm.CompareAndSetMode(ModeTakeover, ModePassthrough) {
+				log.Printf("startup splash: left to %s (restored mode=passthrough)", id)
+			} else {
+				log.Printf("startup splash: left to %s", id)
+			}
+			startupPictureLeftTo.Store(id)
 			return
 		}
 		if err := shmWritePixels(renderStarSplash(newStars(rand.New(rand.NewSource(1))), msg, buildVersion, 0)); err != nil {

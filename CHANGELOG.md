@@ -7,6 +7,10 @@ between minor versions).
 
 ## [Unreleased]
 
+### Added
+
+- A hack can show its own picture when the Push starts, in place of push-manager's starfield: `"startup_picture": true` in its `hack.json`. push-manager then leaves its own out and frees the display, and `GET /api/display/status` (`pmclient.Status.StartupPicture`) names the hack. It applies only when exactly one installed, enabled hack asks; otherwise the start-up splash is as before. See `docs/adding-a-hack.md`.
+
 ### Fixed
 
 - Push Hack Home: every LED could stay dark after an app gave the surface back. push-manager switches the LEDs off on the way out and asks Push to repaint them, but the repaint was triggered by a 100 ms poll of the button intercept, which missed an app that held the surface for less than that. It happens when a device is loaded from Push's browser while an app stands in for the device view: the app opens on the old selection and closes again at once. The pads then stayed dark until each was played. The repaint is now asked for on every hand-back.

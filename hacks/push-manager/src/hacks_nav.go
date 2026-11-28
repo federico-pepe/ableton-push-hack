@@ -96,6 +96,11 @@ type hackNav struct {
 	// LiveDevices names the hack's plugin bundle (core/livedevice):
 	// /data/.vst3/<LiveDevices>.vst3, whose class file lists its devices.
 	LiveDevices string `json:"live_devices,omitempty"`
+	// StartupPicture: the hack shows a picture of its own when the Push
+	// starts (hack.json "startup_picture": true). push-manager then leaves
+	// its starfield out and frees the display for it (display.go,
+	// startupPictureOwner).
+	StartupPicture bool `json:"startup_picture,omitempty"`
 
 	// Enabled is computed, not decoded from hack.json — see hackEnabled.
 	Enabled bool `json:"enabled"`
@@ -120,6 +125,24 @@ func installedHacks() []hackNav {
 	}
 	sort.Slice(hacks, func(i, j int) bool { return hacks[i].ID < hacks[j].ID })
 	return hacks
+}
+
+// startupPictureOwner is the hack that shows the start-up picture in place
+// of push-manager's: the one installed, enabled hack whose hack.json says
+// "startup_picture": true. With none, or with more than one (nobody could
+// say whose picture it is), it is "" and push-manager shows its own.
+func startupPictureOwner() string {
+	owner := ""
+	for _, h := range installedHacks() {
+		if !h.StartupPicture || !h.Enabled {
+			continue
+		}
+		if owner != "" {
+			return ""
+		}
+		owner = h.ID
+	}
+	return owner
 }
 
 func handleHacksInstalled(w http.ResponseWriter, r *http.Request) {
